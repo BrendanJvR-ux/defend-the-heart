@@ -2,9 +2,9 @@
 import { BALANCE, type EnemyType, type TowerType } from './balance';
 import {
   MAP_W, MAP_H, GUTTER_X, LANES, LANE_IDS, RIVER, POND, MILL, BRIDGE, INKWELL, GATE, CASTLE,
-  LEY_EDGES, NODE, FOUNDATION_IDS, branchOf, routePolyline, pointAt, type Vec, type BranchId,
+  LEY_EDGES, NODE, FOUNDATION_IDS, routePolyline, pointAt, type Vec,
 } from './map';
-import { type GameState, type Tower, enemyPos, posOf, towerAt, flightPoint, isBound } from './game';
+import { type GameState, type Tower, enemyPos, posOf, towerAt, flightPoint } from './game';
 
 export const C = {
   paper: '#f3e5c5',
@@ -26,8 +26,9 @@ export const C = {
   cobble: '#c2b291',
   stone: '#d9ccb0',
   stoneDark: '#9c8f75',
-  ley: '#3d3f78',
-  thread: '#3f63e0',
+  ley: 'rgba(110,88,62,0.75)',
+  thread: '#1c1d33',
+  threadWet: '#2b3566',
   threadCore: '#e9f0ff',
   shadow: 'rgba(70,45,20,0.28)',
 };
@@ -42,7 +43,8 @@ export interface Gesture {
 export interface ViewState {
   hoverFoundation: string | null;
   selectedFoundation: string | null;
-  bindPreview: BranchId | null;
+  /** Foundation whose tower is being previewed for a bind. */
+  bindPreview: string | null;
   gesture: Gesture;
   /** Pointer is coarse (touch): draw larger hit hints. */
   touch: boolean;
@@ -220,7 +222,7 @@ function buildStatic(): HTMLCanvasElement {
   roadLabel(ctx, 'Goosebridge Pond', { x: POND.x, y: POND.y + 82 }, 0);
 
   // Leylines (plain stitch; gold for bound branches is drawn live on top)
-  drawLeylines(ctx, null);
+  drawLeylines(ctx);
   drawInkwell(ctx);
 
   // Page edges and ornamental border
@@ -408,25 +410,22 @@ function drawInkwell(ctx: CanvasRenderingContext2D) {
   ctx.fillText('the Inkwell', x, y + 52);
 }
 
-function drawLeylines(ctx: CanvasRenderingContext2D, only: BranchId | null) {
+function drawLeylines(ctx: CanvasRenderingContext2D) {
+  // A faint pencil guide: fine dotted double line. Ink is laid over it when you trace.
   ctx.lineCap = 'round';
   for (const e of LEY_EDGES) {
-    if (only && branchOf(e.child) !== only) continue;
-    // double running stitch: a fine solid line plus dashes alongside
-    ctx.strokeStyle = 'rgba(61,63,120,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(110,88,62,0.28)'; ctx.lineWidth = 7; ctx.setLineDash([]);
     stroke(ctx, e.pts);
-    ctx.strokeStyle = C.ley; ctx.lineWidth = 2.6; ctx.setLineDash([7, 6]);
+    ctx.strokeStyle = C.paper; ctx.lineWidth = 4.5;
+    stroke(ctx, e.pts);
+    ctx.strokeStyle = C.ley; ctx.lineWidth = 2; ctx.setLineDash([2, 5]);
     stroke(ctx, e.pts);
   }
   ctx.setLineDash([]);
-  // knots at branch points
   for (const n of Object.values(NODE)) {
     if (n.foundation || n.id === 'ink') continue;
-    if (only && branchOf(n.id) !== only) continue;
-    ctx.save(); ctx.translate(n.x, n.y); ctx.rotate(Math.PI / 4);
-    ctx.fillStyle = C.paper; ctx.strokeStyle = C.ley; ctx.lineWidth = 2;
-    ctx.fillRect(-5, -5, 10, 10); ctx.strokeRect(-5, -5, 10, 10);
-    ctx.restore();
+    ctx.fillStyle = C.paper; ctx.strokeStyle = C.ley; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(n.x, n.y, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
 }
 
@@ -554,47 +553,66 @@ export function towerIconCanvas(type: TowerType, size = 48): HTMLCanvasElement {
 
 // ── Live drawing ────────────────────────────────────────────────────────────
 
-function glowThread(ctx: CanvasRenderingContext2D, path: Vec[], time: number, alpha = 1, spent = false) {
+/** A stroke of real ink: tapering, slightly wobbly, with a soaked-in halo and a wet sheen that flows. */
+function inkThread(ctx: CanvasRenderingContext2D, path: Vec[], time: number, alpha = 1, mode: 'wet' | 'dry' | 'fading' = 'wet') {
+  if (path.length < 2) return;
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.shadowColor = spent ? 'rgba(63,99,224,0.3)' : 'rgba(80,120,255,0.9)';
-  ctx.shadowBlur = spent ? 4 : 14;
-  ctx.strokeStyle = spent ? 'rgba(63,99,224,0.45)' : C.thread; ctx.lineWidth = 5;
+  // soaked halo in the paper
+  ctx.strokeStyle = mode === 'dry' ? 'rgba(60,45,35,0.12)' : 'rgba(28,29,51,0.16)';
+  ctx.lineWidth = 15;
   stroke(ctx, path);
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = C.threadCore; ctx.lineWidth = 2;
-  ctx.setLineDash([10, 8]); ctx.lineDashOffset = -time * 40;
-  stroke(ctx, path);
+  // body: variable width like a nib under pressure
+  const col = mode === 'dry' ? '#5a4a40' : mode === 'fading' ? '#4a4a5c' : C.thread;
+  ctx.strokeStyle = col; ctx.fillStyle = col;
+  let acc = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i - 1], b = path[i];
+    acc += Math.hypot(b.x - a.x, b.y - a.y);
+    const w = (mode === 'dry' ? 3.4 : 6) + 1.8 * Math.sin(acc * 0.045) + 1 * Math.sin(acc * 0.13 + 1.7);
+    ctx.lineWidth = Math.max(1.6, w);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  // blots where the nib paused at each knot
+  for (let i = 0; i < path.length; i += Math.max(1, Math.floor(path.length / 9))) {
+    const p = path[i];
+    const r = 3.2 + ((i * 37) % 5) * 0.55;
+    ctx.beginPath(); ctx.arc(p.x + ((i * 13) % 5) - 2, p.y + ((i * 7) % 5) - 2, r, 0, Math.PI * 2); ctx.fill();
+  }
+  if (mode === 'wet') {
+    // a wet sheen running down the stroke
+    ctx.strokeStyle = 'rgba(150,170,230,0.55)'; ctx.lineWidth = 1.3;
+    ctx.setLineDash([4, 26]); ctx.lineDashOffset = -time * 60;
+    stroke(ctx, path);
+    ctx.setLineDash([]);
+  }
   ctx.restore();
 }
 
-function goldLeaf(ctx: CanvasRenderingContext2D, b: BranchId, preview: boolean, time: number) {
+/** Permanent gold leaf along the route of a bound tower (or a dashed preview). */
+function goldRoute(ctx: CanvasRenderingContext2D, foundation: string, preview: boolean, time: number) {
+  const path = routePolyline(foundation);
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const edges = LEY_EDGES.filter((e) => branchOf(e.child) === b || (e.child === 't1'));
   if (preview) {
-    // Preview: a pulsing, dashed gilt outline (not yet bound).
     ctx.strokeStyle = `rgba(125,92,23,${0.55 + 0.3 * Math.sin(time * 5)})`; ctx.lineWidth = 16;
-    for (const e of edges) stroke(ctx, e.pts);
+    stroke(ctx, path);
     ctx.strokeStyle = C.goldLight; ctx.lineWidth = 10; ctx.setLineDash([10, 8]); ctx.lineDashOffset = -time * 30;
-    for (const e of edges) stroke(ctx, e.pts);
+    stroke(ctx, path);
     ctx.setLineDash([]);
   } else {
-    // gilt band: dark edge, gold body, bright core. Thick and solid (temporary threads are thin, blue and animated).
-    ctx.strokeStyle = '#7d5c17'; ctx.lineWidth = 22; for (const e of edges) stroke(ctx, e.pts);
-    ctx.strokeStyle = C.gold; ctx.lineWidth = 18; for (const e of edges) stroke(ctx, e.pts);
-    ctx.strokeStyle = C.goldLight; ctx.lineWidth = 6; ctx.setLineDash([2, 5]); for (const e of edges) stroke(ctx, e.pts); ctx.setLineDash([]);
-    // little gilt leaves along the band
+    ctx.strokeStyle = '#7d5c17'; ctx.lineWidth = 15; stroke(ctx, path);
+    ctx.strokeStyle = C.gold; ctx.lineWidth = 11; stroke(ctx, path);
+    ctx.strokeStyle = C.goldLight; ctx.lineWidth = 4; ctx.setLineDash([2, 6]); stroke(ctx, path); ctx.setLineDash([]);
+    // gilt leaves
     ctx.fillStyle = C.goldLight; ctx.strokeStyle = '#7d5c17'; ctx.lineWidth = 1;
-    for (const e of edges) {
-      for (let i = 4; i < e.pts.length - 2; i += 5) {
-        const p = e.pts[i], q = e.pts[i + 1];
-        const a = Math.atan2(q.y - p.y, q.x - p.x) + (i % 2 ? 0.9 : -0.9);
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
-        ctx.beginPath(); ctx.ellipse(14, 0, 8, 3.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.restore();
-      }
+    for (let i = 6; i < path.length - 2; i += 7) {
+      const p = path[i], q = path[i + 1];
+      const a = Math.atan2(q.y - p.y, q.x - p.x) + (i % 2 ? 0.9 : -0.9);
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
+      ctx.beginPath(); ctx.ellipse(11, 0, 7, 3, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
     }
   }
   ctx.restore();
@@ -646,10 +664,11 @@ function drawTowerState(ctx: CanvasRenderingContext2D, s: GameState, t: Tower, t
     } else {
       const k = ready ? 1 + 0.15 * Math.sin(time * 7) : 1;
       ctx.scale(k, k);
-      ctx.shadowColor = 'rgba(80,120,255,0.9)'; ctx.shadowBlur = ready ? 14 : 6;
-      ctx.fillStyle = C.thread; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(9, 0); ctx.lineTo(0, 11); ctx.lineTo(-9, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.shadowBlur = 0; ctx.fillStyle = C.threadCore; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+      // an ink drop
+      ctx.shadowColor = 'rgba(40,50,110,0.8)'; ctx.shadowBlur = ready ? 12 : 0;
+      ctx.fillStyle = C.thread; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0, -13); ctx.quadraticCurveTo(9, 0, 7, 5); ctx.arc(0, 4, 7.2, 0.15, Math.PI - 0.15); ctx.quadraticCurveTo(-9, 0, 0, -13); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(220,230,255,0.85)'; ctx.beginPath(); ctx.ellipse(-2.5, 2, 1.8, 3, 0.4, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
   }
@@ -659,10 +678,18 @@ function drawTowerState(ctx: CanvasRenderingContext2D, s: GameState, t: Tower, t
     ctx.beginPath(); ctx.moveTo(-8, 4); ctx.lineTo(-8, -4); ctx.lineTo(-4, 0); ctx.lineTo(0, -6); ctx.lineTo(4, 0); ctx.lineTo(8, -4); ctx.lineTo(8, 4); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
-  if (isBound(s, t.foundation)) {
-    ctx.save(); ctx.translate(p.x - 22, p.y - 14);
-    ctx.fillStyle = C.goldLight; ctx.strokeStyle = '#7d5c17'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.ellipse(0, 0, 8, 4, -0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  if (t.bound) {
+    // gilt seal: bright and pulsing while its free pulse is ready
+    const ready = s.phase === 'combat' && !t.committed;
+    ctx.save(); ctx.translate(p.x + 22, p.y - 64);
+    const k = ready ? 1 + 0.15 * Math.sin(time * 7) : 1;
+    ctx.scale(k, k);
+    ctx.shadowColor = 'rgba(235,203,108,0.9)'; ctx.shadowBlur = ready ? 14 : 0;
+    ctx.fillStyle = t.committed && s.phase === 'combat' ? '#a08a5a' : C.goldLight; ctx.strokeStyle = '#7d5c17'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = C.forest;
+    ctx.beginPath(); ctx.ellipse(0, 0, 6, 2.6, -0.7, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 }
@@ -721,7 +748,7 @@ function drawEntrances(ctx: CanvasRenderingContext2D, s: GameState, time: number
       else { ctx.moveTo(m.x + ox - 8, m.y - 56 - bob); ctx.lineTo(m.x + ox, m.y - 72 - bob); ctx.lineTo(m.x + ox + 8, m.y - 56 - bob); }
       ctx.closePath(); ctx.fill(); ctx.stroke();
       // enemy icons in order
-      let x = id === 'mill' ? m.x + 60 : m.x + 50;
+      let x = id === 'mill' ? m.x + 60 : m.x - 40 - groups.length * 46;
       const y = id === 'mill' ? m.y - 40 : m.y - 40;
       ctx.fillStyle = 'rgba(243,229,197,0.9)'; ctx.strokeStyle = C.oxblood; ctx.lineWidth = 1.5;
       roundRect(ctx, x - 16, y - 24, groups.length * 46 + 8, 40, 8); ctx.fill(); ctx.stroke();
@@ -743,7 +770,7 @@ function drawEntrances(ctx: CanvasRenderingContext2D, s: GameState, time: number
       ctx.strokeStyle = C.oxblood; ctx.lineWidth = 4;
       for (let r = 26; r < 70; r += 18) { ctx.beginPath(); ctx.arc(m.x + (w.lane === 'mill' ? 10 : 0), m.y, r, -0.9, 0.9); ctx.stroke(); }
       ctx.globalAlpha = 1;
-      const bx = w.lane === 'mill' ? m.x + 30 : m.x + 46, by = w.lane === 'mill' ? m.y + 44 : m.y - 70;
+      const bx = w.lane === 'mill' ? m.x + 30 : m.x - 290, by = w.lane === 'mill' ? m.y + 44 : m.y - 30;
       ctx.fillStyle = C.oxblood; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5;
       roundRect(ctx, bx - 8, by - 22, 236, 34, 8); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#fff6e0'; ctx.font = '600 17px Palatino, "Palatino Linotype", "Book Antiqua", Georgia, serif'; ctx.textAlign = 'left';
@@ -758,35 +785,35 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
   if (!staticLayer) staticLayer = buildStatic();
   ctx.drawImage(staticLayer, 0, 0);
 
-  // Bound branches in gold leaf, then the stitch on top so the network stays legible.
-  for (const b of s.bound) goldLeaf(ctx, b, false, time);
-  if (v.bindPreview && !s.bound.includes(v.bindPreview)) goldLeaf(ctx, v.bindPreview, true, time);
-  for (const b of s.bound) drawLeylines(ctx, b);
+  // Bound towers' routes in permanent gold leaf
+  for (const t of s.towers) if (t.bound) goldRoute(ctx, t.foundation, false, time);
+  if (v.bindPreview && !towerAt(s, v.bindPreview)?.bound) goldRoute(ctx, v.bindPreview, true, time);
 
-  // Fading threads (reset made visible)
-  for (const f of s.fading) glowThread(ctx, f.path, time, 1 - f.t / f.dur);
-  // Temporary traces
-  for (const t of s.towers) if (t.traced) glowThread(ctx, routePolyline(t.foundation), time, 1, t.committed);
-  // Live gesture
+  // Fading threads (the reset, made visible)
+  for (const f of s.fading) inkThread(ctx, f.path, time, 1 - f.t / f.dur, 'fading');
+  // Temporary traces: wet ink; once pulsed, dried ink
+  for (const t of s.towers) if (t.traced) inkThread(ctx, routePolyline(t.foundation), time, 1, t.committed ? 'dry' : 'wet');
+  // Live gesture: the nib being drawn
   if (v.gesture.active && v.gesture.path.length > 1) {
-    glowThread(ctx, v.gesture.path, time, v.gesture.slipping > 0 ? 0.5 : 1);
+    inkThread(ctx, v.gesture.path, time, v.gesture.slipping > 0 ? 0.45 : 1, 'wet');
     const end = v.gesture.path[v.gesture.path.length - 1];
-    ctx.save(); ctx.fillStyle = C.threadCore; ctx.strokeStyle = C.thread; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(end.x, end.y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.fillStyle = C.thread;
+    ctx.beginPath(); ctx.arc(end.x, end.y, 7 + Math.sin(time * 10), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(28,29,51,0.18)'; ctx.beginPath(); ctx.arc(end.x, end.y, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
   // Inkwell invitation
   if (s.phase === 'prep' && !s.pendingGrant && s.traces.length < (BALANCE.phaseRules.filter((r) => s.wave >= r.fromWave).at(-1)!.traces)) {
     const k = 0.5 + 0.5 * Math.sin(time * 3);
-    ctx.save(); ctx.strokeStyle = `rgba(63,99,224,${0.3 + 0.4 * k})`; ctx.lineWidth = 3; ctx.setLineDash([6, 6]);
-    ctx.beginPath(); ctx.arc(NODE.ink.x - 10, NODE.ink.y + 10, 52 + k * 6, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.save(); ctx.strokeStyle = `rgba(28,29,51,${0.25 + 0.4 * k})`; ctx.lineWidth = 3; ctx.setLineDash([3, 7]);
+    ctx.beginPath(); ctx.arc(INKWELL.x, INKWELL.y - 4, 56 + k * 6, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
   }
 
   for (const f of s.fires) drawFire(ctx, f, time);
 
   // Foundations
-  const previewSet = v.bindPreview ? new Set(FOUNDATION_IDS.filter((f) => branchOf(f) === v.bindPreview)) : new Set<string>();
   for (const f of FOUNDATION_IDS) {
-    drawFoundation(ctx, f, v.selectedFoundation === f, v.hoverFoundation === f, isBoundF(s, f), previewSet.has(f), time);
+    drawFoundation(ctx, f, v.selectedFoundation === f, v.hoverFoundation === f, !!towerAt(s, f)?.bound, v.bindPreview === f, time);
     if (!towerAt(s, f)) drawEmptyMarker(ctx, f);
   }
 
@@ -827,7 +854,15 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
 
   // Projectiles
   for (const p of s.projectiles) {
-    if (p.kind === 'bramble') {
+    if (p.kind === 'castle') {
+      const a = Math.atan2(p.ty - p.sy, p.tx - p.sx);
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
+      ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(8, 0); ctx.stroke();
+      ctx.fillStyle = C.ink; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(4, -3); ctx.lineTo(4, 3); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = C.oxblood; ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(-14, -3); ctx.moveTo(-10, 0); ctx.lineTo(-14, 3); ctx.stroke();
+      ctx.restore();
+    } else if (p.kind === 'bramble') {
       const a = Math.atan2(p.ty - p.sy, p.tx - p.sx);
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(a);
       ctx.fillStyle = C.forest; ctx.strokeStyle = C.ink; ctx.lineWidth = 1;
@@ -857,8 +892,12 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
       ctx.fillStyle = `rgba(229,118,47,${0.45 * (1 - k)})`;
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.5 + 0.5 * k), 0, Math.PI * 2); ctx.fill();
     } else {
-      ctx.strokeStyle = `rgba(63,99,224,${1 - k})`; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.arc(r.x, r.y - 30, r.r * (0.5 + k), 0, Math.PI * 2); ctx.stroke();
+      // ink splatter
+      ctx.fillStyle = `rgba(28,29,51,${0.8 * (1 - k)})`;
+      for (let i = 0; i < 9; i++) {
+        const a = i * 0.7 + 0.3, d = r.r * (0.4 + k) * (0.6 + (i % 3) * 0.25);
+        ctx.beginPath(); ctx.arc(r.x + Math.cos(a) * d, r.y - 30 + Math.sin(a) * d * 0.7, 4 - (i % 3), 0, Math.PI * 2); ctx.fill();
+      }
     }
     ctx.restore();
   }
@@ -867,9 +906,17 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
   for (const f of s.flights) {
     const p = flightPoint(f);
     ctx.save();
-    ctx.shadowColor = 'rgba(120,160,255,1)'; ctx.shadowBlur = 22;
-    ctx.fillStyle = C.threadCore; ctx.strokeStyle = C.thread; ctx.lineWidth = 3;
+    const t = s.towers.find((x) => x.id === f.towerId);
+    const gold = !!t?.bound;
+    // a fat droplet with a trailing smear
+    const back = flightPoint({ ...f, s: Math.max(0, f.s - 40) });
+    ctx.strokeStyle = gold ? C.gold : C.thread; ctx.lineCap = 'round'; ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.moveTo(back.x, back.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    ctx.shadowColor = gold ? 'rgba(235,203,108,1)' : 'rgba(60,80,170,0.9)'; ctx.shadowBlur = 16;
+    ctx.fillStyle = gold ? C.goldLight : C.thread; ctx.strokeStyle = gold ? '#7d5c17' : C.ink; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(230,236,255,0.8)';
+    ctx.beginPath(); ctx.arc(p.x - 3, p.y - 3, 3, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 
@@ -883,14 +930,13 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
   void GATE;
 }
 
-function isBoundF(s: GameState, f: string) { return isBound(s, f); }
 
 /** The finished illustration for the victory screen. */
 export function renderVictory(ctx: CanvasRenderingContext2D, s: GameState, time: number) {
   if (!staticLayer) staticLayer = buildStatic();
   ctx.drawImage(staticLayer, 0, 0);
-  for (const b of s.bound) goldLeaf(ctx, b, false, time);
-  for (const f of FOUNDATION_IDS) drawFoundation(ctx, f, false, false, isBound(s, f), false, time);
+  for (const t of s.towers) if (t.bound) goldRoute(ctx, t.foundation, false, time);
+  for (const f of FOUNDATION_IDS) drawFoundation(ctx, f, false, false, !!towerAt(s, f)?.bound, false, time);
   for (const t of [...s.towers].sort((a, b) => posOf(a).y - posOf(b).y)) drawTowerIcon(ctx, t.type, posOf(t).x, posOf(t).y, 1, time);
   // Sepia wash and gilt frame turn the battlefield into a finished plate.
   ctx.save();

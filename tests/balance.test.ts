@@ -6,7 +6,7 @@ describe('balance', () => {
     const { state, hpByWave, leaks } = playBot({
       pulse: true,
       builds: [{ foundation: 'f_upper', type: 'bramble' }, { foundation: 'f_gate', type: 'bramble' }, { foundation: 'f_bend', type: 'ember' }, { foundation: 'f_ford', type: 'bramble' }, { foundation: 'f_millgate', type: 'bramble' }],
-      bind: { wave: 4, branch: 'gate' },
+      bind: { wave: 4, foundation: 'f_junction' },
       traces: { 1: ['f_mill', 'f_junction'], 2: ['f_mill', 'f_junction'], 3: ['f_junction', 'f_bridge'], 4: ['f_junction', 'f_mill', 'f_bridge'], 5: ['f_junction', 'f_bridge', 'f_bend'], 6: ['f_junction', 'f_bridge', 'f_mill'] },
     });
     console.log('strategy HP by wave', hpByWave.slice(1), state.phase, 'gold', state.gold, 'towers', state.towers.length, JSON.stringify(leaks.slice(1)));

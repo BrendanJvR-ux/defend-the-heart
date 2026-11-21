@@ -1,16 +1,17 @@
 // A simple scripted player used by the tests to prove the six waves are winnable.
 import { BALANCE, type TowerType } from '../src/balance';
 import {
-  type GameState, newGame, step, traceTower, startWave, pulseTower, buildTower, placeGrant, bindBranch,
+  type GameState, newGame, step, traceTower, startWave, pulseTower, buildTower, placeGrant, bindTower,
   rule, towerAt, enemyPos, posOf, emptyFoundations,
 } from '../src/game';
-import { dist, type BranchId } from '../src/map';
+import { dist } from '../src/map';
 
 export interface BotPlan {
   /** Build queue, bought greedily in order whenever gold allows. */
   builds?: { foundation: string; type: TowerType }[];
   grant?: { foundation: string; type: TowerType };
-  bind?: { wave: number; branch: BranchId };
+  /** Bind the tower on this foundation in gold at the start of this wave's preparation. */
+  bind?: { wave: number; foundation: string };
   /** Foundations to trace each wave (in preference order). */
   traces: Record<number, string[]>;
   /** Use pulses at all? */
@@ -31,7 +32,7 @@ export function playBot(plan: BotPlan, maxSeconds = 2000): { state: GameState; h
       if (s.gold < BALANCE.towers[b.type].cost) break;
       buildTower(s, b.foundation, b.type);
     }
-    if (plan.bind && plan.bind.wave === s.wave) bindBranch(s, plan.bind.branch);
+    if (plan.bind && plan.bind.wave === s.wave) { const t = towerAt(s, plan.bind.foundation); if (t) bindTower(s, t.id); }
     const want = plan.traces[s.wave] ?? [];
     for (const f of want) { const t = towerAt(s, f); if (t && s.traces.length < rule(s).traces) traceTower(s, t.id); }
     for (const t of s.towers) if (s.traces.length < rule(s).traces && !t.traced) traceTower(s, t.id);
@@ -41,7 +42,7 @@ export function playBot(plan: BotPlan, maxSeconds = 2000): { state: GameState; h
     while (s.phase === 'combat' && elapsed < maxSeconds) {
       step(s, 1 / 30);
       elapsed += 1 / 30;
-      if (plan.pulse && s.pulsesLeft > 0) botPulse(s);
+      if (plan.pulse) botPulse(s);
     }
     hpByWave[w] = s.castleHp;
     leaks[w] = s.leakLog.splice(0);
@@ -55,7 +56,7 @@ function botPulse(s: GameState) {
   const emberReady = s.towers.some((t) => t.type === 'ember' && t.traced && !t.committed);
   const reserve = wolvesToCome && emberReady ? 1 : 0;
   for (const t of s.towers) {
-    if (!t.traced || t.committed || s.pulsesLeft <= 0) continue;
+    if (t.committed || (!t.bound && (!t.traced || s.pulsesLeft <= 0))) continue;
     const p = posOf(t);
     const near = (r: number) => s.enemies.filter((e) => dist(enemyPos(e), p) <= r);
     if (t.type === 'ember') {
@@ -63,7 +64,7 @@ function botPulse(s: GameState) {
       if (n.filter((e) => e.type === 'wolf').length >= 3 || (!wolvesToCome && n.length >= 5)) pulseTower(s, t.id);
       continue;
     }
-    if (s.pulsesLeft <= reserve) continue;
+    if (!t.bound && s.pulsesLeft <= reserve) continue;
     let fire = false;
     if (t.type === 'bramble') fire = near(170).length >= 5;
     if (t.type === 'bell') fire = near(BALANCE.pulses.tollRadius).length >= 5 || near(BALANCE.pulses.tollRadius).some((e) => e.type === 'ram' && e.hp > 60);

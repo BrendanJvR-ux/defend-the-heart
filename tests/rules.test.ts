@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BALANCE } from '../src/balance';
 import {
   newGame, traceTower, untraceTower, undoTrace, startWave, pulseTower, step, canStartWave, buildTower,
-  placeGrant, bindBranch, bindCheck, towerAt, towerDamage, invariantHolds, rule, type GameState,
+  placeGrant, bindTower, bindCheck, towerAt, invariantHolds, rule, unboundCount, type GameState,
 } from '../src/game';
 
 const T = (s: GameState, f: string) => towerAt(s, f)!.id;
@@ -89,10 +89,10 @@ describe('acceptance: trace / pulse / bind', () => {
     expect(s.pulsesLeft).toBe(1);
   });
 
-  it('4 & 5. a player who buys nothing reaches wave 4 with 4 towers, 3 traces, 2 pulses, and can bind only then', () => {
+  it('4 & 5. a player who buys nothing reaches wave 4 with 4 towers, 3 traces, 2 pulses; binding needs leaves and spare towers', () => {
     const s = newGame();
     for (let w = 1; w <= 3; w++) {
-      expect(bindCheck(s, 'gate').ok).toBe(false);
+      expect(bindCheck(s, T(s, 'f_junction')).ok).toBe(false);
       traceTower(s, T(s, 'f_mill'));
       traceTower(s, T(s, 'f_junction'));
       startWave(s);
@@ -107,34 +107,42 @@ describe('acceptance: trace / pulse / bind', () => {
     expect(s.towers.length).toBe(4);
     expect(invariantHolds(s)).toBe(true);
     expect(rule(s)).toMatchObject({ traces: 3, pulses: 2 });
-
-    const before = towerDamage(s, towerAt(s, 'f_junction')!);
-    expect(bindBranch(s, 'gate')).toBe(true);
-    expect(s.leaves).toBe(0);
-    expect(bindBranch(s, 'north')).toBe(false); // can't afford a second
-    expect(towerDamage(s, towerAt(s, 'f_junction')!)).toBeCloseTo(before * 1.25);
-    expect(towerDamage(s, towerAt(s, 'f_gate')!)).toBeCloseTo(BALANCE.towers.bramble.damage * 1.25);
-
-    // 6. bound but untraced: bonus, no pulse. Manually traced on the same path: pulses normally.
+    // With only four towers, binding one would leave three to fill three traces: refused.
+    expect(bindCheck(s, T(s, 'f_junction')).ok).toBe(false);
+    s.gold = 1000;
+    expect(buildTower(s, 'f_upper', 'ember')).toBe(true);
     traceTower(s, T(s, 'f_junction'));
+    expect(bindTower(s, T(s, 'f_junction'))).toBe(true);
+    expect(s.leaves).toBe(0);
+    expect(towerAt(s, 'f_junction')!.traced).toBe(false); // its thread was returned
+    expect(unboundCount(s)).toBe(4);
+    expect(bindTower(s, T(s, 'f_mill'))).toBe(false); // no leaves left
+
+    // 6. A bound tower cannot be traced, and fires its own free pulse without spending a shared charge.
+    expect(traceTower(s, T(s, 'f_junction'))).toBe(false);
+    expect(s.traces.length).toBe(0);
     traceTower(s, T(s, 'f_mill'));
     traceTower(s, T(s, 'f_bridge'));
+    expect(canStartWave(s).ok).toBe(false);
+    traceTower(s, T(s, 'f_gate'));
     expect(startWave(s)).toBe(true);
     expect(s.pulsesLeft).toBe(2);
-    expect(pulseTower(s, T(s, 'f_gate'))).toBe(false);
-    expect(s.pulsesLeft).toBe(2);
     expect(pulseTower(s, T(s, 'f_junction'))).toBe(true);
+    expect(s.pulsesLeft).toBe(2); // free
+    expect(pulseTower(s, T(s, 'f_junction'))).toBe(false); // once per wave
+    expect(pulseTower(s, T(s, 'f_upper'))).toBe(false); // untraced, unbound
+    expect(pulseTower(s, T(s, 'f_mill'))).toBe(true);
     expect(s.pulsesLeft).toBe(1);
     survive(s);
-    // bonus persists into later rounds
+    // The free pulse returns next wave, still without a trace.
     expect(s.wave).toBe(5);
-    expect(s.bound).toEqual(['gate']);
-    expect(towerDamage(s, towerAt(s, 'f_gate')!)).toBeCloseTo(BALANCE.towers.bramble.damage * 1.25);
-    // towers built later on a bound branch get it too
-    s.gold = 1000;
-    buildTower(s, 'f_upper', 'ember');
-    expect(towerDamage(s, towerAt(s, 'f_upper')!)).toBeCloseTo(BALANCE.towers.ember.damage * 1.25);
-    expect(towerDamage(s, towerAt(s, 'f_mill')!)).toBe(BALANCE.towers.bramble.damage);
+    expect(towerAt(s, 'f_junction')!.bound).toBe(true);
+    traceTower(s, T(s, 'f_mill'));
+    traceTower(s, T(s, 'f_bridge'));
+    traceTower(s, T(s, 'f_gate'));
+    startWave(s);
+    expect(pulseTower(s, T(s, 'f_junction'))).toBe(true);
+    expect(s.pulsesLeft).toBe(2);
   });
 
   it('building and tracing are locked during a wave', () => {
@@ -157,9 +165,9 @@ describe('acceptance: trace / pulse / bind', () => {
     pulseTower(s, T(s, 'f_mill'));
     finishWave(s);
     const r = newGame();
-    for (const k of ['phase', 'wave', 'castleHp', 'gold', 'leaves', 'traces', 'pulsesLeft', 'bound', 'flights', 'pendingGrant'] as const) {
+    for (const k of ['phase', 'wave', 'castleHp', 'gold', 'leaves', 'traces', 'pulsesLeft', 'flights', 'pendingGrant'] as const) {
       expect(r[k]).toEqual(fresh[k]);
     }
-    expect(r.towers.map((t) => [t.foundation, t.type])).toEqual(fresh.towers.map((t) => [t.foundation, t.type]));
+    expect(r.towers.map((t) => [t.foundation, t.type, t.bound])).toEqual(fresh.towers.map((t) => [t.foundation, t.type, t.bound]));
   });
 });

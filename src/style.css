@@ -232,3 +232,23 @@ body[data-phase='combat'] #board { cursor: default; }
 @media (pointer: coarse) {
   button { min-height: 44px; }
 }
+
+/* Gilded (bound) towers */
+.tower-row.is-bound { background: linear-gradient(90deg, rgba(235, 203, 108, 0.35), transparent); }
+.tower-row button.gild, button.gilt-btn { background: linear-gradient(#f2d77f, var(--gold)); color: var(--ink); border-color: #7d5c17; }
+.gildres { font-size: 14px; background: linear-gradient(#f2d77f, var(--gold)); color: var(--ink); border-radius: 999px; padding: 1px 8px; border: 1px solid #7d5c17; }
+.tower-row.is-traced { background: linear-gradient(90deg, rgba(28, 29, 51, 0.12), transparent); }
+.tower-row button.traced { background: #e4e2ef; border-color: #1c1d33; color: #1c1d33; }
+.tower-row button.pulse { background: #1c1d33; border-color: #0d0e1c; }
+.phase-res.combat { background: #1c1d33; border-color: #0d0e1c; }
+.phase-res.prep { background: #ecebf3; border-color: #1c1d33; color: #1c1d33; }
+.need { color: #1c1d33; }
+.beads i.on { background: #2b3566; box-shadow: 0 0 6px rgba(160, 175, 230, 0.8); }
+
+/* Foldable bookmark */
+.ribbon .fold { position: absolute; top: 6px; right: 8px; min-height: 26px; padding: 0 8px; background: transparent; color: var(--gold-2); border-color: rgba(235, 203, 108, 0.6); box-shadow: none; font-size: 14px; }
+.ribbon.folded .ribbon-body { padding-bottom: 22px; }
+.ribbon.folded ol, .ribbon.folded .lesson { display: none; }
+.ribbon.folded h3 { font-size: 15px; margin-bottom: 0; }
+.ribbon { width: 220px; }
+@media (max-width: 700px) { .ribbon.folded ol, .ribbon.folded .lesson { display: flex; } .ribbon.folded .lesson { display: block; } .ribbon .fold { display: none; } }

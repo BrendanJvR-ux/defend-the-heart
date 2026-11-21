@@ -2,12 +2,12 @@ import './style.css';
 import { BALANCE, TOTAL_WAVES, phaseRule, type TowerType, type EnemyType } from './balance';
 import {
   type GameState, newGame, step, rule, traceTower, untraceTower, undoTrace, clearTraces, canStartWave, startWave,
-  pulseTower, pulseCheck, buildTower, buildCheck, placeGrant, bindBranch, bindCheck, towerAt, emptyFoundations,
-  isBound, towerDamage, toast, traceCheck,
+  pulseTower, pulseCheck, buildTower, buildCheck, placeGrant, bindTower, bindCheck, towerAt, towerById, emptyFoundations,
+  towerDamage, toast, traceCheck,
 } from './game';
 import {
-  MAP_W, MAP_H, NODE, FOUNDATION_IDS, BRANCHES, INKWELL, LANES, branchOf, foundationsOnBranch, snapToNetwork,
-  routeToEdgePoint, dist, type Vec, type BranchId,
+  MAP_W, MAP_H, NODE, FOUNDATION_IDS, INKWELL, LANES, snapToNetwork,
+  routeToEdgePoint, dist, type Vec,
 } from './map';
 import { render, renderVictory, towerIconCanvas, enemyIconCanvas, type ViewState } from './render';
 
@@ -20,7 +20,8 @@ const view: ViewState = {
   gesture: { active: false, path: [], pointer: { x: 0, y: 0 }, slipping: 0 },
   touch: matchMedia('(pointer: coarse)').matches,
 };
-let bindConfirm: BranchId | null = null;
+/** Tower id awaiting bind confirmation. */
+let bindConfirm: string | null = null;
 let grantType: TowerType = 'bramble';
 let popoverFor: string | null = null;
 
@@ -166,18 +167,18 @@ function fillPopover() {
   const f = popoverFor;
   if (!f) return;
   const t = towerAt(s, f);
-  const bound = isBound(s, f);
-  const branch = branchOf(f)!;
-  const bname = BRANCHES.find((b) => b.id === branch)!.short;
-  let html = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(fname(f))}</h3><p class="sub">${bname} branch${bound ? ' · <b class="giltxt">bound +25%</b>' : ''}</p>`;
+  const bound = !!t?.bound;
+  let html = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(fname(f))}</h3>${bound ? '<p class="sub"><b class="giltxt">Bound in gold · a free pulse every wave</b></p>' : ''}`;
   if (t) {
     const st = BALANCE.towers[t.type];
     html += `<p><b>${esc(st.name)}</b>${t.royal ? ' (royal)' : ''} · ${towerDamage(s, t).toFixed(1).replace('.0', '')} dmg / ${st.cooldown}s · range ${st.range}</p>
       <p class="pulse"><b>Pulse — ${esc(st.pulseName)}:</b> ${esc(st.pulseText)}</p>`;
-    if (s.phase === 'prep') {
+    if (s.phase === 'prep' && !t.bound) {
       html += t.traced
         ? `<button data-act="untrace" data-id="${t.id}">Remove this thread</button>`
         : `<p class="hint">Drag from the inkwell along the leyline to prepare it.</p>`;
+      const bc = bindCheck(s, t.id);
+      html += `<p class="sub" style="margin-top:8px">${bc.ok ? '' : esc(bc.reason)}</p><button data-act="bindAsk" data-id="${t.id}" class="gild" ${bc.ok ? '' : 'disabled'}>Bind in gold (${BALANCE.bindCost} leaves)</button>`;
     }
   } else if (s.pendingGrant) {
     html += `<p class="royal">Royal reinforcement — free. Choose its type:</p><div class="choices">`;
@@ -216,25 +217,27 @@ function handleAction(e: Event) {
     case 'build': if (buildTower(s, f, ty)) closePopover(); else fillPopover(); break;
     case 'grantType': grantType = ty; break;
     case 'grant': if (placeGrant(s, f, ty ?? grantType)) closePopover(); break;
-    case 'bindAsk': bindConfirm = el.dataset.branch as BranchId; view.bindPreview = bindConfirm; break;
+    case 'bindAsk': bindConfirm = id; view.bindPreview = towerById(s, id)?.foundation ?? null; closePopover(); margin.querySelector('.bind')?.scrollIntoView({ block: 'nearest' }); break;
     case 'bindCancel': bindConfirm = null; view.bindPreview = null; break;
-    case 'bindDo': if (bindConfirm && bindBranch(s, bindConfirm)) { bindConfirm = null; view.bindPreview = null; } break;
+    case 'bindDo': if (bindConfirm && bindTower(s, bindConfirm)) { bindConfirm = null; view.bindPreview = null; } break;
     case 'start': if (startWave(s)) { closePopover(); bindConfirm = null; view.bindPreview = null; } break;
     case 'restart': restart(); break;
     case 'resume': s.paused = false; break;
+    case 'ribbon': ribbonFolded = !ribbonFolded; break;
   }
   lastSig = '';
 }
 margin.addEventListener('click', handleAction);
 overlay.addEventListener('click', handleAction);
+ribbon.addEventListener('click', handleAction);
 margin.addEventListener('pointerover', (e) => {
-  const el = (e.target as HTMLElement).closest('[data-branch]') as HTMLElement | null;
-  if (!bindConfirm) view.bindPreview = el ? (el.dataset.branch as BranchId) : null;
+  const el = (e.target as HTMLElement).closest('[data-bindf]') as HTMLElement | null;
+  if (!bindConfirm) view.bindPreview = el ? el.dataset.bindf! : null;
 });
 margin.addEventListener('pointerout', () => { if (!bindConfirm) view.bindPreview = null; });
 margin.addEventListener('focusin', (e) => {
-  const el = (e.target as HTMLElement).closest('[data-branch]') as HTMLElement | null;
-  if (el && !bindConfirm) view.bindPreview = el.dataset.branch as BranchId;
+  const el = (e.target as HTMLElement).closest('[data-bindf]') as HTMLElement | null;
+  if (el && !bindConfirm) view.bindPreview = el.dataset.bindf!;
 });
 margin.addEventListener('focusout', () => { if (!bindConfirm) view.bindPreview = null; });
 
@@ -269,7 +272,7 @@ window.addEventListener('keydown', (e) => {
   if ((e.key === 'u' || e.key === 'U') && s.phase === 'prep') { undoTrace(s); return; }
   if (e.key === 'Enter' && tag !== 'BUTTON' && s.phase === 'prep') { startWave(s); return; }
   if (s.phase === 'combat' && /^[1-9]$/.test(e.key)) {
-    const prepared = s.towers.filter((t) => t.traced);
+    const prepared = pulseable();
     const t = prepared[Number(e.key) - 1];
     if (t) pulseTower(s, t.id);
   }
@@ -280,8 +283,8 @@ let lastSig = '';
 
 function signature(): string {
   return JSON.stringify([
-    s.phase, s.paused, s.wave, s.phase === 'prep' ? s.gold : 0, s.leaves, s.bound, s.pendingGrant, s.pulsesLeft, s.traces,
-    s.towers.map((t) => [t.id, t.type, t.traced, t.committed]), bindConfirm, grantType, s.resetBanner > 0,
+    s.phase, s.paused, s.wave, s.phase === 'prep' ? s.gold : 0, s.leaves, s.pendingGrant, s.pulsesLeft, s.traces,
+    s.towers.map((t) => [t.id, t.type, t.traced, t.committed, t.bound]), bindConfirm, grantType, s.resetBanner > 0,
   ]);
 }
 
@@ -292,27 +295,32 @@ function renderRibbon() {
   if (!def || s.phase === 'victory') { ribbon.hidden = true; return; }
   ribbon.hidden = false;
   const groups = [...def.groups].sort((a, b) => a.start - b.start);
-  ribbon.innerHTML = `<div class="ribbon-body"><p class="kicker">Wave ${s.wave} of ${TOTAL_WAVES}</p><h3>${esc(def.title)}</h3>
+  ribbon.classList.toggle('folded', ribbonFolded);
+  ribbon.innerHTML = `<div class="ribbon-body"><button class="fold" data-act="ribbon" aria-expanded="${!ribbonFolded}" title="${ribbonFolded ? 'Show the wave preview' : 'Fold the bookmark away'}">${ribbonFolded ? '\u25be' : '\u25b4'}</button><p class="kicker">Wave ${s.wave} of ${TOTAL_WAVES}</p><h3>${esc(def.title)}</h3>
     <ol>${groups.map((g) => `<li class="lane-${g.lane}"><span class="eico" data-enemy="${g.type}"></span><span><b>${g.count} ${esc(g.count > 1 ? BALANCE.enemies[g.type].plural : BALANCE.enemies[g.type].name)}</b><small>${esc(LANES[g.lane].name)} · ${timingLabel(g.start)}</small></span></li>`).join('')}</ol>
     <p class="lesson">${esc(def.lesson)}</p></div>`;
   hydrateIcons(ribbon);
 }
 
 function towerRow(t: GameState['towers'][number], mode: 'prep' | 'combat'): string {
-  const bound = isBound(s, t.foundation);
-  const badges = `${bound ? '<span class="badge gilt">bound +25%</span>' : ''}${t.royal ? '<span class="badge royal">royal</span>' : ''}`;
+  const badges = `${t.bound ? '<span class="badge gilt">bound · free pulse</span>' : ''}${t.royal ? '<span class="badge royal">royal</span>' : ''}`;
   let btn = '';
-  if (mode === 'prep') {
+  if (mode === 'prep' && t.bound) {
+    btn = `<button disabled class="gilt-btn" title="Bound towers are never traced">Gilded</button>`;
+  } else if (mode === 'prep') {
     const full = s.traces.length >= rule(s).traces;
     btn = t.traced
       ? `<button data-act="untrace" data-id="${t.id}" aria-pressed="true" class="traced" title="Remove this thread">Traced ✓</button>`
       : `<button data-act="trace" data-id="${t.id}" aria-pressed="false" ${full || s.pendingGrant ? 'disabled' : ''} title="Prepare without dragging">Trace</button>`;
   } else {
     const c = pulseCheck(s, t.id);
-    btn = t.committed ? `<button disabled class="spent">Pulse sent</button>` : `<button data-act="pulse" data-id="${t.id}" class="pulse" ${c.ok ? '' : 'disabled'}>Pulse</button>`;
+    btn = t.committed ? `<button disabled class="spent">Pulse sent</button>` : `<button data-act="pulse" data-id="${t.id}" class="pulse ${t.bound ? 'gild' : ''}" ${c.ok ? '' : 'disabled'}>${t.bound ? 'Free pulse' : 'Pulse'}</button>`;
   }
-  return `<li class="tower-row ${t.traced ? 'is-traced' : ''}"><span class="ico" data-tower="${t.type}"></span><span class="tw"><b>${esc(tname(t.type))}</b><small>${esc(fname(t.foundation))}</small>${badges}</span>${btn}</li>`;
+  return `<li class="tower-row ${t.traced ? 'is-traced' : ''} ${t.bound ? 'is-bound' : ''}"><span class="ico" data-tower="${t.type}"></span><span class="tw"><b>${esc(tname(t.type))}</b><small>${esc(fname(t.foundation))}</small>${badges}</span>${btn}</li>`;
 }
+
+/** Towers that can be pulsed this wave, gilded first: the order the number keys use. */
+function pulseable() { return [...s.towers.filter((t) => t.bound), ...s.towers.filter((t) => t.traced)]; }
 
 function renderMargin() {
   const r = rule(s);
@@ -331,7 +339,7 @@ function renderMargin() {
     }
     // Threads
     h += `<section class="card threads"><h3>Threads <span class="need">${s.traces.length} of ${r.traces}</span></h3>
-      <p class="hint">Press the <b>inkwell</b>, follow a leyline and release on a tower. Each thread prepares one tower for the next wave only.</p>
+      <p class="hint">Press the <b>inkwell</b> beside the castle, follow a leyline and release on a tower. Each thread prepares one tower for the next wave only.</p>
       <ul class="towers">${s.towers.map((t) => towerRow(t, 'prep')).join('')}</ul>
       <div class="row"><button data-act="undo" ${s.traces.length ? '' : 'disabled'}>Undo last</button><button data-act="clear" ${s.traces.length ? '' : 'disabled'}>Clear all</button></div></section>`;
     // Build
@@ -340,23 +348,23 @@ function renderMargin() {
       <p class="hint">Click an empty foundation on the map, or pick one here. Bramble ${BALANCE.towers.bramble.cost} · Ember ${BALANCE.towers.ember.cost} · Bell ${BALANCE.towers.bell.cost}.</p>
       <div class="flist">${empties.map((f) => `<button data-act="select" data-f="${f}" ${s.pendingGrant ? 'disabled' : ''}>${esc(fname(f))}</button>`).join('') || '<em>Every foundation is built.</em>'}</div></section>`;
     // Bind
-    h += `<section class="card bind"><h3>Bind a path <span class="need gilt">${s.leaves} / ${BALANCE.bindCost} leaves</span></h3>`;
-    if (bindConfirm) {
-      const fs = foundationsOnBranch(bindConfirm);
-      const built = fs.filter((f) => towerAt(s, f));
-      const bn = BRANCHES.find((b) => b.id === bindConfirm)!;
-      h += `<div class="confirm"><p><b>Bind the ${esc(bn.name)} in gold leaf?</b></p>
-        <p>Costs <b>${BALANCE.bindCost} Gilded Leaves</b> (you have ${s.leaves}). For the rest of the siege, towers on <b>${fs.map(fname).map(esc).join(', ')}</b> deal <b>+25% base attack damage</b> — ${built.length} tower${built.length === 1 ? '' : 's'} now, and any built there later.</p>
-        <p class="sub">It does not trace them, add pulses, or make them pulse-ready: they still need a fresh thread each wave.</p>
+    h += `<section class="card bind"><h3>Bind a tower <span class="need gilt">${s.leaves} / ${BALANCE.bindCost} leaves</span></h3>`;
+    const confirmT = bindConfirm ? towerById(s, bindConfirm) : undefined;
+    if (confirmT) {
+      h += `<div class="confirm"><p><b>Bind the ${esc(tname(confirmT.type))} at ${esc(fname(confirmT.foundation))} in gold?</b></p>
+        <p>Costs <b>${BALANCE.bindCost} Gilded Leaves</b> (you have ${s.leaves}). From now on it has <b>its own free pulse every wave</b>, with no trace needed and no shared charge spent.</p>
+        <p class="sub">It can no longer be traced, so your ${r.traces} threads each wave go to other towers.${confirmT.traced ? ' Its thread this round is returned.' : ''}</p>
         <div class="row"><button data-act="bindDo" class="gild">Bind for ${BALANCE.bindCost} leaves</button><button data-act="bindCancel">Cancel</button></div></div>`;
     } else {
-      h += `<p class="hint">${s.leaves < BALANCE.bindCost ? `Gilded Leaves ${s.leaves}/${BALANCE.bindCost} · one is earned for each wave survived. Bind a path at ${BALANCE.bindCost}.` : 'Choose a branch. Hover or focus to preview the foundations it covers.'}</p>
-        <div class="branches">${BRANCHES.map((b) => {
-          const c = bindCheck(s, b.id);
-          const done = s.bound.includes(b.id);
-          const fs = foundationsOnBranch(b.id);
-          return `<button data-act="bindAsk" data-branch="${b.id}" ${c.ok ? '' : 'disabled'} class="${done ? 'bound' : ''}" title="${esc(c.reason)}"><b>${esc(b.short)}</b><small>${done ? 'bound in gold' : fs.map(fname).map(esc).join(' · ')}</small></button>`;
-        }).join('')}</div>`;
+      const unbound = s.towers.filter((t) => !t.bound);
+      const first = unbound[0] ? bindCheck(s, unbound[0].id) : { ok: false, reason: '' };
+      h += `<p class="hint">${s.leaves < BALANCE.bindCost
+        ? `Gilded Leaves ${s.leaves}/${BALANCE.bindCost} · one for each wave survived. Bind a tower at ${BALANCE.bindCost}: it gets a free pulse every wave, no trace needed.`
+        : first.ok ? 'Choose a tower. Hover or focus to preview its gold path.' : esc(first.reason)}</p>
+        <div class="branches">${unbound.map((t) => {
+          const c = bindCheck(s, t.id);
+          return `<button data-act="bindAsk" data-id="${t.id}" data-bindf="${t.foundation}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason)}"><b>${esc(tname(t.type))}</b><small>${esc(fname(t.foundation))}</small></button>`;
+        }).join('')}${s.towers.filter((t) => t.bound).map((t) => `<button disabled class="bound"><b>${esc(tname(t.type))}</b><small>${esc(fname(t.foundation))} · bound in gold</small></button>`).join('')}</div>`;
     }
     h += `</section>`;
     const c = canStartWave(s);
@@ -365,19 +373,19 @@ function renderMargin() {
     h += `<h2><small>In battle</small>Wave ${s.wave}: ${esc(def.title)}</h2>
       <section class="card pulses"><h3>Pulses <span class="need">${s.pulsesLeft} of ${r.pulses}</span></h3>
       <div class="beads" aria-hidden="true">${Array.from({ length: r.pulses }, (_, i) => `<i class="${i < s.pulsesLeft ? 'on' : ''}"></i>`).join('')}</div>
-      <p class="hint">Click a glowing tower (or press its number) to send a pulse from the inkwell. Charges are shared, never recharge, and vanish at wave end. Every tower keeps attacking on its own.</p>
-      <ul class="towers">${s.towers.filter((t) => t.traced).map((t, i) => towerRow(t, 'combat').replace('<span class="ico"', `<kbd>${i + 1}</kbd><span class="ico"`)).join('')}</ul></section>
-      <section class="card"><h3>Unthreaded towers</h3><ul class="towers dim">${s.towers.filter((t) => !t.traced).map((t) => `<li class="tower-row"><span class="ico" data-tower="${t.type}"></span><span class="tw"><b>${esc(tname(t.type))}</b><small>${esc(fname(t.foundation))} · attacking</small>${isBound(s, t.foundation) ? '<span class="badge gilt">bound +25%</span>' : ''}</span></li>`).join('')}</ul></section>`;
+      <p class="hint">Click a tower with a wet ink drop (or press its number) to send a pulse from the inkwell. Shared charges never recharge and vanish at wave end. Gilded towers fire their own free pulse. Every tower keeps attacking on its own.</p>
+      <ul class="towers">${pulseable().map((t, i) => towerRow(t, 'combat').replace('<span class="ico"', `<kbd>${i + 1}</kbd><span class="ico"`)).join('')}</ul></section>
+      <section class="card"><h3>Unthreaded towers</h3><ul class="towers dim">${s.towers.filter((t) => !t.traced && !t.bound).map((t) => `<li class="tower-row"><span class="ico" data-tower="${t.type}"></span><span class="tw"><b>${esc(tname(t.type))}</b><small>${esc(fname(t.foundation))} · attacking</small></span></li>`).join('') || '<li class="sub">None</li>'}</ul></section>`;
   }
   if (s.phase === 'victory') h = `<h2><small>The End</small>Goosebridge stands</h2><p class="hint">Every wave held. Restart to read the siege again.</p><div class="start"><button data-act="restart" class="primary">Restart the siege</button></div>`;
   if (s.phase === 'defeat') h = `<h2><small>Wave ${s.wave}</small>The gate has fallen</h2><p class="hint">Restart clears gold, leaves, binds and every thread.</p><div class="start"><button data-act="restart" class="primary">Restart the siege</button></div>`;
   const focused = document.activeElement as HTMLElement | null;
-  const key = focused && margin.contains(focused) ? focused.getAttribute('data-act') + '|' + (focused.dataset.id ?? focused.dataset.f ?? focused.dataset.branch ?? focused.dataset.type ?? '') : null;
+  const key = focused && margin.contains(focused) ? focused.getAttribute('data-act') + '|' + (focused.dataset.id ?? focused.dataset.f ?? focused.dataset.type ?? '') : null;
   margin.innerHTML = h;
   hydrateIcons(margin);
   if (key) {
     const [act, k] = key.split('|');
-    const again = [...margin.querySelectorAll<HTMLElement>(`[data-act="${act}"]`)].find((el) => (el.dataset.id ?? el.dataset.f ?? el.dataset.branch ?? el.dataset.type ?? '') === k);
+    const again = [...margin.querySelectorAll<HTMLElement>(`[data-act="${act}"]`)].find((el) => (el.dataset.id ?? el.dataset.f ?? el.dataset.type ?? '') === k);
     (again && !(again as HTMLButtonElement).disabled ? again : margin.querySelector<HTMLElement>('button:not([disabled])'))?.focus({ preventScroll: true });
   }
 }
@@ -386,7 +394,7 @@ function renderOverlay() {
   if (s.phase === 'victory') {
     overlay.hidden = false;
     overlay.className = 'victory';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">The End</p><h2>The Siege of Goosebridge</h2><p class="caption">“And so Goosebridge stood, though the geese claimed most of the credit.”</p><p class="sub">Castle ${s.castleHp}/${BALANCE.castleHp} · ${s.kills} foes turned back · ${s.bound.length} path${s.bound.length === 1 ? '' : 's'} bound in gold</p><button data-act="restart" class="primary">Read it again</button></div>`;
+    overlay.innerHTML = `<div class="plate"><p class="kicker">The End</p><h2>The Siege of Goosebridge</h2><p class="caption">“And so Goosebridge stood, though the geese claimed most of the credit.”</p><p class="sub">Castle ${s.castleHp}/${BALANCE.castleHp} · ${s.kills} foes turned back · ${s.towers.filter((t) => t.bound).length} tower${s.towers.filter((t) => t.bound).length === 1 ? '' : 's'} bound in gold</p><button data-act="restart" class="primary">Read it again</button></div>`;
   } else if (s.phase === 'defeat') {
     overlay.hidden = false;
     overlay.className = 'defeat';
@@ -408,9 +416,9 @@ function renderHud() {
   ($('hpbar') as HTMLElement).style.width = `${(s.castleHp / BALANCE.castleHp) * 100}%`;
   $('wave').textContent = `${Math.min(s.wave, TOTAL_WAVES)}/${TOTAL_WAVES}`;
   $('gold').textContent = String(s.gold);
-  $('leaves').innerHTML = s.leaves >= BALANCE.bindCost
-    ? `${s.leaves} <em>· ready to bind</em>`
-    : `${s.leaves}/${BALANCE.bindCost} <em>· Bind a path at ${BALANCE.bindCost}</em>`;
+  $('leaves').innerHTML = s.phase === 'victory' || s.phase === 'defeat' ? `${s.leaves}`
+    : s.leaves >= BALANCE.bindCost ? `${s.leaves} <em>· ready to bind</em>`
+      : `${s.leaves}/${BALANCE.bindCost} <em>· Bind a tower at ${BALANCE.bindCost}</em>`;
   const r = phaseRule(s.wave);
   const pr = $('phaseRes');
   if (s.phase === 'prep') {
@@ -418,7 +426,8 @@ function renderHud() {
     pr.innerHTML = s.pendingGrant ? `<b>Place the royal reinforcement</b>` : `<b>Choose ${r.traces} towers</b> · ${s.traces.length} of ${r.traces} traced`;
   } else if (s.phase === 'combat') {
     pr.className = 'phase-res combat' + (s.pulsesLeft === 0 ? ' empty' : '');
-    pr.innerHTML = `<b>Pulses ${s.pulsesLeft}</b> of ${r.pulses} <span class="beads">${Array.from({ length: r.pulses }, (_, i) => `<i class="${i < s.pulsesLeft ? 'on' : ''}"></i>`).join('')}</span>`;
+    const gild = s.towers.filter((t) => t.bound);
+    pr.innerHTML = `<b>Pulses ${s.pulsesLeft}</b> of ${r.pulses} <span class="beads">${Array.from({ length: r.pulses }, (_, i) => `<i class="${i < s.pulsesLeft ? 'on' : ''}"></i>`).join('')}</span>${gild.length ? ` <span class="gildres">+ ${gild.filter((t) => !t.committed).length} gilded</span>` : ''}`;
   } else {
     pr.className = 'phase-res';
     pr.textContent = s.phase === 'victory' ? 'Victory' : 'Defeat';
@@ -464,6 +473,9 @@ function hydrateIcons(root: HTMLElement) {
 // ── Main loop ───────────────────────────────────────────────────────────────
 let last = performance.now();
 let ribbonSig = '';
+/** The bookmark folds up during battle (so it never hides the field) and on demand. */
+let ribbonFolded = false;
+let ribbonPhase = '';
 let overlaySig = '';
 
 function refresh(now: number) {
@@ -473,7 +485,8 @@ function refresh(now: number) {
     renderMargin();
     if (popoverFor) fillPopover();
   }
-  const rs = `${s.wave}|${s.phase}`;
+  if (ribbonPhase !== s.phase) { ribbonPhase = s.phase; ribbonFolded = s.phase === 'combat'; }
+  const rs = `${s.wave}|${s.phase}|${ribbonFolded}`;
   if (rs !== ribbonSig) { ribbonSig = rs; renderRibbon(); }
   const os = `${s.phase}|${s.paused}`;
   if (os !== overlaySig) { overlaySig = os; renderOverlay(); }

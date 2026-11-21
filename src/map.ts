@@ -12,7 +12,8 @@ export const GATE: Vec = { x: 1452, y: 520 };
 export const BRIDGE: Vec = { x: 870, y: 765 };
 export const MILL: Vec = { x: 520, y: 112 };
 export const POND: Vec = { x: 640, y: 505 };
-export const INKWELL: Vec = { x: 112, y: 612 };
+/** The inkwell stands in the castle garden, just south of the walls. */
+export const INKWELL: Vec = { x: 1488, y: 806 };
 export const CASTLE: Vec = { x: 1520, y: 520 };
 
 const MILL_ROAD: Vec[] = [
@@ -89,13 +90,6 @@ export function sampleLane(lane: Lane, s0: number, s1: number, step = 12): Vec[]
 // ── Leylines ────────────────────────────────────────────────────────────────
 // A fixed tree rooted at the inkwell. Leaves are tower foundations.
 
-export type BranchId = 'north' | 'river' | 'gate';
-export const BRANCHES: { id: BranchId; name: string; short: string }[] = [
-  { id: 'north', name: 'Millward Branch', short: 'Millward' },
-  { id: 'river', name: 'Riverward Branch', short: 'Riverward' },
-  { id: 'gate', name: 'Gateward Branch', short: 'Gateward' },
-];
-
 export interface LeyNode {
   id: string;
   x: number;
@@ -106,47 +100,44 @@ export interface LeyNode {
   foundation?: { name: string };
 }
 
+// The leylines fan out from the inkwell beside the castle across the whole spread.
 export const LEY_NODES: LeyNode[] = [
-  { id: 'ink', x: INKWELL.x + 30, y: INKWELL.y - 6 },
-  { id: 't1', x: 250, y: 612, parent: 'ink', bow: 6 },
-  // Millward branch
-  { id: 'n1', x: 330, y: 470, parent: 't1', bow: -18 },
-  { id: 'f_millgate', x: 300, y: 300, parent: 'n1', bow: 14, foundation: { name: 'Millgate Knoll' } },
-  { id: 'n2', x: 455, y: 420, parent: 'n1', bow: -10 },
-  { id: 'f_mill', x: 560, y: 340, parent: 'n2', bow: 12, foundation: { name: 'Mill Yard' } },
-  { id: 'n3', x: 720, y: 420, parent: 'n2', bow: 14 },
-  { id: 'f_bend', x: 838, y: 478, parent: 'n3', bow: -10, foundation: { name: 'Pond Bend' } },
-  // Riverward branch
-  { id: 'm1', x: 365, y: 760, parent: 't1', bow: 16 },
-  { id: 'f_ford', x: 530, y: 852, parent: 'm1', bow: -12, foundation: { name: 'Ford Meadow' } },
-  { id: 'm2', x: 655, y: 735, parent: 'm1', bow: -14 },
-  { id: 'f_bridge', x: 985, y: 615, parent: 'm2', bow: 22, foundation: { name: 'Goosebridge' } },
-  // Gateward branch
-  { id: 'e1', x: 560, y: 610, parent: 't1', bow: -8 },
-  { id: 'e2', x: 868, y: 565, parent: 'e1', bow: 18 },
-  { id: 'f_upper', x: 1062, y: 318, parent: 'e2', bow: -20, foundation: { name: 'Upper Field' } },
-  { id: 'e3', x: 1050, y: 548, parent: 'e2', bow: -8 },
-  { id: 'f_junction', x: 1172, y: 532, parent: 'e3', bow: 6, foundation: { name: 'The Crossroads' } },
-  { id: 'e4', x: 1245, y: 640, parent: 'e3', bow: 14 },
-  { id: 'f_gate', x: 1372, y: 640, parent: 'e4', bow: -8, foundation: { name: 'Gate Garden' } },
+  { id: 'ink', x: INKWELL.x - 34, y: INKWELL.y - 8 },
+  { id: 't0', x: 1395, y: 792, parent: 'ink', bow: 6 },
+  // Wallward: north along the walls, then west along the top of the map
+  { id: 'w1', x: 1405, y: 612, parent: 't0', bow: -10 },
+  { id: 'f_gate', x: 1330, y: 662, parent: 'w1', bow: 6, foundation: { name: 'Gate Garden' } },
+  { id: 'w2', x: 1398, y: 440, parent: 'w1', bow: 10 },
+  { id: 'f_watch', x: 1300, y: 418, parent: 'w2', bow: -6, foundation: { name: 'Watch Hill' } },
+  { id: 'w3', x: 1190, y: 318, parent: 'w2', bow: -14 },
+  { id: 'f_upper', x: 1062, y: 318, parent: 'w3', bow: 8, foundation: { name: 'Upper Field' } },
+  { id: 'w4', x: 940, y: 226, parent: 'w3', bow: 12 },
+  { id: 'f_millhill', x: 712, y: 132, parent: 'w4', bow: -10, foundation: { name: 'Windy Hill' } },
+  // Crossroads: the hub south-west of the castle
+  { id: 'c1', x: 1250, y: 735, parent: 't0', bow: -8 },
+  { id: 'f_junction', x: 1172, y: 532, parent: 'c1', bow: 14, foundation: { name: 'The Crossroads' } },
+  { id: 'f_east', x: 1112, y: 812, parent: 'c1', bow: -8, foundation: { name: 'East Bank' } },
+  // Fenward: low along the bottom page
+  { id: 'c3', x: 985, y: 845, parent: 'c1', bow: 10 },
+  { id: 'c5', x: 812, y: 925, parent: 'c3', bow: -10 },
+  { id: 'f_fen', x: 705, y: 962, parent: 'c5', bow: 6, foundation: { name: 'Fen Gate' } },
+  { id: 'c6', x: 640, y: 790, parent: 'c5', bow: 14 },
+  { id: 'f_ford', x: 530, y: 852, parent: 'c6', bow: -8, foundation: { name: 'Ford Meadow' } },
+  // Heartwood: through the middle to the mill and the far west
+  { id: 'p1', x: 1060, y: 562, parent: 'c1', bow: 10 },
+  { id: 'f_bridge', x: 985, y: 625, parent: 'p1', bow: 6, foundation: { name: 'Goosebridge' } },
+  { id: 'p2', x: 880, y: 560, parent: 'p1', bow: -8 },
+  { id: 'f_bend', x: 838, y: 478, parent: 'p2', bow: 6, foundation: { name: 'Pond Bend' } },
+  { id: 'p3', x: 735, y: 700, parent: 'p2', bow: 12 },
+  { id: 'p4', x: 470, y: 600, parent: 'p3', bow: -14 },
+  { id: 'f_mill', x: 560, y: 340, parent: 'p4', bow: 14, foundation: { name: 'Mill Yard' } },
+  { id: 'p5', x: 320, y: 470, parent: 'p4', bow: 10 },
+  { id: 'f_millgate', x: 300, y: 300, parent: 'p5', bow: -10, foundation: { name: 'Millgate Knoll' } },
+  { id: 'f_hollow', x: 150, y: 262, parent: 'p5', bow: 12, foundation: { name: 'Hollow Oak' } },
 ];
 
 export const NODE: Record<string, LeyNode> = Object.fromEntries(LEY_NODES.map((n) => [n.id, n]));
 export const FOUNDATION_IDS = LEY_NODES.filter((n) => n.foundation).map((n) => n.id);
-
-export function branchOf(nodeId: string): BranchId | null {
-  let n: LeyNode | undefined = NODE[nodeId];
-  while (n && n.parent && n.parent !== 't1') n = NODE[n.parent];
-  if (!n || n.id === 't1' || n.id === 'ink') return null;
-  if (n.id === 'n1') return 'north';
-  if (n.id === 'm1') return 'river';
-  if (n.id === 'e1') return 'gate';
-  return null;
-}
-
-export function foundationsOnBranch(b: BranchId): string[] {
-  return FOUNDATION_IDS.filter((f) => branchOf(f) === b);
-}
 
 /** Polyline samples for the edge parent → node, following its bow. */
 function sampleEdge(n: LeyNode): Vec[] {

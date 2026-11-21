@@ -2,8 +2,8 @@
 // Pure logic: no DOM, so it runs in tests and in the browser alike.
 import { BALANCE, TOTAL_WAVES, phaseRule, type EnemyType, type LaneId, type TowerType } from './balance';
 import {
-  LANES, LANE_IDS, NODE, FOUNDATION_IDS, branchOf, dist, nearestOnLane, pointAt, routePolyline,
-  polylineLength, pointAlong, type BranchId, type Vec,
+  LANES, LANE_IDS, NODE, FOUNDATION_IDS, GATE, dist, nearestOnLane, pointAt, routePolyline,
+  polylineLength, pointAlong, type Vec,
 } from './map';
 
 export type Phase = 'prep' | 'combat' | 'victory' | 'defeat';
@@ -20,6 +20,8 @@ export interface Tower {
   flash: number;
   /** Was this the royal reinforcement? */
   royal?: boolean;
+  /** Bound in gold: its own free pulse every wave, never traced. */
+  bound: boolean;
 }
 
 export interface Enemy {
@@ -37,7 +39,7 @@ export interface Enemy {
 }
 
 export interface Projectile {
-  kind: TowerType;
+  kind: TowerType | 'castle';
   x: number; y: number;
   sx: number; sy: number;
   tx: number; ty: number;
@@ -71,7 +73,6 @@ export interface GameState {
   /** Tower ids in the order they were traced (for undo). */
   traces: string[];
   pulsesLeft: number;
-  bound: BranchId[];
   pendingGrant: boolean;
   enemies: Enemy[];
   projectiles: Projectile[];
@@ -91,13 +92,14 @@ export interface GameState {
   leakLog: string[];
   /** Set for one preparation phase after a wave ends, so the reset is visible. */
   resetBanner: number;
+  castleCd: number;
 }
 
 export function newGame(): GameState {
   const s: GameState = {
     phase: 'prep', paused: false, speed: 1, wave: 1,
     castleHp: BALANCE.castleHp, gold: BALANCE.startGold, leaves: BALANCE.startLeaves,
-    towers: [], traces: [], pulsesLeft: 0, bound: [], pendingGrant: false,
+    towers: [], traces: [], pulsesLeft: 0, pendingGrant: false, castleCd: 0,
     enemies: [], projectiles: [], hedges: [], fires: [], rings: [], flights: [], spawns: [],
     warnings: [], fading: [], toasts: [], waveTime: 0, time: 0, nextId: 1, kills: 0, leaked: 0, leakLog: [], resetBanner: 0,
   };
@@ -106,7 +108,7 @@ export function newGame(): GameState {
 }
 
 function addTower(s: GameState, foundation: string, type: TowerType, royal = false): Tower {
-  const t: Tower = { id: `t${s.nextId++}`, foundation, type, cd: 0.4, traced: false, committed: false, flash: 0, royal };
+  const t: Tower = { id: `t${s.nextId++}`, foundation, type, cd: 0.4, traced: false, committed: false, flash: 0, royal, bound: false };
   s.towers.push(t);
   return t;
 }
@@ -125,21 +127,24 @@ export const towerById = (s: GameState, id: string) => s.towers.find((t) => t.id
 export const posOf = (t: Tower): Vec => ({ x: NODE[t.foundation].x, y: NODE[t.foundation].y });
 export const emptyFoundations = (s: GameState) => FOUNDATION_IDS.filter((f) => !towerAt(s, f));
 
-export function isBound(s: GameState, foundation: string): boolean {
-  const b = branchOf(foundation);
-  return !!b && s.bound.includes(b);
+export const unboundCount = (s: GameState) => s.towers.filter((t) => !t.bound).length;
+export const boundTowers = (s: GameState) => s.towers.filter((t) => t.bound);
+
+export function towerDamage(_s: GameState, t: Tower): number {
+  return BALANCE.towers[t.type].damage;
 }
 
-/** Base attack damage, including the bound-path bonus (never stacks). */
-export function towerDamage(s: GameState, t: Tower): number {
-  const base = BALANCE.towers[t.type].damage;
-  return isBound(s, t.foundation) ? base * (1 + BALANCE.bindDamageBonus) : base;
-}
-
-/** pulses < traces < built towers. */
+/** Shared pulses < traces < built towers that can be traced (bound towers are never traced). */
 export function invariantHolds(s: GameState): boolean {
   const r = rule(s);
-  return r.pulses < r.traces && r.traces < builtCount(s);
+  return r.pulses < r.traces && r.traces < unboundCount(s);
+}
+
+/** The most traces any remaining wave will demand. */
+function maxTracesAhead(s: GameState): number {
+  let m = 0;
+  for (let w = s.wave; w <= TOTAL_WAVES; w++) m = Math.max(m, phaseRule(w).traces);
+  return m;
 }
 
 // ── Preparation: tracing ────────────────────────────────────────────────────
@@ -149,6 +154,7 @@ export function traceCheck(s: GameState, towerId: string | null): { ok: boolean;
   if (s.pendingGrant) return { ok: false, reason: 'Place the royal reinforcement first.' };
   const t = towerId ? towerById(s, towerId) : undefined;
   if (!t) return { ok: false, reason: 'No tower stands there — nothing spent.' };
+  if (t.bound) return { ok: false, reason: `${BALANCE.towers[t.type].name} is bound in gold: it has its own pulse every wave — nothing spent.` };
   if (t.traced) return { ok: false, reason: `${BALANCE.towers[t.type].name} is already prepared — nothing spent.` };
   const r = rule(s);
   if (s.traces.length >= r.traces) return { ok: false, reason: `All ${r.traces} traces drawn. Undo one to redraw.` };
@@ -217,19 +223,30 @@ export function placeGrant(s: GameState, foundation: string, type: TowerType): b
 
 // ── Preparation: binding ────────────────────────────────────────────────────
 
-export function bindCheck(s: GameState, b: BranchId): { ok: boolean; reason: string } {
+export function bindCheck(s: GameState, towerId: string): { ok: boolean; reason: string } {
   if (s.phase !== 'prep') return { ok: false, reason: 'Binding is locked during a wave.' };
-  if (s.bound.includes(b)) return { ok: false, reason: 'That branch is already bound in gold.' };
+  if (s.pendingGrant) return { ok: false, reason: 'Place the royal reinforcement first.' };
+  const t = towerById(s, towerId);
+  if (!t) return { ok: false, reason: 'No tower there.' };
+  if (t.bound) return { ok: false, reason: 'Already bound in gold.' };
   if (s.leaves < BALANCE.bindCost) return { ok: false, reason: `Needs ${BALANCE.bindCost} Gilded Leaves (you have ${s.leaves}).` };
+  const need = maxTracesAhead(s) + 1;
+  if (unboundCount(s) - 1 < need) {
+    const more = need - (unboundCount(s) - 1);
+    return { ok: false, reason: `Keep ${need} towers free to trace: build ${more} more tower${more === 1 ? '' : 's'} first.` };
+  }
   return { ok: true, reason: '' };
 }
 
-export function bindBranch(s: GameState, b: BranchId): boolean {
-  const c = bindCheck(s, b);
+export function bindTower(s: GameState, towerId: string): boolean {
+  const c = bindCheck(s, towerId);
   if (!c.ok) { toast(s, c.reason, 'bad'); return false; }
+  const t = towerById(s, towerId)!;
+  if (t.traced) untraceTower(s, t.id);
   s.leaves -= BALANCE.bindCost;
-  s.bound.push(b);
-  toast(s, 'A path is bound in gold leaf. Its towers strike harder for the rest of the siege.', 'gold');
+  t.bound = true;
+  t.flash = 1;
+  toast(s, `${BALANCE.towers[t.type].name} is bound in gold: a free pulse every wave from now on.`, 'gold');
   return true;
 }
 
@@ -239,7 +256,7 @@ export function canStartWave(s: GameState): { ok: boolean; reason: string } {
   if (s.phase !== 'prep') return { ok: false, reason: '' };
   if (s.pendingGrant) return { ok: false, reason: 'Place the royal reinforcement.' };
   const r = rule(s);
-  if (!invariantHolds(s)) return { ok: false, reason: `Needs more than ${r.traces} towers.` };
+  if (!invariantHolds(s)) return { ok: false, reason: `Needs more than ${r.traces} unbound towers.` };
   if (s.traces.length !== r.traces) return { ok: false, reason: `Trace exactly ${r.traces} towers (${s.traces.length} of ${r.traces}).` };
   return { ok: true, reason: '' };
 }
@@ -273,8 +290,9 @@ export function pulseCheck(s: GameState, towerId: string): { ok: boolean; reason
   if (s.paused) return { ok: false, reason: 'Paused.' };
   const t = towerById(s, towerId);
   if (!t) return { ok: false, reason: '' };
-  if (!t.traced) return { ok: false, reason: `${BALANCE.towers[t.type].name} has no thread this wave — no pulse spent.` };
   if (t.committed) return { ok: false, reason: 'Already pulsed this wave — no pulse spent.' };
+  if (t.bound) return { ok: true, reason: '' };
+  if (!t.traced) return { ok: false, reason: `${BALANCE.towers[t.type].name} has no thread this wave — no pulse spent.` };
   if (s.pulsesLeft <= 0) return { ok: false, reason: 'No pulses left this wave.' };
   return { ok: true, reason: '' };
 }
@@ -285,7 +303,7 @@ export function pulseTower(s: GameState, towerId: string): boolean {
   if (!c.ok) { if (c.reason) toast(s, c.reason, 'bad'); return false; }
   const t = towerById(s, towerId)!;
   t.committed = true;
-  s.pulsesLeft -= 1;
+  if (!t.bound) s.pulsesLeft -= 1;
   const path = routePolyline(t.foundation);
   s.flights.push({ towerId, path, length: polylineLength(path), s: 0 });
   return true;
@@ -466,6 +484,21 @@ export function step(s: GameState, dtRaw: number) {
     }
   }
 
+  // The castle's own weak, short-range volley
+  s.castleCd -= dt;
+  if (s.castleCd <= 0) {
+    const C = BALANCE.castle;
+    const target = pickTarget(s, GATE, C.range);
+    if (target) {
+      s.castleCd = C.cooldown;
+      const ep = enemyPos(target);
+      s.projectiles.push({
+        kind: 'castle', x: GATE.x + 12, y: GATE.y - 40, sx: GATE.x + 12, sy: GATE.y - 40, tx: ep.x, ty: ep.y,
+        targetId: target.id, speed: 600, damage: C.damage, splash: 0, t: 0, dur: Math.max(0.1, dist(GATE, ep) / 600),
+      });
+    }
+  }
+
   // Projectiles
   for (const pr of s.projectiles) {
     pr.t += dt;
@@ -532,7 +565,7 @@ function endWave(s: GameState) {
   s.resetBanner = 6;
   toast(s, `Wave ${survived} held! +${gold} gold, +${BALANCE.leavesPerWave} Gilded Leaf.`, 'gold');
   toast(s, 'The ink fades: every temporary thread is cleared.', 'info');
-  if (s.wave === BALANCE.reinforcementWave && builtCount(s) <= BALANCE.reinforcementIfTowersAtMost) {
+  if (s.wave === BALANCE.reinforcementWave && unboundCount(s) <= BALANCE.reinforcementIfTowersAtMost) {
     s.pendingGrant = true;
   }
 }

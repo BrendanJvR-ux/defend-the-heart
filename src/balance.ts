@@ -10,7 +10,7 @@ export type LaneId = 'mill' | 'king';
 export interface TowerStats {
   name: string;
   cost: number;
-  /** Base attack damage per hit (bound paths add +bindDamageBonus to this). */
+  /** Attack damage per hit. */
   damage: number;
   /** Seconds between attacks. */
   cooldown: number;
@@ -70,12 +70,13 @@ export const BALANCE = {
   leavesPerWave: 1,
   /** Gold awarded for surviving wave n. */
   waveClearGold: (wave: number) => 20 + 10 * wave,
-  /** A permanent bind costs this many leaves. */
+  /** Binding one tower costs this many leaves. A bound tower gets its own free pulse every wave, with no trace. */
   bindCost: 3,
-  /** Bound branches give this much extra base attack damage (0.25 = +25%). Never stacks. */
-  bindDamageBonus: 0.25,
 
-  /** Trace / pulse allocation by wave. Always pulses < traces < built towers. */
+  /** The castle defends itself: a weak, short-range volley from the walls. */
+  castle: { damage: 4, cooldown: 1.1, range: 140 },
+
+  /** Trace / shared-pulse allocation by wave. Always pulses < traces < unbound built towers. */
   phaseRules: [
     { fromWave: 1, traces: 2, pulses: 1 },
     { fromWave: 4, traces: 3, pulses: 2 },
@@ -85,7 +86,7 @@ export const BALANCE = {
   reinforcementIfTowersAtMost: 3,
 
   /** How fast a pulse runs along its thread (map units per second). */
-  pulseSpeed: 1100,
+  pulseSpeed: 1600,
 
   startingTowers: [
     { foundation: 'f_mill', type: 'bramble' },
@@ -165,7 +166,7 @@ export const BALANCE = {
     },
     {
       title: 'Royal Reinforcement',
-      lesson: 'Three traces, two pulses, and your first Gilded bind.',
+      lesson: 'Three traces, two pulses. With five towers you can bind one in gold for a free pulse every wave.',
       groups: [
         { type: 'goblin', lane: 'mill', count: 10, start: 1, interval: 1.1 },
         { type: 'wolf', lane: 'mill', count: 5, start: 12, interval: 0.5 },
