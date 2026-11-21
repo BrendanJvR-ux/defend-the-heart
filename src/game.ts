@@ -2,7 +2,7 @@
 // Pure logic: no DOM, so it runs in tests and in the browser alike.
 import { BALANCE, TOTAL_WAVES, phaseRule, type EnemyType, type LaneId, type TowerType } from './balance';
 import {
-  LANES, LANE_IDS, NODE, FOUNDATION_IDS, GATE, dist, nearestOnLane, pointAt, routePolyline,
+  LANES, LANE_IDS, NODE, FOUNDATION_IDS, GATE, BRIDGE, dist, nearestOnLane, pointAt, routePolyline,
   polylineLength, pointAlong, type Vec,
 } from './map';
 
@@ -33,10 +33,25 @@ export interface Enemy {
   maxHp: number;
   stun: number;
   hit: number;
-  /** Small sideways offset so bunched enemies stay visible. */
+  /** Sideways offset: files of levy march abreast; others jitter so bunches stay visible. */
   side: number;
   bob: number;
+  /** Armour stripped by Verdigris hits, and how long it lasts. */
+  shred: number;
+  shredT: number;
+  /** Tarnished: no armour and extra damage taken. */
+  vulnT: number;
+  /** Cairn-Born behaviour. */
+  mode?: 'follow' | 'march' | 'seek' | 'kneel' | 'leave';
+  modeT?: number;
+  bearerId?: number;
+  stone?: { lane: LaneId; s: number };
+  /** Fades out while leaving the field. */
+  fade?: number;
 }
+
+/** A fallen name-stone lying on the road. */
+export interface Stone { lane: LaneId; s: number; giantId: number }
 
 export interface Projectile {
   kind: TowerType | 'castle';
@@ -47,19 +62,21 @@ export interface Projectile {
   speed: number;
   damage: number;
   splash: number;
+  shred?: number;
   t: number;
   dur: number;
 }
 
 export interface Hedge { towerId: string; at: Vec; angle: number; stops: { lane: LaneId; s: number }[]; t: number; dur: number }
 export interface Fire { towerId: string; ranges: { lane: LaneId; s0: number; s1: number }[]; pts: Vec[]; t: number; dur: number }
-export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'bell' | 'toll' | 'splash' | 'arrive' | 'spawn' }
+export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'bell' | 'toll' | 'splash' | 'arrive' | 'spawn' | 'tarnish' | 'corrode' }
 export interface PulseFlight { towerId: string; path: Vec[]; length: number; s: number }
-export interface Warning { lane: LaneId; type: EnemyType; from: number; to: number; count: number }
+/** Barrow Hounds: horn and a marker at the bridge shortly before the pack arrives there. */
+export interface Warning { lane: LaneId; type: EnemyType; from: number; to: number; count: number; sounded: boolean }
 export interface FadingThread { path: Vec[]; t: number; dur: number }
 export interface Toast { text: string; kind: 'info' | 'good' | 'bad' | 'gold'; t: number }
 
-export interface Spawn { type: EnemyType; lane: LaneId; at: number }
+export interface Spawn { type: EnemyType; lane: LaneId; at: number; side?: number }
 
 export interface GameState {
   phase: Phase;
@@ -82,6 +99,7 @@ export interface GameState {
   flights: PulseFlight[];
   spawns: Spawn[];
   warnings: Warning[];
+  stones: Stone[];
   fading: FadingThread[];
   toasts: Toast[];
   waveTime: number;
@@ -101,7 +119,7 @@ export function newGame(): GameState {
     castleHp: BALANCE.castleHp, gold: BALANCE.startGold, leaves: BALANCE.startLeaves,
     towers: [], traces: [], pulsesLeft: 0, pendingGrant: false, castleCd: 0,
     enemies: [], projectiles: [], hedges: [], fires: [], rings: [], flights: [], spawns: [],
-    warnings: [], fading: [], toasts: [], waveTime: 0, time: 0, nextId: 1, kills: 0, leaked: 0, leakLog: [], resetBanner: 0,
+    warnings: [], stones: [], fading: [], toasts: [], waveTime: 0, time: 0, nextId: 1, kills: 0, leaked: 0, leakLog: [], resetBanner: 0,
   };
   for (const t of BALANCE.startingTowers) addTower(s, t.foundation, t.type);
   return s;
@@ -264,8 +282,32 @@ export function canStartWave(s: GameState): { ok: boolean; reason: string } {
 export function waveSpawns(wave: number): Spawn[] {
   const def = BALANCE.waves[wave - 1];
   const out: Spawn[] = [];
-  for (const g of def.groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, lane: g.lane, at: g.start + i * g.interval });
+  for (const g of def.groups) {
+    for (let i = 0; i < g.count; i++) {
+      const at = g.start + i * g.interval;
+      if (g.type === 'cairn') {
+        // The marked bearer goes first; its giant follows at a fixed distance.
+        out.push({ type: 'bearer', lane: g.lane, at, side: 0 });
+        out.push({ type: 'cairn', lane: g.lane, at: at + BALANCE.cairn.followGap / BALANCE.enemies.bearer.speed, side: 0 });
+      } else if (g.abreast && g.abreast > 1) {
+        for (let j = 0; j < g.abreast; j++) out.push({ type: g.type, lane: g.lane, at, side: (j - (g.abreast - 1) / 2) * 12 });
+      } else out.push({ type: g.type, lane: g.lane, at });
+    }
+  }
   return out.sort((a, b) => a.at - b.at);
+}
+
+/** Distance along the King's Road to the bridge. */
+export const BRIDGE_S = LANES.king.cum[LANES.king.pts.indexOf(BRIDGE)];
+
+function houndWarnings(wave: number): Warning[] {
+  const out: Warning[] = [];
+  for (const g of BALANCE.waves[wave - 1].groups) {
+    if (g.type !== 'hound' || g.lane !== 'king') continue;
+    const arrive = g.start + BRIDGE_S / BALANCE.enemies.hound.speed;
+    out.push({ lane: g.lane, type: 'hound', from: Math.max(0, arrive - BALANCE.houndWarning), to: arrive + g.count * g.interval + 0.8, count: g.count, sounded: false });
+  }
+  return out;
 }
 
 export function startWave(s: GameState): boolean {
@@ -276,9 +318,8 @@ export function startWave(s: GameState): boolean {
   s.waveTime = 0;
   s.spawns = waveSpawns(s.wave);
   s.resetBanner = 0;
-  s.warnings = BALANCE.waves[s.wave - 1].groups
-    .filter((g) => g.type === 'wolf' || g.type === 'ram')
-    .map((g) => ({ lane: g.lane, type: g.type, from: Math.max(0, g.start - BALANCE.wolfWarning), to: g.start + 1.5, count: g.count }));
+  s.warnings = houndWarnings(s.wave);
+  s.stones = [];
   for (const t of s.towers) { t.committed = false; t.cd = 0.3; }
   return true;
 }
@@ -347,13 +388,19 @@ function applyPulse(s: GameState, t: Tower) {
       }
     }
     s.fires.push({ towerId: t.id, ranges, pts, t: 0, dur: P.fireDuration });
+  } else if (t.type === 'verdigris') {
+    s.rings.push({ x: p.x, y: p.y, r: P.tarnishRadius, t: 0, dur: 1.4, kind: 'tarnish' });
+    for (const e of s.enemies) if (dist(enemyPos(e), p) <= P.tarnishRadius) e.vulnT = P.tarnishDuration;
   } else {
     s.rings.push({ x: p.x, y: p.y, r: P.tollRadius, t: 0, dur: 0.9, kind: 'toll' });
     for (const e of s.enemies) {
       const ep = enemyPos(e);
       if (dist(ep, p) <= P.tollRadius) {
-        e.s = Math.max(0, e.s - P.tollKnockback);
-        e.stun = Math.max(e.stun, P.tollStun);
+        // Stone giants do not budge.
+        if (e.type !== 'cairn') {
+          e.s = Math.max(0, e.s - P.tollKnockback);
+          e.stun = Math.max(e.stun, P.tollStun);
+        }
         hurt(s, e, P.tollDamage, true);
       }
     }
@@ -368,35 +415,103 @@ export function enemyPos(e: Enemy): Vec & { angle: number } {
   return { x: p.x - Math.sin(p.angle) * e.side, y: p.y + Math.cos(p.angle) * e.side, angle: p.angle };
 }
 
-function hurt(s: GameState, e: Enemy, raw: number, ignoreArmour = false) {
-  if (e.hp <= 0) return;
-  const armour = ignoreArmour ? 0 : BALANCE.enemies[e.type].armour;
-  e.hp -= Math.max(1, raw - armour);
+/** Armour after Verdigris corrosion and Tarnish. */
+export function effectiveArmour(e: Enemy): number {
+  if (e.vulnT > 0) return 0;
+  return Math.max(0, BALANCE.enemies[e.type].armour - e.shred);
+}
+
+export function hurt(s: GameState, e: Enemy, raw: number, ignoreArmour = false) {
+  if (e.hp <= 0 || e.mode === 'leave') return;
+  const armour = ignoreArmour ? 0 : effectiveArmour(e);
+  const mult = e.vulnT > 0 ? 1 + BALANCE.pulses.tarnishVulnerability : 1;
+  e.hp -= Math.max(1, raw - armour) * mult;
   e.hit = 0.15;
   if (e.hp <= 0) {
     s.gold += BALANCE.enemies[e.type].bounty;
     s.kills += 1;
+    if (e.type === 'bearer') dropStone(s, e);
+    if (e.type === 'cairn') s.stones = s.stones.filter((st) => st.giantId !== e.id);
   }
+}
+
+/** The bearer has fallen: its name-stone lies where it fell, and the giant goes to it. */
+function dropStone(s: GameState, bearer: Enemy) {
+  const giant = s.enemies.find((g) => g.type === 'cairn' && g.bearerId === bearer.id && g.hp > 0);
+  if (!giant) return;
+  const stone = { lane: bearer.lane, s: bearer.s };
+  giant.mode = 'seek';
+  giant.stone = stone;
+  s.stones.push({ ...stone, giantId: giant.id });
+  toast(s, 'The name-stone falls. The Cairn-Born turns towards it\u2026', 'info');
+}
+
+/** Distance from the gate, so blocks on the shared stretch apply to both lanes. */
+function blocksFor(lane: LaneId, sOn: number): { lane: LaneId; s: number }[] {
+  const L = LANES[lane];
+  if (sOn < L.junctionS) return [{ lane, s: sOn }];
+  const fromGate = L.length - sOn;
+  return LANE_IDS.map((id) => ({ lane: id, s: LANES[id].length - fromGate }));
 }
 
 function spawnEnemy(s: GameState, sp: Spawn) {
   const st = BALANCE.enemies[sp.type];
-  s.enemies.push({
+  const e: Enemy = {
     id: s.nextId++, type: sp.type, lane: sp.lane, s: 0, hp: st.hp, maxHp: st.hp, stun: 0, hit: 0,
-    side: (Math.random() * 2 - 1) * 7, bob: Math.random() * 6,
-  });
+    side: sp.side ?? (Math.random() * 2 - 1) * 7, bob: Math.random() * 6, shred: 0, shredT: 0, vulnT: 0,
+  };
+  if (sp.type === 'cairn') {
+    // Bind the giant to the latest unclaimed bearer on its road.
+    const bearer = [...s.enemies].reverse().find((b) => b.type === 'bearer' && b.lane === sp.lane && !s.enemies.some((g) => g.bearerId === b.id));
+    e.bearerId = bearer?.id;
+    e.mode = bearer ? 'follow' : 'march';
+  }
+  s.enemies.push(e);
 }
 
 function pickTarget(s: GameState, from: Vec, range: number): Enemy | null {
   let best: Enemy | null = null;
   let bestLeft = Infinity;
   for (const e of s.enemies) {
-    if (e.hp <= 0 || e.s <= 0) continue;
+    if (e.hp <= 0 || e.s <= 0 || e.mode === 'leave') continue;
     if (dist(enemyPos(e), from) > range) continue;
     const left = LANES[e.lane].length - e.s;
     if (left < bestLeft) { bestLeft = left; best = e; }
   }
   return best;
+}
+
+/** Seek / kneel / leave. Returns true when the giant's movement is fully handled here. */
+function moveGiant(s: GameState, g: Enemy, dt: number): boolean {
+  const C = BALANCE.cairn;
+  if (g.mode === 'seek' && g.stone) {
+    const dir = Math.sign(g.stone.s - g.s);
+    const step = BALANCE.enemies.cairn.speed * 1.25 * dt;
+    if (Math.abs(g.stone.s - g.s) <= step + 1) {
+      g.s = g.stone.s;
+      g.mode = 'kneel';
+      g.modeT = C.kneelSeconds;
+      toast(s, 'The Cairn-Born kneels at its name-stone. The road behind it is blocked.', 'gold');
+    } else g.s += dir * step;
+    g.bob += dt * 2;
+    return true;
+  }
+  if (g.mode === 'kneel') {
+    g.modeT = (g.modeT ?? 0) - dt;
+    if (g.modeT <= 0) {
+      g.mode = 'leave';
+      g.modeT = C.leaveSeconds;
+      s.stones = s.stones.filter((st) => st.giantId !== g.id);
+      toast(s, 'The Cairn-Born rises with its stone and leaves the field. The road is open again.', 'info');
+    }
+    return true;
+  }
+  if (g.mode === 'leave') {
+    g.modeT = (g.modeT ?? 0) - dt;
+    g.fade = Math.max(0, (g.modeT ?? 0) / C.leaveSeconds);
+    return true;
+  }
+  return false;
 }
 
 export function step(s: GameState, dtRaw: number) {
@@ -433,19 +548,44 @@ export function step(s: GameState, dtRaw: number) {
   for (const f of s.fires) f.t += dt;
   s.fires = s.fires.filter((f) => f.t < f.dur);
 
+  // Kneeling giants block their road behind them (both lanes if on the shared stretch).
+  const giantBlocks: { lane: LaneId; s: number; id: number }[] = [];
+  for (const g of s.enemies) if (g.type === 'cairn' && g.mode === 'kneel') for (const b of blocksFor(g.lane, g.s)) giantBlocks.push({ ...b, id: g.id });
+
   // Enemy movement
   for (const e of s.enemies) {
     e.hit = Math.max(0, e.hit - dt);
-    if (e.stun > 0) { e.stun -= dt; continue; }
+    if (e.shredT > 0) { e.shredT -= dt; if (e.shredT <= 0) e.shred = 0; }
+    if (e.vulnT > 0) e.vulnT = Math.max(0, e.vulnT - dt);
     const st = BALANCE.enemies[e.type];
+    if (e.type === 'cairn') {
+      if (moveGiant(s, e, dt)) continue;
+    }
+    if (e.stun > 0) { e.stun -= dt; continue; }
     let ns = e.s + st.speed * dt;
     for (const h of s.hedges) {
       for (const stop of h.stops) {
         if (stop.lane === e.lane && e.s <= stop.s - 2 && ns > stop.s - 10) ns = Math.min(ns, Math.max(e.s, stop.s - 10));
       }
     }
+    for (const b of giantBlocks) {
+      if (b.id !== e.id && b.lane === e.lane && e.s < b.s && ns > b.s - 30) ns = Math.min(ns, Math.max(e.s, b.s - 30));
+    }
+    if (e.type === 'cairn' && e.mode === 'follow') {
+      const bearer = s.enemies.find((b) => b.id === e.bearerId && b.hp > 0);
+      if (bearer && bearer.lane === e.lane) ns = Math.min(ns, Math.max(e.s, bearer.s - BALANCE.cairn.followGap * 0.75));
+      else if (!bearer) e.mode = 'march';
+    }
     e.s = ns;
     e.bob += dt * st.speed * 0.15;
+  }
+  // Giants that left the field
+  for (const e of s.enemies) {
+    if (e.mode === 'leave' && (e.modeT ?? 0) <= 0) {
+      e.hp = 0;
+      s.gold += BALANCE.cairn.leaveBounty;
+      s.stones = s.stones.filter((st) => st.giantId !== e.id);
+    }
   }
 
   // Burning road
@@ -478,7 +618,7 @@ export function step(s: GameState, dtRaw: number) {
       }
       s.projectiles.push({
         kind: t.type, x: p.x, y: p.y - 30, sx: p.x, sy: p.y - 30, tx, ty,
-        targetId: t.type === 'bramble' ? target.id : null, speed: st.projectileSpeed, damage: dmg, splash: st.splash,
+        targetId: t.type === 'bramble' || t.type === 'verdigris' ? target.id : null, speed: st.projectileSpeed, damage: dmg, splash: st.splash, shred: st.shred,
         t: 0, dur: Math.max(0.12, flight),
       });
     }
@@ -515,7 +655,14 @@ export function step(s: GameState, dtRaw: number) {
         for (const e of s.enemies) if (e.hp > 0 && dist(enemyPos(e), { x: pr.tx, y: pr.ty }) <= pr.splash) hurt(s, e, pr.damage);
       } else {
         const e = s.enemies.find((x) => x.id === pr.targetId && x.hp > 0);
-        if (e) hurt(s, e, pr.damage);
+        if (e) {
+          if (pr.shred) {
+            e.shred = Math.min(BALANCE.pulses.shredMax, BALANCE.enemies[e.type].armour, e.shred + pr.shred);
+            e.shredT = BALANCE.pulses.shredDuration;
+            s.rings.push({ x: pr.tx, y: pr.ty, r: 16, t: 0, dur: 0.4, kind: 'corrode' });
+          }
+          hurt(s, e, pr.damage);
+        }
       }
     }
   }
@@ -559,6 +706,7 @@ function endWave(s: GameState) {
   s.fires = [];
   s.projectiles = [];
   s.warnings = [];
+  s.stones = [];
   if (survived >= TOTAL_WAVES) { s.phase = 'victory'; return; }
   s.wave = survived + 1;
   s.phase = 'prep';

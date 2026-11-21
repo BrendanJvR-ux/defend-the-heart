@@ -52,7 +52,7 @@ export function playBot(plan: BotPlan, maxSeconds = 2000): { state: GameState; h
 
 function botPulse(s: GameState) {
   // Hold one pulse for a traced, uncommitted Ember Kiln while wolves are still to come.
-  const wolvesToCome = s.spawns.some((x) => x.type === 'wolf') || s.enemies.some((e) => e.type === 'wolf');
+  const wolvesToCome = s.spawns.some((x) => x.type === 'hound') || s.enemies.some((e) => e.type === 'hound');
   const emberReady = s.towers.some((t) => t.type === 'ember' && t.traced && !t.committed);
   const reserve = wolvesToCome && emberReady ? 1 : 0;
   for (const t of s.towers) {
@@ -61,13 +61,13 @@ function botPulse(s: GameState) {
     const near = (r: number) => s.enemies.filter((e) => dist(enemyPos(e), p) <= r);
     if (t.type === 'ember') {
       const n = near(BALANCE.pulses.fireRadius);
-      if (n.filter((e) => e.type === 'wolf').length >= 3 || (!wolvesToCome && n.length >= 5)) pulseTower(s, t.id);
+      if (n.filter((e) => e.type === 'hound').length >= 3 || (!wolvesToCome && n.length >= 5)) pulseTower(s, t.id);
       continue;
     }
     if (!t.bound && s.pulsesLeft <= reserve) continue;
     let fire = false;
     if (t.type === 'bramble') fire = near(170).length >= 5;
-    if (t.type === 'bell') fire = near(BALANCE.pulses.tollRadius).length >= 5 || near(BALANCE.pulses.tollRadius).some((e) => e.type === 'ram' && e.hp > 60);
+    if (t.type === 'bell') fire = near(BALANCE.pulses.tollRadius).length >= 5 || near(BALANCE.pulses.tollRadius).some((e) => e.type === 'cairn' && e.hp > 100);
     if (fire) pulseTower(s, t.id);
   }
 }

@@ -3,8 +3,9 @@
 //  Wave composition, tower damage, pulse effects, rewards and costs.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type TowerType = 'bramble' | 'ember' | 'bell';
-export type EnemyType = 'goblin' | 'wolf' | 'ram';
+export type TowerType = 'bramble' | 'ember' | 'bell' | 'verdigris';
+/** `bearer` is the marked Fen Levy carrying the Cairn-Born's name-stone; it is spawned with every `cairn`. */
+export type EnemyType = 'levy' | 'bearer' | 'hound' | 'cairn';
 export type LaneId = 'mill' | 'king';
 
 export interface TowerStats {
@@ -20,6 +21,8 @@ export interface TowerStats {
   projectileSpeed: number;
   /** Splash radius for Ember coals; 0 = single target. */
   splash: number;
+  /** Armour stripped per hit (Verdigris Font only). */
+  shred?: number;
   pulseName: string;
   pulseText: string;
 }
@@ -35,6 +38,8 @@ export interface EnemyStats {
   bounty: number;
   /** Castle health lost when it reaches the gate. */
   castleDamage: number;
+  /** One line for the inspect card. */
+  note: string;
 }
 
 export interface WaveGroup {
@@ -43,13 +48,15 @@ export interface WaveGroup {
   count: number;
   /** Seconds after the wave starts that the first one appears. */
   start: number;
-  /** Seconds between each one in the group. */
+  /** Seconds between each one (or each rank) in the group. */
   interval: number;
+  /** Fen Levy march in tight files: this many abreast per rank. `count` is the number of ranks. */
+  abreast?: number;
 }
 
 export interface WaveDef {
   title: string;
-  /** One-line lesson printed on the bookmark. */
+  /** A line of verse for the bookmark. Deliberately says nothing about where or how many. */
   lesson: string;
   groups: WaveGroup[];
 }
@@ -69,7 +76,7 @@ export const BALANCE = {
   /** Gilded Leaves awarded for each wave survived. */
   leavesPerWave: 1,
   /** Gold awarded for surviving wave n. */
-  waveClearGold: (wave: number) => 20 + 10 * wave,
+  waveClearGold: (wave: number) => 15 + 5 * wave,
   /** Binding one tower costs this many leaves. A bound tower gets its own free pulse every wave, with no trace. */
   bindCost: 3,
 
@@ -91,7 +98,7 @@ export const BALANCE = {
   startingTowers: [
     { foundation: 'f_mill', type: 'bramble' },
     { foundation: 'f_junction', type: 'ember' },
-    { foundation: 'f_bridge', type: 'bell' },
+    { foundation: 'f_bend', type: 'bell' },
   ] as { foundation: string; type: TowerType }[],
 
   towers: {
@@ -108,7 +115,12 @@ export const BALANCE = {
     bell: {
       name: 'Bell Spire', cost: 90, damage: 9, cooldown: 1.9, range: 135,
       projectileSpeed: 0, splash: 0,
-      pulseName: 'Great Toll', pulseText: 'Knocks nearby enemies back along their own road and dazes them.',
+      pulseName: 'Great Toll', pulseText: 'Knocks nearby enemies back along their own road and dazes them. Stone giants do not budge.',
+    },
+    verdigris: {
+      name: 'Verdigris Font', cost: 80, damage: 4, cooldown: 0.9, range: 165,
+      projectileSpeed: 420, splash: 0, shred: 2,
+      pulseName: 'Tarnish', pulseText: 'A green mist strips all armour from enemies nearby and makes them take extra damage for a while.',
     },
   } as Record<TowerType, TowerStats>,
 
@@ -125,76 +137,91 @@ export const BALANCE = {
     tollKnockback: 170,
     tollDamage: 12,
     tollStun: 1.0,
+    /** Verdigris corrosion from normal hits. */
+    shredMax: 6,
+    shredDuration: 4,
+    /** Verdigris pulse. */
+    tarnishRadius: 175,
+    tarnishDuration: 6,
+    tarnishVulnerability: 0.3,
   },
 
-  enemies: {
-    goblin: { name: 'Goblin', plural: 'Goblins', hp: 38, speed: 46, armour: 0, bounty: 4, castleDamage: 1 },
-    wolf: { name: 'Wolf', plural: 'Wolves', hp: 26, speed: 100, armour: 0, bounty: 4, castleDamage: 1 },
-    ram: { name: 'Armoured Ram', plural: 'Armoured Rams', hp: 170, speed: 27, armour: 5, bounty: 14, castleDamage: 4 },
-  } as Record<EnemyType, EnemyStats>,
+  cairn: {
+    /** The giant walks this far behind its bearer. */
+    followGap: 95,
+    /** Seconds the giant kneels at its fallen name-stone, blocking the road behind it. */
+    kneelSeconds: 7,
+    /** Seconds it takes to walk off the field afterwards (it does not reach the gate). */
+    leaveSeconds: 1.6,
+    /** Gold paid when the giant leaves (it is not killed). */
+    leaveBounty: 20,
+  },
 
-  /** Seconds of warning before a wolf pack enters (howl marker at the entrance). */
-  wolfWarning: 4,
+  /** Barrow Hounds: the horn sounds and the bridge warning shows this many seconds before they reach the bridge. */
+  houndWarning: 3.5,
+
+  enemies: {
+    levy: { name: 'Fen Levy', plural: 'Fen Levy', hp: 36, speed: 40, armour: 2, bounty: 2, castleDamage: 1, note: 'Reed shields with a white flood line. March in tight files.' },
+    bearer: { name: 'Stone-Bearer', plural: 'Stone-Bearers', hp: 130, speed: 26, armour: 0, bounty: 8, castleDamage: 1, note: 'A marked levy carrying the Cairn-Born\u2019s stolen name-stone. Where it falls, the giant kneels.' },
+    hound: { name: 'Barrow Hound', plural: 'Barrow Hounds', hp: 24, speed: 108, armour: 0, bounty: 2, castleDamage: 1, note: 'Black hounds in bronze burial collars. Hunt in packs.' },
+    cairn: { name: 'Cairn-Born', plural: 'Cairn-Born', hp: 700, speed: 24, armour: 8, bounty: 45, castleDamage: 6, note: 'A stone giant with an empty chest. Follows its name-stone; cannot be knocked back.' },
+  } as Record<EnemyType, EnemyStats>,
 
   waves: [
     {
-      title: 'First Ink',
-      lesson: 'Trace two towers, then pulse one when goblins gather.',
+      title: 'The Fen Levy',
+      lesson: 'Reeds rustle on the low road; the drum keeps time.',
       groups: [
-        { type: 'goblin', lane: 'mill', count: 7, start: 1, interval: 1.6 },
-        { type: 'goblin', lane: 'king', count: 2, start: 16, interval: 2.5 },
+        { type: 'levy', lane: 'mill', count: 4, abreast: 3, start: 1, interval: 1.6 },
+        { type: 'levy', lane: 'mill', count: 3, abreast: 2, start: 17, interval: 1.6 },
       ],
     },
     {
-      title: 'Two Roads',
-      lesson: 'Goblins on the Mill Road first. A wolf pack runs the King’s Road late: hold your pulse?',
+      title: 'Horns at the Bridge',
+      lesson: 'Something old is loosed from the barrows. Listen for the horn.',
       groups: [
-        { type: 'goblin', lane: 'mill', count: 9, start: 1, interval: 1.3 },
-        { type: 'goblin', lane: 'king', count: 3, start: 6, interval: 2.4 },
-        { type: 'wolf', lane: 'king', count: 7, start: 19, interval: 0.45 },
+        { type: 'levy', lane: 'mill', count: 5, abreast: 3, start: 1, interval: 1.5 },
+        { type: 'hound', lane: 'king', count: 6, start: 20, interval: 0.4 },
       ],
     },
     {
-      title: 'The Ram',
-      lesson: 'An armoured ram shrugs off thorns. Fire and the bell do not care for armour.',
+      title: 'Mud and Teeth',
+      lesson: 'The fen marches and the barrows bay, both at once.',
       groups: [
-        { type: 'goblin', lane: 'king', count: 6, start: 1, interval: 1.6 },
-        { type: 'ram', lane: 'mill', count: 1, start: 3, interval: 0 },
-        { type: 'goblin', lane: 'mill', count: 6, start: 5, interval: 1.5 },
-        { type: 'wolf', lane: 'mill', count: 4, start: 18, interval: 0.6 },
+        { type: 'levy', lane: 'mill', count: 5, abreast: 3, start: 1, interval: 1.5 },
+        { type: 'hound', lane: 'king', count: 3, start: 9, interval: 0.4 },
+        { type: 'levy', lane: 'king', count: 3, abreast: 2, start: 13, interval: 1.8 },
+        { type: 'hound', lane: 'king', count: 4, start: 26, interval: 0.4 },
       ],
     },
     {
       title: 'Royal Reinforcement',
-      lesson: 'Three traces, two pulses. With five towers you can bind one in gold for a free pulse every wave.',
+      lesson: 'The Crown\u2019s gift arrives. Gold may hold where ink cannot.',
       groups: [
-        { type: 'goblin', lane: 'mill', count: 10, start: 1, interval: 1.1 },
-        { type: 'wolf', lane: 'mill', count: 5, start: 12, interval: 0.5 },
-        { type: 'ram', lane: 'king', count: 1, start: 8, interval: 0 },
-        { type: 'goblin', lane: 'king', count: 6, start: 10, interval: 1.4 },
+        { type: 'levy', lane: 'mill', count: 8, abreast: 3, start: 1, interval: 1.3 },
+        { type: 'levy', lane: 'king', count: 5, abreast: 2, start: 6, interval: 1.5 },
+        { type: 'hound', lane: 'king', count: 8, start: 16, interval: 0.4 },
+        { type: 'hound', lane: 'king', count: 6, start: 30, interval: 0.4 },
       ],
     },
     {
-      title: 'Pincer',
-      lesson: 'Wolves on both roads at once. Spread your traces.',
+      title: 'The Stone-Bearer',
+      lesson: 'A giant follows what was taken from it. Choose where it finds it.',
       groups: [
-        { type: 'goblin', lane: 'king', count: 7, start: 1, interval: 1.2 },
-        { type: 'ram', lane: 'mill', count: 2, start: 2, interval: 6 },
-        { type: 'goblin', lane: 'mill', count: 8, start: 4, interval: 1.2 },
-        { type: 'wolf', lane: 'mill', count: 6, start: 20, interval: 0.45 },
-        { type: 'wolf', lane: 'king', count: 6, start: 21, interval: 0.45 },
+        { type: 'cairn', lane: 'mill', count: 1, start: 1, interval: 0 },
+        { type: 'levy', lane: 'mill', count: 9, abreast: 3, start: 8, interval: 1.3 },
+        { type: 'levy', lane: 'king', count: 5, abreast: 2, start: 14, interval: 1.6 },
       ],
     },
     {
       title: 'The Last Ward',
-      lesson: 'Rams first, then the great wolf pack on the King’s Road. Keep one pulse in hand.',
+      lesson: 'Stone on the low road, teeth at the bridge. Keep one drop of ink in hand.',
       groups: [
-        { type: 'goblin', lane: 'mill', count: 12, start: 1, interval: 1.0 },
-        { type: 'ram', lane: 'king', count: 2, start: 3, interval: 5 },
-        { type: 'goblin', lane: 'king', count: 8, start: 6, interval: 1.2 },
-        { type: 'ram', lane: 'mill', count: 1, start: 12, interval: 0 },
-        { type: 'wolf', lane: 'mill', count: 6, start: 22, interval: 0.5 },
-        { type: 'wolf', lane: 'king', count: 12, start: 32, interval: 0.35 },
+        { type: 'cairn', lane: 'mill', count: 1, start: 1, interval: 0 },
+        { type: 'levy', lane: 'mill', count: 9, abreast: 3, start: 7, interval: 1.3 },
+        { type: 'hound', lane: 'king', count: 7, start: 12, interval: 0.4 },
+        { type: 'levy', lane: 'king', count: 6, abreast: 2, start: 18, interval: 1.5 },
+        { type: 'hound', lane: 'king', count: 12, start: 36, interval: 0.34 },
       ],
     },
   ] as WaveDef[],

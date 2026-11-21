@@ -2,14 +2,15 @@ import './style.css';
 import { BALANCE, TOTAL_WAVES, phaseRule, type TowerType, type EnemyType } from './balance';
 import {
   type GameState, newGame, step, rule, traceTower, untraceTower, undoTrace, clearTraces, canStartWave, startWave,
-  pulseTower, pulseCheck, buildTower, buildCheck, placeGrant, bindTower, bindCheck, towerAt, towerById, emptyFoundations,
+  pulseTower, pulseCheck, enemyPos, effectiveArmour, buildTower, buildCheck, placeGrant, bindTower, bindCheck, towerAt, towerById, emptyFoundations,
   towerDamage, toast, traceCheck,
 } from './game';
 import {
-  MAP_W, MAP_H, NODE, FOUNDATION_IDS, INKWELL, LANES, snapToNetwork,
+  MAP_W, MAP_H, NODE, FOUNDATION_IDS, INKWELL, snapToNetwork,
   routeToEdgePoint, dist, type Vec,
 } from './map';
 import { render, renderVictory, towerIconCanvas, enemyIconCanvas, type ViewState } from './render';
+import { unlockAudio, playDoubleHorn, isMuted, setMuted } from './audio';
 
 // ── State ───────────────────────────────────────────────────────────────────
 let s: GameState = newGame();
@@ -19,6 +20,7 @@ const view: ViewState = {
   bindPreview: null,
   gesture: { active: false, path: [], pointer: { x: 0, y: 0 }, slipping: 0 },
   touch: matchMedia('(pointer: coarse)').matches,
+  inspectId: null,
 };
 /** Tower id awaiting bind confirmation. */
 let bindConfirm: string | null = null;
@@ -34,7 +36,7 @@ const popover = $('popover');
 const overlay = $('overlay');
 const toastsEl = $('toasts');
 
-const TOWER_TYPES: TowerType[] = ['bramble', 'ember', 'bell'];
+const TOWER_TYPES: TowerType[] = ['bramble', 'ember', 'bell', 'verdigris'];
 const fname = (f: string) => NODE[f].foundation!.name;
 const tname = (t: TowerType) => BALANCE.towers[t].name;
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -71,6 +73,21 @@ function hitFoundation(p: Vec, slack = 0): string | null {
   return best;
 }
 
+/** Enemy under a map point (their bodies stand above their feet). */
+function hitEnemy(p: Vec, r: number) {
+  let best: GameState['enemies'][number] | null = null;
+  let bd = Infinity;
+  for (const e of s.enemies) {
+    if (e.mode === 'leave') continue;
+    const q = enemyPos(e);
+    const h = e.type === 'cairn' ? 40 : 14;
+    const d = Math.hypot(p.x - q.x, (p.y - (q.y - h)) * (e.type === 'cairn' ? 0.6 : 1));
+    const rr = e.type === 'cairn' ? r + 22 : r;
+    if (d < rr && d < bd) { bd = d; best = e; }
+  }
+  return best;
+}
+
 // ── Trace gesture ───────────────────────────────────────────────────────────
 const SNAP = 60;
 const SLIP = 150;
@@ -86,7 +103,12 @@ canvas.addEventListener('pointerdown', (e) => {
   if (s.phase === 'combat') {
     const f = hitFoundation(p, view.touch ? 14 : 4);
     const t = f ? towerAt(s, f) : undefined;
+    // A tower that can pulse wins; otherwise a click on an enemy inspects it.
+    if (t && pulseCheck(s, t.id).ok) { pulseTower(s, t.id); return; }
+    const foe = hitEnemy(p, view.touch ? 34 : 24);
+    if (foe) { view.inspectId = foe.id; return; }
     if (t) pulseTower(s, t.id);
+    else view.inspectId = null;
     return;
   }
   if (s.phase !== 'prep') return;
@@ -244,6 +266,10 @@ margin.addEventListener('focusout', () => { if (!bindConfirm) view.bindPreview =
 $('btnPause').addEventListener('click', togglePause);
 $('btnSpeed').addEventListener('click', () => { s.speed = s.speed === 1 ? 2 : 1; });
 $('btnRestart').addEventListener('click', restart);
+$('btnMute').addEventListener('click', () => { setMuted(!isMuted()); unlockAudio(); });
+// Sound may only start after a gesture.
+window.addEventListener('pointerdown', unlockAudio, { capture: true });
+window.addEventListener('keydown', unlockAudio, { capture: true });
 
 function togglePause() {
   if (s.phase !== 'combat' && s.phase !== 'prep') return;
@@ -252,6 +278,7 @@ function togglePause() {
 }
 
 function restart() {
+  view.inspectId = null;
   const speed = s.speed;
   s = newGame();
   s.speed = speed;
@@ -288,16 +315,12 @@ function signature(): string {
   ]);
 }
 
-function timingLabel(t: number) { return t < 4 ? 'at once' : t < 14 ? 'soon after' : t < 26 ? 'later' : 'last'; }
-
 function renderRibbon() {
   const def = BALANCE.waves[s.wave - 1];
   if (!def || s.phase === 'victory') { ribbon.hidden = true; return; }
   ribbon.hidden = false;
-  const groups = [...def.groups].sort((a, b) => a.start - b.start);
   ribbon.classList.toggle('folded', ribbonFolded);
   ribbon.innerHTML = `<div class="ribbon-body"><button class="fold" data-act="ribbon" aria-expanded="${!ribbonFolded}" title="${ribbonFolded ? 'Show the wave preview' : 'Fold the bookmark away'}">${ribbonFolded ? '\u25be' : '\u25b4'}</button><p class="kicker">Wave ${s.wave} of ${TOTAL_WAVES}</p><h3>${esc(def.title)}</h3>
-    <ol>${groups.map((g) => `<li class="lane-${g.lane}"><span class="eico" data-enemy="${g.type}"></span><span><b>${g.count} ${esc(g.count > 1 ? BALANCE.enemies[g.type].plural : BALANCE.enemies[g.type].name)}</b><small>${esc(LANES[g.lane].name)} · ${timingLabel(g.start)}</small></span></li>`).join('')}</ol>
     <p class="lesson">${esc(def.lesson)}</p></div>`;
   hydrateIcons(ribbon);
 }
@@ -345,7 +368,7 @@ function renderMargin() {
     // Build
     const empties = emptyFoundations(s);
     h += `<section class="card"><h3>Build <span class="need">${s.gold} gold</span></h3>
-      <p class="hint">Click an empty foundation on the map, or pick one here. Bramble ${BALANCE.towers.bramble.cost} · Ember ${BALANCE.towers.ember.cost} · Bell ${BALANCE.towers.bell.cost}.</p>
+      <p class="hint">Click an empty foundation on the map, or pick one here. Bramble ${BALANCE.towers.bramble.cost} · Ember ${BALANCE.towers.ember.cost} · Bell ${BALANCE.towers.bell.cost} · Verdigris ${BALANCE.towers.verdigris.cost}.</p>
       <div class="flist">${empties.map((f) => `<button data-act="select" data-f="${f}" ${s.pendingGrant ? 'disabled' : ''}>${esc(fname(f))}</button>`).join('') || '<em>Every foundation is built.</em>'}</div></section>`;
     // Bind
     h += `<section class="card bind"><h3>Bind a tower <span class="need gilt">${s.leaves} / ${BALANCE.bindCost} leaves</span></h3>`;
@@ -435,8 +458,41 @@ function renderHud() {
   $('btnPause').textContent = s.paused ? 'Resume' : 'Pause';
   ($('btnPause') as HTMLButtonElement).disabled = s.phase === 'victory' || s.phase === 'defeat';
   $('btnSpeed').textContent = `Speed ×${s.speed}`;
+  $('btnMute').textContent = isMuted() ? 'Sound off' : 'Sound on';
   document.body.dataset.phase = s.phase;
 }
+
+const inspectEl = $('inspect');
+let inspectSig = '';
+function renderInspect() {
+  const e = view.inspectId !== null ? s.enemies.find((x) => x.id === view.inspectId) : undefined;
+  if (!e || s.phase !== 'combat') {
+    if (view.inspectId !== null && !e) view.inspectId = null;
+    if (!inspectEl.hidden) { inspectEl.hidden = true; inspectSig = ''; }
+    return;
+  }
+  const st = BALANCE.enemies[e.type];
+  const arm = effectiveArmour(e);
+  const hp = Math.max(0, Math.ceil(e.hp));
+  const status = e.mode === 'kneel' ? `Kneeling at its stone \u2014 blocking the road behind (${Math.ceil(e.modeT ?? 0)}s)`
+    : e.mode === 'seek' ? 'Walking to its fallen name-stone'
+      : e.mode === 'follow' ? 'Following its Stone-Bearer'
+        : e.stun > 0 ? 'Dazed' : '';
+  const speedWord = st.speed >= 90 ? 'fast' : st.speed >= 35 ? 'steady' : 'slow';
+  const sig = [e.id, hp, arm, e.vulnT > 0, status].join('|');
+  if (sig === inspectSig) return;
+  inspectSig = sig;
+  inspectEl.hidden = false;
+  inspectEl.innerHTML = `<button class="x" data-act="uninspect" aria-label="Close">\u00d7</button>
+    <div class="ins-head"><span class="eico" data-enemy="${e.type}"></span><div><h3>${esc(st.name)}</h3><p class="sub">${esc(st.note)}</p></div></div>
+    <dl class="ins-stats">
+      <div><dt>Health</dt><dd>${hp} / ${st.hp}<span class="bar"><i style="width:${(100 * hp) / st.hp}%"></i></span></dd></div>
+      <div><dt>Armour</dt><dd>${arm}${arm !== st.armour ? ` <small>(${st.armour} base, ${e.vulnT > 0 ? 'tarnished' : 'corroded'})</small>` : ''}</dd></div>
+      <div><dt>Speed</dt><dd>${st.speed} <small>${speedWord}</small></dd></div>
+    </dl>${status ? `<p class="status">${esc(status)}</p>` : ''}`;
+  hydrateIcons(inspectEl);
+}
+inspectEl.addEventListener('click', (ev) => { if ((ev.target as HTMLElement).closest('[data-act=uninspect]')) { view.inspectId = null; } });
 
 let toastSig = '';
 function renderToasts() {
@@ -461,10 +517,10 @@ function hydrateIcons(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>('[data-enemy]').forEach((el) => {
     const ty = el.dataset.enemy as EnemyType;
     const k = 'e' + ty;
-    if (!iconCache.has(k)) iconCache.set(k, enemyIconCanvas(ty, 34));
+    if (!iconCache.has(k)) iconCache.set(k, enemyIconCanvas(ty, 44));
     const src = iconCache.get(k)!;
     const c = document.createElement('canvas');
-    c.width = src.width; c.height = src.height; c.style.width = c.style.height = '34px';
+    c.width = src.width; c.height = src.height; c.style.width = c.style.height = '44px';
     c.getContext('2d')!.drawImage(src, 0, 0);
     el.replaceChildren(c);
   });
@@ -492,6 +548,9 @@ function refresh(now: number) {
   if (os !== overlaySig) { overlaySig = os; renderOverlay(); }
   renderHud();
   renderToasts();
+  renderInspect();
+  // The Barrow Hounds' double horn, once per warning
+  if (s.phase === 'combat') for (const w of s.warnings) if (!w.sounded && s.waveTime >= w.from) { w.sounded = true; playDoubleHorn(); }
   const k = canvas.width / MAP_W;
   ctx.setTransform(k, 0, 0, k, 0, 0);
   if (s.phase === 'victory') renderVictory(ctx, s, now / 1000);

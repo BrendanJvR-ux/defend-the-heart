@@ -30,7 +30,7 @@ describe('acceptance: trace / pulse / bind', () => {
     expect(s.traces.length).toBe(1);
     expect(canStartWave(s).ok).toBe(false);
     expect(traceTower(s, T(s, 'f_junction'))).toBe(true);
-    expect(traceTower(s, T(s, 'f_bridge'))).toBe(false); // over the allocation
+    expect(traceTower(s, T(s, 'f_bend'))).toBe(false); // over the allocation
     expect(canStartWave(s).ok).toBe(true);
     expect(startWave(s)).toBe(true);
     expect(s.pulsesLeft).toBe(1);
@@ -44,7 +44,7 @@ describe('acceptance: trace / pulse / bind', () => {
     expect(s.traces).toEqual([T(s, 'f_mill')]);
     expect(untraceTower(s, T(s, 'f_mill'))).toBe(true);
     expect(s.traces.length).toBe(0);
-    traceTower(s, T(s, 'f_bridge'));
+    traceTower(s, T(s, 'f_bend'));
     traceTower(s, T(s, 'f_junction'));
     expect(canStartWave(s).ok).toBe(true);
   });
@@ -62,8 +62,8 @@ describe('acceptance: trace / pulse / bind', () => {
       for (const t of s.towers) if (t.cd > (cds.get(t.id) ?? 0) + 0.01) attacked.add(t.foundation);
       if (attacked.size === 3) break;
     }
-    expect([...attacked].sort()).toEqual(['f_bridge', 'f_junction', 'f_mill']);
-    expect(pulseTower(s, T(s, 'f_bridge'))).toBe(false); // untraced
+    expect([...attacked].sort()).toEqual(['f_bend', 'f_junction', 'f_mill']);
+    expect(pulseTower(s, T(s, 'f_bend'))).toBe(false); // untraced
     expect(s.pulsesLeft).toBe(1);
     expect(pulseTower(s, T(s, 'f_mill'))).toBe(true);
     expect(pulseTower(s, T(s, 'f_mill'))).toBe(false); // double-click
@@ -122,7 +122,7 @@ describe('acceptance: trace / pulse / bind', () => {
     expect(traceTower(s, T(s, 'f_junction'))).toBe(false);
     expect(s.traces.length).toBe(0);
     traceTower(s, T(s, 'f_mill'));
-    traceTower(s, T(s, 'f_bridge'));
+    traceTower(s, T(s, 'f_bend'));
     expect(canStartWave(s).ok).toBe(false);
     traceTower(s, T(s, 'f_gate'));
     expect(startWave(s)).toBe(true);
@@ -138,7 +138,7 @@ describe('acceptance: trace / pulse / bind', () => {
     expect(s.wave).toBe(5);
     expect(towerAt(s, 'f_junction')!.bound).toBe(true);
     traceTower(s, T(s, 'f_mill'));
-    traceTower(s, T(s, 'f_bridge'));
+    traceTower(s, T(s, 'f_bend'));
     traceTower(s, T(s, 'f_gate'));
     startWave(s);
     expect(pulseTower(s, T(s, 'f_junction'))).toBe(true);
@@ -152,7 +152,7 @@ describe('acceptance: trace / pulse / bind', () => {
     traceTower(s, T(s, 'f_junction'));
     startWave(s);
     expect(buildTower(s, 'f_gate', 'bell')).toBe(false);
-    expect(traceTower(s, T(s, 'f_bridge'))).toBe(false);
+    expect(traceTower(s, T(s, 'f_bend'))).toBe(false);
     expect(untraceTower(s, T(s, 'f_mill'))).toBe(false);
   });
 

@@ -1,10 +1,10 @@
 # The Last Ward: Siege of Goosebridge
 
-A single-map fantasy tower defence prototype drawn as an open storybook. Two painted roads lead to Goosebridge Castle; your magic runs in ink along a separate network of leylines, from an inkwell in the castle garden out to thirteen tower foundations.
+A single-map fantasy tower defence prototype: an open storybook whose pages are painted in oils, after the Dutch landscape masters (umber ground, olive woods, dark water, warm light from the upper left, varnish and craquelure). Two painted roads lead to Goosebridge Castle; your magic runs in ink along a separate network of leylines, from an inkwell in the castle garden out to thirteen tower foundations.
 
 **Play it:** https://brendanjvr-ux.github.io/the-last-ward/
 
-TypeScript, Vite, HTML Canvas for the battlefield and HTML/CSS for the controls. All artwork is drawn procedurally: no image files, no fonts or services from the internet, no accounts or API keys.
+TypeScript, Vite, HTML Canvas for the battlefield and HTML/CSS for the controls. All artwork and sound are made procedurally: no image or audio files, no fonts or services from the internet, no accounts or API keys.
 
 ## The central rule
 
@@ -55,9 +55,24 @@ Then open http://localhost:5173/. Other commands: `npm test` (rules and balance 
 | Pulse | Click / tap a tower with a wet ink drop or a gold seal | `1`–`9` pulse ready towers in margin order (gilded first) |
 | Pause | **Pause** | `P` or `Space` |
 | Speed | **Speed ×1 / ×2** | |
+| Inspect an enemy | Click / tap it during a wave | |
+| Sound | **Sound on / off** (the hounds' horn) | |
 | Restart | **Restart** (immediate) | |
 | Wave preview | The ▴/▾ on the bookmark folds it (it folds itself during battle) | |
 | Cancel | | `Esc` closes a popover or drops a thread |
+
+## Enemies
+
+Click (or tap) any enemy during a wave to see its health, armour and speed.
+
+| Enemy | Health | Armour | Speed | Notes |
+|---|---|---|---|---|
+| **Fen Levy** | 36 | 2 | 40 | Steady infantry with reed shields marked by a white flood line. March down the Mill Road in tight files, three abreast, spaced so a Bramble hedge bunches the front ranks for the Ember Kiln's splash. |
+| **Barrow Hound** | 24 | 0 | 108 | Black hounds in bronze burial collars, in small packs on the King's Road. A double horn call sounds and a warning appears at the bridge about 3.5 s before they reach it, enough to save an Ember pulse for the crossing. |
+| **Stone-Bearer** | 130 | 0 | 26 | A marked levy (oxblood sash, gilt marker) carrying the Cairn-Born's stolen name-stone. |
+| **Cairn-Born** | 700 | 8 | 24 | A stone giant with an empty chest, following its bearer. When the bearer falls, the giant walks to the stone, kneels there for 7 s blocking everything behind it on that road (both roads if on the shared stretch), then leaves the field and the queue is released. Time a pulse against the bearer to choose where the blockade forms. If the bearer reaches the gate, the giant marches on. Cannot be knocked back. |
+
+Waves: Levy alone (1), Hounds join (2), both together (3), a calmer wave to try your first bind (4), the Cairn-Born and its bearer on a quiet Mill Road (5), the pair on the Mill Road while Hounds threaten the bridge (6). The bookmark gives each wave a title and a line of verse; it does not tell you what is coming, where, or how many.
 
 ## Towers
 
@@ -65,9 +80,9 @@ Then open http://localhost:5173/. Other commands: `npm test` (rules and balance 
 |---|---|---|
 | **Bramble Tower** | Thorns, single target | **Hedge**: a hedge grows across the nearest road; enemies on that lane halt and bunch up. On the shared stretch by the gate it blocks both lanes. |
 | **Ember Kiln** | Lobbed coals, splash | **Firebrand**: the road near the kiln burns for several seconds. Burning ignores armour. The kiln at the Crossroads covers both roads. |
-| **Bell Spire** | Periodic ring around it | **Great Toll**: knocks nearby enemies back along their own road and dazes them. |
+| **Bell Spire** | Periodic ring around it | **Great Toll**: knocks nearby enemies back along their own road and dazes them (not the Cairn-Born). |
+| **Verdigris Font** | Copper spray that strips 2 armour per hit (up to 6, wears off after 4 s) | **Tarnish**: a green mist removes all armour from enemies nearby and makes them take 30% more damage for 6 s. |
 
-Enemies: goblins (steady), wolves (fast, in packs, announced by a howl at their entrance), armoured rams (slow, tough, armour blunts every hit except fire and the toll).
 
 ## Tuning
 
@@ -82,7 +97,10 @@ Every number lives in [`src/balance.ts`](src/balance.ts): castle health and its 
 | `src/balance.ts` | All tuning values and the six waves. |
 | `src/map.ts` | Map geometry: roads, river, the inkwell, the leyline tree and its 13 foundations, snapping. |
 | `src/game.ts` | Game state, the trace / pulse / bind / build rules and the combat simulation (no DOM). |
-| `src/render.ts` | Canvas drawing: parchment, roads, pencilled leylines, ink threads, gold leaf, towers, enemies, effects, the victory plate. |
+| `src/paint.ts` | The painted spread: ground, polder fields, trees, water, roads, buildings, varnish and craquelure (drawn once). |
+| `src/sprites.ts` | Painted towers and enemies. |
+| `src/render.ts` | Live drawing: ink threads, gold leaf, effects, warnings, inspect highlight, the victory plate. |
+| `src/audio.ts` | The synthesized double horn. |
 | `src/main.ts` | Input (the trace gesture, pulses), the margin, HUD, ribbon bookmark, popovers and overlays. |
 | `src/style.css` | Layout and look, including the phone layout. |
 | `tests/` | Acceptance-rule tests, balance tests and the scripted player. |

@@ -5,16 +5,16 @@ describe('balance', () => {
   it('a sensible strategy wins all six waves', () => {
     const { state, hpByWave, leaks } = playBot({
       pulse: true,
-      builds: [{ foundation: 'f_upper', type: 'bramble' }, { foundation: 'f_gate', type: 'bramble' }, { foundation: 'f_bend', type: 'ember' }, { foundation: 'f_ford', type: 'bramble' }, { foundation: 'f_millgate', type: 'bramble' }],
+      builds: [{ foundation: 'f_watch', type: 'bramble' }, { foundation: 'f_bridge', type: 'ember' }, { foundation: 'f_upper', type: 'verdigris' }, { foundation: 'f_gate', type: 'bramble' }, { foundation: 'f_ford', type: 'bramble' }, { foundation: 'f_millgate', type: 'bramble' }],
       bind: { wave: 4, foundation: 'f_junction' },
-      traces: { 1: ['f_mill', 'f_junction'], 2: ['f_mill', 'f_junction'], 3: ['f_junction', 'f_bridge'], 4: ['f_junction', 'f_mill', 'f_bridge'], 5: ['f_junction', 'f_bridge', 'f_bend'], 6: ['f_junction', 'f_bridge', 'f_mill'] },
+      traces: { 1: ['f_mill', 'f_junction'], 2: ['f_mill', 'f_junction'], 3: ['f_junction', 'f_mill'], 4: ['f_mill', 'f_bend', 'f_watch'], 5: ['f_mill', 'f_bend', 'f_upper'], 6: ['f_mill', 'f_bridge', 'f_watch'] },
     });
     console.log('strategy HP by wave', hpByWave.slice(1), state.phase, 'gold', state.gold, 'towers', state.towers.length, JSON.stringify(leaks.slice(1)));
     expect(state.phase).toBe('victory');
   });
 
-  const traces = { 1: ['f_mill', 'f_junction'], 2: ['f_mill', 'f_junction'], 3: ['f_junction', 'f_bridge'], 4: ['f_junction', 'f_mill', 'f_bridge'], 5: ['f_junction', 'f_bridge', 'f_bend'], 6: ['f_junction', 'f_bridge', 'f_mill'] };
-  const builds = [{ foundation: 'f_upper', type: 'bramble' as const }, { foundation: 'f_gate', type: 'bramble' as const }, { foundation: 'f_bend', type: 'ember' as const }, { foundation: 'f_ford', type: 'bramble' as const }, { foundation: 'f_millgate', type: 'bramble' as const }];
+  const traces = { 1: ['f_mill', 'f_junction'], 2: ['f_mill', 'f_junction'], 3: ['f_junction', 'f_mill'], 4: ['f_junction', 'f_mill', 'f_bend'], 5: ['f_junction', 'f_mill', 'f_bend'], 6: ['f_junction', 'f_mill', 'f_bend'] };
+  const builds = [{ foundation: 'f_watch', type: 'bramble' as const }, { foundation: 'f_bridge', type: 'ember' as const }, { foundation: 'f_upper', type: 'verdigris' as const }, { foundation: 'f_gate', type: 'bramble' as const }, { foundation: 'f_ford', type: 'bramble' as const }, { foundation: 'f_millgate', type: 'bramble' as const }];
 
   it('pulses matter: the same builds without pulses lose', () => {
     const r = playBot({ pulse: false, traces, builds });
@@ -28,9 +28,9 @@ describe('balance', () => {
     expect(r.state.phase).toBe('defeat');
   });
 
-  it('a modest strategy (two extra towers, held pulses) still wins', () => {
-    const r = playBot({ pulse: true, traces, builds: builds.slice(0, 2) });
-    console.log('pulses, 2 builds', r.hpByWave.slice(1), r.state.phase);
+  it('a modest strategy (four extra towers, held pulses, no bind) still wins', () => {
+    const r = playBot({ pulse: true, traces, builds: builds.slice(0, 4) });
+    console.log('pulses, 4 builds', r.hpByWave.slice(1), r.state.phase, JSON.stringify(r.leaks.slice(5)));
     expect(r.state.phase).toBe('victory');
   });
 
