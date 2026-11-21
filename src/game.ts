@@ -50,6 +50,9 @@ export interface Enemy {
   fade?: number;
 }
 
+/** A defeated enemy, toppling and fading where it fell (visual only). */
+export interface Fallen { type: EnemyType; x: number; y: number; dir: number; t: number }
+
 /** A fallen name-stone lying on the road. */
 export interface Stone { lane: LaneId; s: number; giantId: number }
 
@@ -100,6 +103,7 @@ export interface GameState {
   spawns: Spawn[];
   warnings: Warning[];
   stones: Stone[];
+  fallen: Fallen[];
   fading: FadingThread[];
   toasts: Toast[];
   waveTime: number;
@@ -119,7 +123,7 @@ export function newGame(): GameState {
     castleHp: BALANCE.castleHp, gold: BALANCE.startGold, leaves: BALANCE.startLeaves,
     towers: [], traces: [], pulsesLeft: 0, pendingGrant: false, castleCd: 0,
     enemies: [], projectiles: [], hedges: [], fires: [], rings: [], flights: [], spawns: [],
-    warnings: [], stones: [], fading: [], toasts: [], waveTime: 0, time: 0, nextId: 1, kills: 0, leaked: 0, leakLog: [], resetBanner: 0,
+    warnings: [], stones: [], fallen: [], fading: [], toasts: [], waveTime: 0, time: 0, nextId: 1, kills: 0, leaked: 0, leakLog: [], resetBanner: 0,
   };
   for (const t of BALANCE.startingTowers) addTower(s, t.foundation, t.type);
   return s;
@@ -430,6 +434,8 @@ export function hurt(s: GameState, e: Enemy, raw: number, ignoreArmour = false) 
   if (e.hp <= 0) {
     s.gold += BALANCE.enemies[e.type].bounty;
     s.kills += 1;
+    const p = enemyPos(e);
+    s.fallen.push({ type: e.type, x: p.x, y: p.y, dir: Math.cos(p.angle) >= -0.1 ? 1 : -1, t: 0 });
     if (e.type === 'bearer') dropStone(s, e);
     if (e.type === 'cairn') s.stones = s.stones.filter((st) => st.giantId !== e.id);
   }
@@ -521,6 +527,8 @@ export function step(s: GameState, dtRaw: number) {
   s.toasts = s.toasts.filter((t) => t.t < 3.5);
   for (const f of s.fading) f.t += dt;
   s.fading = s.fading.filter((f) => f.t < f.dur);
+  for (const f of s.fallen) f.t += dt;
+  s.fallen = s.fallen.filter((f) => f.t < 1.6);
   for (const r of s.rings) r.t += dt;
   s.rings = s.rings.filter((r) => r.t < r.dur);
   for (const t of s.towers) t.flash = Math.max(0, t.flash - dt * 1.5);

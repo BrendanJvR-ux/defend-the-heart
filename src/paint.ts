@@ -320,6 +320,207 @@ function craquelure(ctx: CanvasRenderingContext2D, R: () => number) {
   }
 }
 
+// ── Pastoral details ────────────────────────────────────────────────────────
+
+interface Spot { x: number; y: number; r: number }
+/** Where the windmill stands; its sails turn in the live renderer. */
+export let WINDMILL: Vec = { x: 400, y: 740 };
+
+function clearSpot(p: Vec, r: number, taken: Spot[]): boolean {
+  if (p.x < 30 + r || p.x > MAP_W - 30 - r || p.y < 30 + r || p.y > MAP_H - 30 - r) return false;
+  if (p.x > 1380 && p.y > 330 && p.y < 880) return false; // castle and garden
+  if (Math.abs(p.x - GUTTER_X) < r + 14) return false;
+  if (p.x < 360 + r && p.y > 860 - r) return false; // title cartouche
+  if (Math.hypot(p.x - MILL.x, p.y - MILL.y) < r + 90) return false;
+  if (Math.hypot(p.x - INKWELL.x, p.y - INKWELL.y) < r + 100) return false;
+  if (nearRoad(p, r + 30) || nearLey(p, r + 14) || nearRiver(p, r + 14)) return false;
+  if (FOUNDATION_IDS.some((f) => Math.hypot(NODE[f].x - p.x, NODE[f].y - p.y) < r + 60)) return false;
+  return !taken.some((t) => Math.hypot(t.x - p.x, t.y - p.y) < t.r + r + 8);
+}
+
+function findSpot(R: () => number, r: number, taken: Spot[], near?: Vec, spread = 400): Spot | null {
+  for (let i = 0; i < 600; i++) {
+    const p = near ? { x: near.x + (R() - 0.5) * spread, y: near.y + (R() - 0.5) * spread } : { x: R() * MAP_W, y: R() * MAP_H };
+    if (clearSpot(p, r, taken)) { const sp = { ...p, r }; taken.push(sp); return sp; }
+  }
+  return null;
+}
+
+/** A Dutch post mill: tarred wooden body on a brick base (sails are drawn live). */
+function drawWindmillBody(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  softShadow(ctx, x + 18, y + 8, 60, 16, 0.5);
+  ctx.fillStyle = litGrad(ctx, x - 20, y - 20, x + 20, y + 6, P.brickLight, P.brick, P.brickDark);
+  ctx.beginPath(); ctx.moveTo(x - 20, y + 4); ctx.lineTo(x - 14, y - 26); ctx.lineTo(x + 14, y - 26); ctx.lineTo(x + 20, y + 4); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = litGrad(ctx, x - 18, y - 80, x + 18, y - 26, '#7b5e3c', '#4a3520', '#1e140a');
+  ctx.beginPath(); ctx.moveTo(x - 17, y - 26); ctx.lineTo(x - 15, y - 72); ctx.quadraticCurveTo(x, y - 86, x + 15, y - 72); ctx.lineTo(x + 17, y - 26); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(20,12,4,0.5)'; ctx.lineWidth = 0.8;
+  for (let yy = y - 30; yy > y - 72; yy -= 5) { ctx.beginPath(); ctx.moveTo(x - 16, yy); ctx.lineTo(x + 16, yy); ctx.stroke(); }
+  ctx.fillStyle = P.cream; ctx.fillRect(x - 4, y - 50, 8, 10);
+  ctx.fillStyle = '#20262a'; ctx.fillRect(x - 2.6, y - 48.6, 5.2, 7.2);
+  // tail pole and steps
+  ctx.strokeStyle = '#3a2817'; ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.moveTo(x + 8, y - 30); ctx.lineTo(x + 30, y + 6); ctx.stroke();
+  ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - 4, y - 26); ctx.lineTo(x - 12, y + 6); ctx.moveTo(x + 2, y - 26); ctx.lineTo(x - 6, y + 6); ctx.stroke();
+}
+
+function drawSheep(ctx: CanvasRenderingContext2D, x: number, y: number, dir: number, R: () => number) {
+  softShadow(ctx, x + 2, y + 4, 9, 3, 0.45);
+  ctx.fillStyle = litGrad(ctx, x - 7, y - 6, x + 7, y + 4, '#fbf6ea', '#ddd3bd', '#8f8570');
+  for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(x - 4 + i * 2.6, y - 2 + (i % 2), 3.6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#1e1a16';
+  ctx.beginPath(); ctx.ellipse(x + dir * 7, y - 2.5, 2.4, 1.7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#1e1a16'; ctx.lineWidth = 0.9;
+  ctx.beginPath(); ctx.moveTo(x - 3, y + 1.5); ctx.lineTo(x - 3, y + 4); ctx.moveTo(x + 3, y + 1.5); ctx.lineTo(x + 3, y + 4); ctx.stroke();
+  void R;
+}
+
+function drawCow(ctx: CanvasRenderingContext2D, x: number, y: number, dir: number, piebald: boolean) {
+  softShadow(ctx, x + 3, y + 6, 15, 4, 0.5);
+  ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
+  ctx.strokeStyle = '#1c140c'; ctx.lineWidth = 1.8;
+  ctx.beginPath(); for (const lx of [-8, -4, 5, 9]) { ctx.moveTo(lx, 1); ctx.lineTo(lx, 7); } ctx.stroke();
+  ctx.fillStyle = piebald ? litGrad(ctx, -12, -8, 12, 4, '#f4ede0', '#d8cfbd', '#8a806c') : litGrad(ctx, -12, -8, 12, 4, '#a7683a', '#6e3f1e', '#2e1a0a');
+  ctx.beginPath(); ctx.ellipse(0, -2, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+  if (piebald) { ctx.fillStyle = '#1c1612'; ctx.beginPath(); ctx.ellipse(-4, -3, 4, 3, 0.4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.ellipse(6, 0, 3, 2, -0.3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = piebald ? '#1c1612' : '#4e2c14';
+  ctx.beginPath(); ctx.ellipse(13, -1, 3.6, 2.8, 0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#e8dcc0'; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(12, -4); ctx.lineTo(11, -6.5); ctx.moveTo(14.5, -4); ctx.lineTo(16, -6.5); ctx.stroke();
+  ctx.restore();
+}
+
+function drawHaystack(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  softShadow(ctx, x + r * 0.4, y + 3, r * 1.3, r * 0.4, 0.5);
+  ctx.fillStyle = litGrad(ctx, x - r, y - r * 1.6, x + r, y, '#ead08a', '#c09a4e', '#6e5224');
+  ctx.beginPath(); ctx.moveTo(x - r, y); ctx.quadraticCurveTo(x - r, y - r * 1.7, x, y - r * 1.7); ctx.quadraticCurveTo(x + r, y - r * 1.7, x + r, y); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(90,65,25,0.5)'; ctx.lineWidth = 0.7;
+  for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(x + i * r * 0.3, y); ctx.quadraticCurveTo(x + i * r * 0.2, y - r * 0.9, x, y - r * 1.6); ctx.stroke(); }
+}
+
+function drawFence(ctx: CanvasRenderingContext2D, a: Vec, b: Vec) {
+  const n = Math.max(2, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 12));
+  ctx.strokeStyle = '#3a2817'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(a.x, a.y - 5); ctx.lineTo(b.x, b.y - 5); ctx.moveTo(a.x, a.y - 2); ctx.lineTo(b.x, b.y - 2); ctx.stroke();
+  ctx.lineWidth = 1.8;
+  for (let i = 0; i <= n; i++) {
+    const x = a.x + ((b.x - a.x) * i) / n, y = a.y + ((b.y - a.y) * i) / n;
+    ctx.beginPath(); ctx.moveTo(x, y + 1); ctx.lineTo(x, y - 8); ctx.stroke();
+  }
+}
+
+function drawFarmhouse(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  softShadow(ctx, x + 12, y + 4, 40, 10, 0.5);
+  ctx.fillStyle = litGrad(ctx, x - 22, y - 22, x + 22, y, P.brickLight, P.brick, P.brickDark);
+  ctx.fillRect(x - 22, y - 18, 44, 18);
+  // thatch
+  ctx.fillStyle = litGrad(ctx, x - 28, y - 44, x + 28, y - 16, '#c7a35e', '#8a6a34', '#4a3416');
+  ctx.beginPath(); ctx.moveTo(x - 28, y - 16); ctx.lineTo(x - 10, y - 42); ctx.lineTo(x + 10, y - 42); ctx.lineTo(x + 28, y - 16); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(60,40,15,0.4)'; ctx.lineWidth = 0.6;
+  for (let i = -24; i <= 24; i += 4) { ctx.beginPath(); ctx.moveTo(x + i, y - 17); ctx.lineTo(x + i * 0.4, y - 41); ctx.stroke(); }
+  ctx.fillStyle = '#1c140c'; ctx.fillRect(x - 4, y - 12, 8, 12);
+  ctx.fillStyle = P.cream; ctx.fillRect(x - 17, y - 13, 7, 7); ctx.fillRect(x + 10, y - 13, 7, 7);
+  ctx.fillStyle = '#20262a'; ctx.fillRect(x - 16, y - 12, 5, 5); ctx.fillRect(x + 11, y - 12, 5, 5);
+  // chimney with a wisp
+  ctx.fillStyle = P.brickDark; ctx.fillRect(x + 8, y - 48, 5, 12);
+  ctx.fillStyle = 'rgba(200,190,170,0.3)'; ctx.beginPath(); ctx.ellipse(x + 14, y - 56, 6, 3, -0.4, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawSignpost(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  softShadow(ctx, x + 6, y + 2, 12, 3, 0.4);
+  ctx.strokeStyle = '#3a2817'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 30); ctx.stroke();
+  for (const [dy, d] of [[-27, -1], [-19, 1]] as const) {
+    ctx.fillStyle = litGrad(ctx, x - 14, y + dy - 3, x + 14, y + dy + 3, '#d8bf8a', '#9c7a48', '#5a4020');
+    ctx.beginPath(); ctx.moveTo(x, y + dy - 3); ctx.lineTo(x + d * 14, y + dy - 3); ctx.lineTo(x + d * 18, y + dy); ctx.lineTo(x + d * 14, y + dy + 3); ctx.lineTo(x, y + dy + 3); ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawMilestone(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  softShadow(ctx, x + 2, y + 2, 6, 2, 0.4);
+  ctx.fillStyle = litGrad(ctx, x - 4, y - 10, x + 4, y, P.stoneLight, P.stone, P.stoneDark);
+  ctx.beginPath(); ctx.moveTo(x - 4, y); ctx.lineTo(x - 4, y - 7); ctx.arc(x, y - 7, 4, Math.PI, 0); ctx.lineTo(x + 4, y); ctx.closePath(); ctx.fill();
+}
+
+function pondDetails(ctx: CanvasRenderingContext2D, R: () => number) {
+  // lily pads
+  for (let i = 0; i < 9; i++) {
+    const a = R() * Math.PI * 2, d = 0.55 + R() * 0.3;
+    const x = POND.x + Math.cos(a) * 80 * d, y = POND.y + Math.sin(a) * 48 * d;
+    ctx.fillStyle = litGrad(ctx, x - 5, y - 3, x + 5, y + 3, '#8fa45a', '#5a7034', '#2e3c1a');
+    ctx.beginPath(); ctx.ellipse(x, y, 5, 3, R(), 0.3, Math.PI * 2); ctx.lineTo(x, y); ctx.fill();
+    if (R() < 0.35) { ctx.fillStyle = '#f2e9e0'; ctx.beginPath(); ctx.arc(x + 1, y - 1, 1.6, 0, Math.PI * 2); ctx.fill(); }
+  }
+  // a moored rowing boat
+  const bx = POND.x + 58, by = POND.y + 26;
+  softShadow(ctx, bx + 3, by + 3, 16, 4, 0.4);
+  ctx.fillStyle = litGrad(ctx, bx - 14, by - 4, bx + 14, by + 4, '#8c6a3c', '#5a3e1f', '#2a1b0c');
+  ctx.beginPath(); ctx.moveTo(bx - 15, by); ctx.quadraticCurveTo(bx, by - 7, bx + 15, by - 1); ctx.quadraticCurveTo(bx, by + 6, bx - 15, by); ctx.fill();
+  ctx.strokeStyle = 'rgba(230,210,170,0.6)'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(bx - 4, by - 3); ctx.lineTo(bx - 4, by + 2); ctx.moveTo(bx + 4, by - 3); ctx.lineTo(bx + 4, by + 2); ctx.stroke();
+  // reflection of the bridge in the river
+  ctx.fillStyle = 'rgba(20,25,22,0.35)';
+  ctx.beginPath(); ctx.ellipse(BRIDGE.x + 6, BRIDGE.y + 34, 40, 10, 0.9, 0, Math.PI * 2); ctx.fill();
+}
+
+/** Wildflowers and grass tufts dabbed into the meadows. */
+function meadowDabs(ctx: CanvasRenderingContext2D, R: () => number) {
+  const cols = ['rgba(240,230,200,0.7)', 'rgba(230,190,70,0.7)', 'rgba(170,60,50,0.6)', 'rgba(200,190,230,0.5)'];
+  for (let i = 0; i < 900; i++) {
+    const p = { x: R() * MAP_W, y: R() * MAP_H };
+    if (nearRoad(p, 26) || nearRiver(p, 10)) continue;
+    if (R() < 0.6) {
+      ctx.strokeStyle = 'rgba(70,85,35,0.55)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 2, p.y - 5); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 2, p.y - 5); ctx.stroke();
+    } else {
+      ctx.fillStyle = cols[Math.floor(R() * cols.length)];
+      ctx.beginPath(); ctx.arc(p.x, p.y, 1.2 + R(), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+function pastoral(ctx: CanvasRenderingContext2D, R: () => number, taken: Spot[]) {
+  const wm = findSpot(R, 44, taken, { x: 400, y: 730 }, 260) ?? findSpot(R, 44, taken);
+  if (wm) WINDMILL = { x: wm.x, y: wm.y };
+  const farm = findSpot(R, 40, taken, { x: 1150, y: 930 }, 300) ?? findSpot(R, 40, taken);
+  const stacks: Spot[] = [];
+  if (farm) for (let i = 0; i < 3; i++) { const h = findSpot(R, 11, taken, farm, 130); if (h) stacks.push(h); }
+  const flock = findSpot(R, 46, taken, { x: 190, y: 640 }, 300) ?? findSpot(R, 46, taken);
+  const herd = findSpot(R, 40, taken, { x: 1020, y: 160 }, 320) ?? findSpot(R, 40, taken);
+  const fences: [Vec, Vec][] = [];
+  for (let i = 0; i < 7; i++) {
+    const sp = findSpot(R, 34, taken);
+    if (!sp) continue;
+    const a = (R() - 0.5) * 0.5;
+    fences.push([{ x: sp.x - Math.cos(a) * 34, y: sp.y - Math.sin(a) * 34 }, { x: sp.x + Math.cos(a) * 34, y: sp.y + Math.sin(a) * 34 }]);
+  }
+  for (const [a, b] of fences) drawFence(ctx, a, b);
+  if (flock) for (let i = 0; i < 8; i++) drawSheep(ctx, flock.x + (R() - 0.5) * 70, flock.y + (R() - 0.5) * 50, R() < 0.5 ? -1 : 1, R);
+  if (herd) for (let i = 0; i < 4; i++) drawCow(ctx, herd.x + (R() - 0.5) * 60, herd.y + (R() - 0.5) * 40, R() < 0.5 ? -1 : 1, i % 2 === 0);
+  for (const h of stacks) drawHaystack(ctx, h.x, h.y, 10);
+  if (farm) drawFarmhouse(ctx, farm.x, farm.y);
+  if (wm) drawWindmillBody(ctx, wm.x, wm.y);
+  // milestones along both roads
+  for (const id of LANE_IDS) {
+    const L = LANES[id];
+    for (let sAt = 160; sAt < L.junctionS - 60; sAt += 330) {
+      const p = pointAt(L, sAt);
+      const m = { x: p.x - Math.sin(p.angle) * 27, y: p.y + Math.cos(p.angle) * 27 };
+      if (!nearLey(m, 14) && !FOUNDATION_IDS.some((f) => Math.hypot(NODE[f].x - m.x, NODE[f].y - m.y) < 50)) drawMilestone(ctx, m.x, m.y);
+    }
+  }
+  drawSignpost(ctx, 1236, 452);
+}
+
+/** The thickness of the page block and the curl into the gutter. */
+function pageEdges(ctx: CanvasRenderingContext2D) {
+  for (let i = 0; i < 6; i++) {
+    ctx.strokeStyle = i % 2 ? 'rgba(240,228,196,0.35)' : 'rgba(60,40,15,0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(1.5 + i * 1.6, 1.5 + i * 1.6, MAP_W - 3 - i * 3.2, MAP_H - 3 - i * 3.2);
+  }
+  for (let i = 0; i < 4; i++) {
+    ctx.strokeStyle = `rgba(255,240,200,${0.08 - i * 0.015})`; ctx.lineWidth = 1;
+    for (const sgn of [-1, 1]) { ctx.beginPath(); ctx.moveTo(GUTTER_X + sgn * (8 + i * 6), 0); ctx.lineTo(GUTTER_X + sgn * (8 + i * 6), MAP_H); ctx.stroke(); }
+  }
+}
+
 export function buildStatic(scale = 2): HTMLCanvasElement {
   const cv = document.createElement('canvas');
   cv.width = MAP_W * scale; cv.height = MAP_H * scale;
@@ -374,6 +575,13 @@ export function buildStatic(scale = 2): HTMLCanvasElement {
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (R() - 0.5) * 4, y - 10 - R() * 8); ctx.stroke();
   }
 
+  meadowDabs(ctx, R);
+  // Pastoral details claim their ground first; trees grow around them.
+  const taken: Spot[] = [];
+  const pastoralLayer = document.createElement('canvas');
+  pastoralLayer.width = cv.width; pastoralLayer.height = cv.height;
+  const pctx = pastoralLayer.getContext('2d')!; pctx.scale(scale, scale);
+  pastoral(pctx, R, taken);
   // Trees (kept off roads, leylines, foundations, water and buildings)
   const trees: { x: number; y: number; r: number; k: number }[] = [];
   for (let i = 0; i < 1400 && trees.length < 175; i++) {
@@ -386,6 +594,7 @@ export function buildStatic(scale = 2): HTMLCanvasElement {
     if (nearRoad(p, 52) || nearLey(p, 30) || nearRiver(p, 34)) continue;
     if (FOUNDATION_IDS.some((f) => Math.hypot(NODE[f].x - p.x, NODE[f].y - p.y) < 64)) continue;
     if (trees.some((t) => Math.hypot(t.x - p.x, t.y - p.y) < 26)) continue;
+    if (taken.some((t) => Math.hypot(t.x - p.x, t.y - p.y) < t.r + 16)) continue;
     trees.push({ ...p, r: 11 + R() * 9, k: R() });
   }
   trees.sort((a, b) => a.y - b.y);
@@ -393,6 +602,8 @@ export function buildStatic(scale = 2): HTMLCanvasElement {
   drawRoad(ctx, R, LANES.mill.pts, 'dirt');
   drawRoad(ctx, R, LANES.king.pts, 'cobble');
   drawBridge(ctx);
+  pondDetails(ctx, R);
+  ctx.drawImage(pastoralLayer, 0, 0, MAP_W, MAP_H);
   for (const t of trees) drawTree(ctx, R, t.x, t.y, t.r, t.k);
   drawMill(ctx);
   drawCastle(ctx);
@@ -426,6 +637,7 @@ export function buildStatic(scale = 2): HTMLCanvasElement {
   ctx.fillText('The Siege of Goosebridge', 56, 918);
   ctx.font = `italic 14px ${SERIF}`; ctx.fillStyle = '#e8dcbc';
   ctx.fillText('in oils, after the masters of the Low Countries', 58, 942);
+  pageEdges(ctx);
   // page border
   ctx.strokeStyle = 'rgba(196,154,58,0.6)'; ctx.lineWidth = 1.5; ctx.strokeRect(14, 14, MAP_W - 28, MAP_H - 28);
   void softShadow;

@@ -1,8 +1,8 @@
 // Live drawing on top of the painted spread.
 import { BALANCE, phaseRule } from './balance';
-import { MAP_W, MAP_H, LANES, POND, BRIDGE, INKWELL, NODE, FOUNDATION_IDS, routePolyline, pointAt, type Vec } from './map';
+import { MAP_W, MAP_H, LANES, POND, BRIDGE, INKWELL, NODE, FOUNDATION_IDS, RIVER, GUTTER_X, routePolyline, pointAt, type Vec } from './map';
 import { type GameState, type Tower, enemyPos, posOf, towerAt, flightPoint } from './game';
-import { buildStatic, stroke, roundRect, drawGoose, SERIF } from './paint';
+import { buildStatic, stroke, roundRect, drawGoose, SERIF, WINDMILL } from './paint';
 import { P, drawTowerIcon, drawEnemy, drawNameStone, litGrad, softShadow } from './sprites';
 
 export { towerIconCanvas, enemyIconCanvas } from './sprites';
@@ -192,6 +192,92 @@ function drawFire(ctx: CanvasRenderingContext2D, f: GameState['fires'][number], 
     ctx.quadraticCurveTo(p.x - 6, p.y - 10 - fl * 3, p.x, p.y - 22 - fl * 4);
     ctx.quadraticCurveTo(p.x + 6, p.y - 10, p.x + 7, p.y + 4); ctx.closePath(); ctx.fill();
   }
+  // rising embers and smoke
+  for (let i = 0; i < f.pts.length; i += 3) {
+    const p = f.pts[i];
+    for (let j = 0; j < 2; j++) {
+      const t = (time * 0.8 + i * 0.37 + j * 0.5) % 1;
+      ctx.fillStyle = `rgba(110,100,92,${0.28 * (1 - t)})`;
+      ctx.beginPath(); ctx.arc(p.x + Math.sin(t * 6 + i) * 6, p.y - 24 - t * 40, 4 + t * 9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(255,200,90,${1 - t})`;
+      ctx.beginPath(); ctx.arc(p.x + Math.sin(t * 9 + i * 2) * 10, p.y - 10 - t * 34, 1.3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/** A defeated enemy toppling and fading where it fell; the giant crumbles to a cairn. */
+function drawFallen(ctx: CanvasRenderingContext2D, f: GameState['fallen'][number], time: number) {
+  const k = f.t / 1.6;
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, 1 - k * k);
+  if (f.type === 'cairn') {
+    for (let i = 0; i < 7; i++) {
+      const x = f.x - 24 + i * 8, y = f.y - 4 + ((i * 5) % 7) - Math.max(0, 40 - f.t * 80) * ((i % 3) / 3);
+      ctx.fillStyle = litGrad(ctx, x - 8, y - 6, x + 8, y + 6, '#b6b2a4', '#7c7a70', '#3a3934');
+      ctx.beginPath(); ctx.ellipse(x, y, 8, 6, i, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.dir * Math.min(Math.PI / 2, f.t * 6));
+    drawEnemy(ctx, f.type, 0, 0, f.dir, 0, 0, f.type === 'hound' ? 1.05 : 1.15);
+  }
+  ctx.restore();
+  // a puff of dust
+  const g = ctx.createRadialGradient(f.x, f.y, 1, f.x, f.y, 10 + k * 24);
+  g.addColorStop(0, `rgba(200,180,140,${0.4 * (1 - k)})`); g.addColorStop(1, 'rgba(200,180,140,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, 10 + k * 24, 0, Math.PI * 2); ctx.fill();
+  void time;
+}
+
+/** The windmill's lattice sails, turning slowly. */
+function drawSails(ctx: CanvasRenderingContext2D, time: number) {
+  const hub = { x: WINDMILL.x - 2, y: WINDMILL.y - 66 };
+  ctx.save(); ctx.translate(hub.x, hub.y); ctx.rotate(time * 0.35);
+  for (let i = 0; i < 4; i++) {
+    ctx.save(); ctx.rotate((i * Math.PI) / 2);
+    ctx.strokeStyle = '#2a1c0e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -52); ctx.stroke();
+    ctx.fillStyle = 'rgba(232,220,190,0.75)'; ctx.fillRect(1, -50, 9, 40);
+    ctx.strokeStyle = 'rgba(42,28,14,0.8)'; ctx.lineWidth = 0.7;
+    for (let y = -50; y <= -10; y += 6) { ctx.beginPath(); ctx.moveTo(1, y); ctx.lineTo(10, y); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(5.5, -50); ctx.lineTo(5.5, -10); ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle = '#2a1c0e'; ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+/** Slow cloud shadows drifting over the land, dust in the light, glints on the water. */
+function drawAmbience(ctx: CanvasRenderingContext2D, time: number) {
+  ctx.save();
+  for (let i = 0; i < 3; i++) {
+    const x = ((time * (9 + i * 4) + i * 700) % (MAP_W + 900)) - 450;
+    const y = 220 + i * 280 + Math.sin(time * 0.05 + i) * 60;
+    const g = ctx.createRadialGradient(x, y, 20, x, y, 340);
+    g.addColorStop(0, 'rgba(20,14,6,0.13)'); g.addColorStop(1, 'rgba(20,14,6,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(x, y, 340, 190, 0.2, 0, Math.PI * 2); ctx.fill();
+  }
+  // dust motes in the warm light of each page
+  for (const x0 of [0, GUTTER_X]) {
+    for (let i = 0; i < 14; i++) {
+      const ph = i * 12.9898;
+      const x = x0 + 120 + ((Math.sin(ph) * 43758.5453) % 1 + 1) % 1 * 360 + Math.sin(time * 0.3 + i) * 14;
+      const y = 80 + (((time * (4 + (i % 5)) + i * 37) % 360));
+      const a = 0.25 + 0.25 * Math.sin(time * 1.3 + i);
+      ctx.fillStyle = `rgba(255,236,180,${a})`;
+      ctx.beginPath(); ctx.arc(x, y, 1.1 + (i % 3) * 0.4, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  // glints on the pond and river
+  const glints: Vec[] = [];
+  for (let i = 0; i < 7; i++) glints.push({ x: POND.x - 60 + ((i * 37) % 110), y: POND.y - 30 + ((i * 23) % 56) });
+  for (let i = 1; i < RIVER.length; i++) for (let t = 0.3; t < 1; t += 0.4) glints.push({ x: RIVER[i - 1].x + (RIVER[i].x - RIVER[i - 1].x) * t, y: RIVER[i - 1].y + (RIVER[i].y - RIVER[i - 1].y) * t });
+  glints.forEach((p, i) => {
+    const a = Math.max(0, Math.sin(time * 1.7 + i * 2.3));
+    if (a < 0.6) return;
+    ctx.strokeStyle = `rgba(255,252,235,${(a - 0.6) * 2})`; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(p.x - 4, p.y); ctx.lineTo(p.x + 4, p.y); ctx.moveTo(p.x, p.y - 2.5); ctx.lineTo(p.x, p.y + 2.5); ctx.stroke();
+  });
   ctx.restore();
 }
 
@@ -264,6 +350,14 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
     const k = e.type === 'cairn' ? 1 : e.type === 'hound' ? 1.05 : 1.15;
     sprites.push({
       y: p.y, draw: () => {
+        if (e.type === 'hound') {
+          // barrow-mist clinging to the pack
+          for (let i = 1; i <= 3; i++) {
+            const q = pointAt(LANES[e.lane], e.s - i * 12);
+            ctx.fillStyle = `rgba(190,200,195,${0.16 / i})`;
+            ctx.beginPath(); ctx.ellipse(q.x, q.y - 4, 12 + i * 3, 5 + i, p.angle, 0, Math.PI * 2); ctx.fill();
+          }
+        }
         drawEnemy(ctx, e.type, p.x, p.y, dir, e.bob, e.hit, k, { kneel: e.mode === 'kneel', alpha: e.mode === 'leave' ? e.fade ?? 1 : 1 });
         const top = e.type === 'cairn' ? (e.mode === 'kneel' ? 70 : 84) : e.type === 'bearer' ? 70 : 36;
         if (e.vulnT > 0 || e.shred > 0) {
@@ -288,6 +382,8 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
     });
   }
   for (const h of s.hedges) sprites.push({ y: h.at.y + 1, draw: () => drawHedge(ctx, h, time) });
+  for (const f of s.fallen) sprites.push({ y: f.y - 1, draw: () => drawFallen(ctx, f, time) });
+  sprites.push({ y: WINDMILL.y, draw: () => drawSails(ctx, time) });
   sprites.sort((a, b) => a.y - b.y);
   for (const sp of sprites) sp.draw();
 
@@ -364,6 +460,7 @@ export function render(ctx: CanvasRenderingContext2D, s: GameState, v: ViewState
     ctx.restore();
   }
 
+  drawAmbience(ctx, time);
   drawHoundWarnings(ctx, s, time);
   drawGoose(ctx, POND.x - 30 + Math.sin(time * 0.4) * 10, POND.y - 6, 1, 1);
   drawGoose(ctx, POND.x + 26 + Math.sin(time * 0.3 + 2) * 8, POND.y + 14, 0.9, -1);
@@ -392,6 +489,7 @@ export function renderVictory(ctx: CanvasRenderingContext2D, s: GameState, time:
     const y = 230 + Math.abs(i - 4) * 26 + Math.sin(time * 2 + i) * 6;
     drawGoose(ctx, x, y, 1.4, -1, true);
   }
+  drawSails(ctx, time);
   drawGoose(ctx, POND.x - 30, POND.y - 6, 1.2, 1);
   drawGoose(ctx, POND.x + 26, POND.y + 14, 1.1, -1);
   drawGoose(ctx, 1380, 520, 1.6, -1);

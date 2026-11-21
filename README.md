@@ -1,6 +1,6 @@
 # The Last Ward: Siege of Goosebridge
 
-A single-map fantasy tower defence prototype: an open storybook whose pages are painted in oils, after the Dutch landscape masters (umber ground, olive woods, dark water, warm light from the upper left, varnish and craquelure). Two painted roads lead to Goosebridge Castle; your magic runs in ink along a separate network of leylines, from an inkwell in the castle garden out to thirteen tower foundations.
+A single-map fantasy tower defence prototype: an open storybook whose pages are painted in oils, after the Dutch landscape masters (umber ground, olive woods, dark water, warm light from the upper left, varnish and craquelure), with a turning windmill, grazing sheep and cows, haystacks, a farmhouse, drifting cloud shadows, dust in the light and glints on the water. Two painted roads lead to Goosebridge Castle; your magic runs in ink along a separate network of leylines, from an inkwell in the castle garden out to thirteen tower foundations.
 
 **Play it:** https://brendanjvr-ux.github.io/the-last-ward/
 

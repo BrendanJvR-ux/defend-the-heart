@@ -119,6 +119,13 @@ function ember(ctx: CanvasRenderingContext2D, time: number) {
     const w = yy > -26 ? 22 + (yy + 26) * 0.05 : 10 + (yy + 42) * 0.7;
     ctx.beginPath(); ctx.moveTo(-w, yy); ctx.quadraticCurveTo(0, yy + 2.5, w, yy); ctx.stroke();
   }
+  // iron hoops around the bottle
+  for (const [yy, w] of [[-22, 23], [-34, 17]] as const) {
+    ctx.strokeStyle = '#2a2622'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-w, yy); ctx.quadraticCurveTo(0, yy + 4, w, yy); ctx.stroke();
+    ctx.strokeStyle = 'rgba(200,190,170,0.4)'; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(-w + 2, yy - 0.8); ctx.quadraticCurveTo(-w * 0.4, yy + 1.5, 0, yy + 1.2); ctx.stroke();
+  }
   // rim
   ctx.fillStyle = P.brickDark; ctx.beginPath(); ctx.ellipse(0, -62, 7, 2.4, 0, 0, Math.PI * 2); ctx.fill();
   // glowing mouth
@@ -153,10 +160,18 @@ function bell(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = litGrad(ctx, -13, -60, 13, -60, P.slateLight, P.slate, '#1e2024');
   ctx.beginPath(); ctx.moveTo(-13, -54); ctx.lineTo(-6, -66); ctx.lineTo(0, -92); ctx.lineTo(6, -66); ctx.lineTo(13, -54); ctx.closePath(); ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
+  ctx.strokeStyle = 'rgba(150,160,170,0.35)'; ctx.lineWidth = 0.7;
+  for (let yy = -58; yy > -88; yy -= 4) { const w = 13 * (1 - (-54 - yy) / 38); ctx.beginPath(); ctx.moveTo(-w, yy); ctx.lineTo(w, yy); ctx.stroke(); }
   ctx.strokeStyle = P.gold; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, -92); ctx.lineTo(0, -100); ctx.stroke();
   ctx.fillStyle = P.goldLight; ctx.beginPath(); ctx.moveTo(0, -100); ctx.lineTo(8, -98); ctx.lineTo(0, -96); ctx.fill();
-  // windows
-  ctx.fillStyle = '#1a120a'; ctx.fillRect(-3, -14, 6, 8);
+  // clock face
+  ctx.fillStyle = P.cream; ctx.beginPath(); ctx.arc(0, -12, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = P.gold; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = '#1a120a'; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, -15.5); ctx.moveTo(0, -12); ctx.lineTo(2.4, -11); ctx.stroke();
+  // brick courses
+  ctx.strokeStyle = 'rgba(40,15,8,0.3)'; ctx.lineWidth = 0.6;
+  for (let yy = -4; yy > -52; yy -= 4) { if (yy > -24 && yy < -20) continue; ctx.beginPath(); ctx.moveTo(-11, yy); ctx.lineTo(11, yy); ctx.stroke(); }
+  ctx.fillStyle = '#1a120a'; ctx.fillRect(-2.5, -5, 5, 5);
 }
 
 function verdigris(ctx: CanvasRenderingContext2D, time: number) {
@@ -213,16 +228,31 @@ function levy(ctx: CanvasRenderingContext2D, dir: number, bob: number, bearer: b
   const st = Math.sin(bob * 2) * 2.5;
   ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(-3 - st, 9); ctx.moveTo(2, 2); ctx.lineTo(3 + st, 9); ctx.stroke();
+  // clogs
+  ctx.fillStyle = '#4a3420';
+  ctx.beginPath(); ctx.ellipse(-3 - st + 1, 9.5, 2.4, 1.3, 0, 0, Math.PI * 2); ctx.ellipse(3 + st + 1, 9.5, 2.4, 1.3, 0, 0, Math.PI * 2); ctx.fill();
   // jerkin
   ctx.fillStyle = litGrad(ctx, -7, -12, 7, 4, '#9b8358', '#6b5636', '#3a2d1a');
   ctx.beginPath(); ctx.moveTo(-6, 3); ctx.lineTo(-7, -9); ctx.quadraticCurveTo(0, -14, 7, -9); ctx.lineTo(6, 3); ctx.closePath(); ctx.fill();
+  // folds, belt and buckle
+  ctx.strokeStyle = 'rgba(30,20,8,0.4)'; ctx.lineWidth = 0.7;
+  ctx.beginPath(); ctx.moveTo(-2, -8); ctx.lineTo(-3, 2); ctx.moveTo(2.5, -8); ctx.lineTo(3, 2); ctx.stroke();
+  ctx.fillStyle = '#2a1c0e'; ctx.fillRect(-6.5, -3, 13, 2);
+  ctx.fillStyle = '#c8a24a'; ctx.fillRect(-1, -3.2, 2.2, 2.4);
+  // swinging arm
+  ctx.strokeStyle = '#6b5636'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-5, -8); ctx.lineTo(-6 + st * 0.6, -1); ctx.stroke();
+  ctx.fillStyle = '#c89a76'; ctx.beginPath(); ctx.arc(-6 + st * 0.6, -0.5, 1.3, 0, Math.PI * 2); ctx.fill();
   if (bearer) {
     // oxblood sash marks the bearer
     ctx.strokeStyle = P.oxblood; ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.moveTo(-6, -9); ctx.lineTo(6, 1); ctx.stroke();
   }
   // face and kettle helmet
-  ctx.fillStyle = '#c89a76'; ctx.beginPath(); ctx.arc(0, -15, 3.6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = litGrad(ctx, -3.6, -18, 3.6, -12, '#e2b892', '#c08c66', '#7a5238');
+  ctx.beginPath(); ctx.arc(0, -15, 3.6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2a1c10'; ctx.beginPath(); ctx.arc(1.6, -15.2, 0.6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(120,40,30,0.4)'; ctx.beginPath(); ctx.arc(1.2, -13.6, 0.9, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = litGrad(ctx, -7, -21, 7, -15, '#a7a49a', '#5d5a54', '#2a2826');
   ctx.beginPath(); ctx.ellipse(0, -17, 7.5, 2.2, 0, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(0, -18, 4.4, Math.PI, 0); ctx.fill();
@@ -324,6 +354,19 @@ function cairn(ctx: CanvasRenderingContext2D, dir: number, bob: number, kneel: b
   rg.addColorStop(0, '#000'); rg.addColorStop(0.7, '#141210'); rg.addColorStop(1, 'rgba(40,38,34,0.9)');
   ctx.fillStyle = rg;
   ctx.beginPath(); ctx.moveTo(-8, -26 + lower); ctx.lineTo(-7, -40 + lower); ctx.quadraticCurveTo(0, -45 + lower, 7, -40 + lower); ctx.lineTo(8, -26 + lower); ctx.closePath(); ctx.fill();
+  // cracks and lichen across the body
+  ctx.strokeStyle = 'rgba(25,22,18,0.6)'; ctx.lineWidth = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(-18, -44 + lower); ctx.lineTo(-12, -38 + lower); ctx.lineTo(-14, -30 + lower);
+  ctx.moveTo(14, -22 + lower); ctx.lineTo(18, -30 + lower); ctx.lineTo(15, -40 + lower);
+  ctx.moveTo(-4, -16 + lower); ctx.lineTo(0, -20 + lower); ctx.lineTo(5, -15 + lower);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(190,180,110,0.45)';
+  for (const [lx, ly] of [[-17, -24], [16, -44], [-6, -50]]) { ctx.beginPath(); ctx.arc(lx, ly + lower, 2.4, 0, Math.PI * 2); ctx.fill(); }
+  // a faint ember deep in the hollow, longing for its stone
+  const eg = ctx.createRadialGradient(0, -32 + lower, 0, 0, -32 + lower, 6);
+  eg.addColorStop(0, `rgba(255,150,60,${0.25 + 0.15 * Math.sin(bob * 3)})`); eg.addColorStop(1, 'rgba(255,150,60,0)');
+  ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(0, -32 + lower, 6, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
