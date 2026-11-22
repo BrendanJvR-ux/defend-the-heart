@@ -22,7 +22,7 @@ Also in this project: **The Last Ward: Siege of Goosebridge** (the storybook gam
 
 ## Bosses
 
-Every organ ends with a boss wave: one giant pathogen with its own trick, plus a small escort. While it lives, a **BOSS** banner across the top of the map shows its health; a leaked boss costs 6 to 8 organ health.
+Every organ ends with a boss wave: one giant pathogen with its own trick, plus a small escort. Build an **IgE** node on the boss's vessel to counter it. While it lives, a **BOSS** banner across the top of the map shows its health; a leaked boss costs 6 to 8 organ health.
 
 | Organ | Boss | Trick |
 |---|---|---|
@@ -42,6 +42,7 @@ Every organ ends with a boss wave: one giant pathogen with its own trick, plus a
 | **IgM** | 60 | High damage. No slow, no armour reduction. |
 | **IgG** | 50 | Lower damage, but strips armour (opsonisation), so every other hit lands harder. |
 | **IgA** | 50 | Lower damage, no armour reduction, but slows what it hits. |
+| **IgE** | 80 | **Boss hunter.** Longer reach; always aims at a boss in reach first and hits it for 38 straight through armour (every 1.8 s). Only 5 damage to anything else. |
 
 3. **Dilate vessel.** Click or tap a vessel (or press 1 to 4). Its walls part and the flow animates. Exactly one vessel per wave; choosing another replaces the choice.
 4. **Defend.** Nodes fire on their own. The white cells (two, or three in the brain) travel out from the heart along the dilated vessel only, against the flow, under their nodes' cover.
@@ -54,7 +55,7 @@ Every organ ends with a boss wave: one giant pathogen with its own trick, plus a
 
 | | Mouse / touch | Keyboard |
 |---|---|---|
-| Place a lymph node | Click / tap a **+** site, then IgM / IgG / IgA | **Place by list** in the panel |
+| Place a lymph node | Click / tap a **+** site, then IgM / IgG / IgA / IgE | **Place by list** in the panel |
 | Dilate vessel | Click / tap a vessel, or the vessel buttons | 1–4, in the order the panel lists the vessels |
 | Start wave | **Start wave** | Enter |
 | Immune pulse | **Immune pulse** | Space |
@@ -62,7 +63,7 @@ Every organ ends with a boss wave: one giant pathogen with its own trick, plus a
 
 ### Tuning
 
-Everything is in [`src/anatomy/config.ts`](src/anatomy/config.ts). Shared rules first: energy per wave, node types (cost, damage, rate, reach, armour strip, slow), white cells, the pulse, pathogens (health, speed, armour, organ damage, contact damage, infection). Then `LEVELS`, one entry per organ: health, starting energy, white cell count, starting nodes, its twist (`surge`, `regenPerWave`, `filtration`), its map (organ centre and size, vessel paths, where along each vessel the build sites go) and its waves. [`src/anatomy/level.ts`](src/anatomy/level.ts) builds the vessels and sites for whichever organ is loaded.
+Everything is in [`src/anatomy/config.ts`](src/anatomy/config.ts). Shared rules first: energy per wave, node types (cost, damage, rate, reach, armour strip, slow, boss damage), white cells, the pulse, pathogens (health, speed, armour, organ damage, contact damage, infection). Then `LEVELS`, one entry per organ: health, starting energy, white cell count, starting nodes, its twist (`surge`, `regenPerWave`, `filtration`), its map (organ centre and size, vessel paths, where along each vessel the build sites go) and its waves. [`src/anatomy/level.ts`](src/anatomy/level.ts) builds the vessels and sites for whichever organ is loaded.
 
 ### Balance assumptions
 
