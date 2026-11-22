@@ -4,6 +4,8 @@ A single-map fantasy tower defence prototype: an open storybook whose pages are 
 
 **Play it:** https://brendanjvr-ux.github.io/the-last-ward/
 
+**Art style studies:** https://brendanjvr-ux.github.io/the-last-ward/styles.html (the same battle moment in six alternative art directions, with notes on what each would mean in Unity; source in `src/styles/`)
+
 TypeScript, Vite, HTML Canvas for the battlefield and HTML/CSS for the controls. All artwork and sound are made procedurally: no image or audio files, no fonts or services from the internet, no accounts or API keys.
 
 ## The central rule
