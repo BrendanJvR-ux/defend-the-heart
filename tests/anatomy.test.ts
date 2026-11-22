@@ -5,7 +5,7 @@ import { siteById, dist } from '../src/anatomy/level';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
-  newGame, selectVessel, surging, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
+  newGame, selectVessel, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
   waveSpawns, placeNode, buildCheck, nodeAt, hurt, effectiveArmour, type State, type Pathogen,
 } from '../src/anatomy/sim';
 
@@ -34,7 +34,7 @@ function sensibleBuild(s: State) {
     let placed = false;
     for (const v of order) {
       const types = new Set(waveSpawns(n).filter((x) => x.vessel === v).map((x) => x.type));
-      const want: NodeType = types.has('bacterium') && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
+      const want: NodeType = [...types].some((t) => CONFIG.pathogens[t].armour >= 5) && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
       const site = M.SITES.filter((x) => x.vessel === v && !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
       if (site && placeNode(s, site.id, want)) placed = true;
     }
@@ -305,4 +305,70 @@ describe('Defend the Heart: organ levels', () => {
       expect(lose.s.phase).toBe('defeat');
     });
   }
+});
+
+describe('Defend the Heart: bosses', () => {
+  const lastWave = (i: number) => LEVELS[i].waves[LEVELS[i].waves.length - 1];
+  it('every organ ends with a boss wave holding exactly one boss, different for each organ', () => {
+    const bosses = LEVELS.map((l, i) => {
+      const b = lastWave(i).groups.filter((g) => CONFIG.pathogens[g.type].boss);
+      expect(b.length).toBe(1); expect(b[0].count).toBe(1);
+      for (const w of l.waves.slice(0, -1)) for (const g of w.groups) expect(CONFIG.pathogens[g.type].boss).toBeFalsy();
+      return b[0].type;
+    });
+    expect(new Set(bosses).size).toBe(LEVELS.length);
+  });
+
+  function bossOn(level: number) {
+    const s = newGame(level); s.wave = LEVELS[level].waves.length;
+    const g = lastWave(level).groups.find((x) => CONFIG.pathogens[x.type].boss)!;
+    selectVessel(s, M.VESSEL_IDS.find((v) => v !== g.vessel)!); startWave(s); s.nodes = []; s.cells = [];
+    s.spawns = s.spawns.filter((x) => x.type === g.type);
+    tick(s, 2.5);
+    const b = activeBoss(s)!;
+    expect(b).toBeTruthy();
+    return { s, b };
+  }
+
+  it('heart: the staph colony bursts into bacteria', () => {
+    const { s, b } = bossOn(0);
+    hurt(s, b, 9999);
+    expect(s.pathogens.filter((p) => p.type === 'bacterium' && p.hp > 0).length).toBe(CONFIG.pathogens.colony.splitInto!.count);
+  });
+
+  it('lungs: the mother virus sheds new viruses as it travels', () => {
+    const { s } = bossOn(1);
+    tick(s, 6);
+    expect(s.pathogens.filter((p) => p.type === 'virus').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('brain: meningococcus cannot be slowed by IgA', () => {
+    const { s, b } = bossOn(2);
+    const site = M.SITES.find((x) => x.vessel === b.vessel)!;
+    s.nodes = [{ id: 999, site: site.id, vessel: b.vessel, type: 'iga', cd: 0, flash: 0 }];
+    s.pathogens = [b]; b.s = 0;
+    let best = 0, bd = Infinity;
+    for (let d = 0; d < M.VESSELS[b.vessel].length; d += 4) { b.s = d; const dd = dist(pathogenPos(b), site); if (dd < bd) { bd = dd; best = d; } }
+    b.s = best;
+    const sp = CONFIG.pathogens.meningo.speed; CONFIG.pathogens.meningo.speed = 0;
+    tick(s, 1.5);
+    CONFIG.pathogens.meningo.speed = sp;
+    expect(b.hp).toBeLessThan(b.maxHp);
+    expect(b.slow).toBe(1);
+  });
+
+  it('liver: the hepatitis giant heals over time', () => {
+    const { s, b } = bossOn(3);
+    b.hp = 100; tick(s, 2);
+    expect(b.hp).toBeGreaterThan(100 + CONFIG.pathogens.hepatitis.regen! * 1.8);
+  });
+
+  it('kidney: the sepsis hijacker infects white cells and keeps going', () => {
+    const { s, b } = bossOn(4);
+    s.cells = [0, 1].map((i) => ({ id: 900 + i, vessel: b.vessel, s: b.s + 4 + i * 2, hp: 60, maxHp: 60, hit: 0, side: 0, targetId: null, home: false, infected: false }));
+    tick(s, 0.2);
+    expect(s.cells.every((c) => c.infected)).toBe(true);
+    expect(b.hp).toBeGreaterThan(0);
+    expect(s.pathogens.filter((p) => p.type === 'infected').length).toBe(2);
+  });
 });

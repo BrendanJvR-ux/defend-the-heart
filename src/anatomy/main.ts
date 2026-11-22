@@ -184,7 +184,7 @@ function icon(kind: PathogenType | 'cell', size = 36): string {
     const c = document.createElement('canvas'); const dpr = 2; c.width = size * dpr; c.height = size * dpr;
     const x = c.getContext('2d')!; x.scale(dpr, dpr);
     if (kind === 'cell') drawWhiteCell(x, size / 2, size / 2, 0, 0, size / 60);
-    else drawPathogen(x, kind, size / 2, size / 2, 0, 0, kind === 'bacterium' ? size / 44 : size / 36);
+    else drawPathogen(x, kind, size / 2, size / 2, 0, 0, CONFIG.pathogens[kind].boss ? size / 100 : kind === 'bacterium' ? size / 44 : size / 36);
     icons.set(key, c.toDataURL());
   }
   return `<img class="ico" alt="" width="${size}" height="${size}" src="${icons.get(key)}">`;
@@ -211,8 +211,8 @@ function previewHtml(): string {
     if (!groups.length) return '';
     const rows = groups.map((g) => {
       const st = CONFIG.pathogens[g.type];
-      const traits = g.type === 'bacterium' ? 'slow, armoured' : g.type === 'virus' ? 'fast, grouped' : 'infects white cells';
-      return `<li>${icon(g.type, 28)}<span><b>${g.count} ${(g.count > 1 ? st.plural : st.name).toLowerCase()}</b> <small>${whenLabel(g.start)}, ${traits}</small></span></li>`;
+      const traits = st.boss ? `<b class="bossTag">BOSS</b> ${esc(st.blurb ?? '')}` : g.type === 'bacterium' ? 'slow, armoured' : g.type === 'virus' ? 'fast, grouped' : 'infects white cells';
+      return `<li>${icon(g.type, st.boss ? 40 : 28)}<span><b>${g.count} ${(g.count > 1 ? st.plural : st.name).toLowerCase()}</b> <small>${whenLabel(g.start)}, ${traits}</small></span></li>`;
     }).join('');
     return `<div class="lane ${s.dilated === v ? 'on' : ''}"><h4>${vesselName(v)}</h4><ul>${rows}</ul></div>`;
   }).join('');

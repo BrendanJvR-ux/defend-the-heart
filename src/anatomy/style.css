@@ -106,3 +106,4 @@ details summary { cursor: pointer; font-size: 13px; color: var(--soft); margin-t
 .levels button small { font-weight: 400; font-size: 10.5px; color: var(--soft); }
 .levels button.on { background: var(--red); color: #fff4ee; border-color: var(--red-dark); }
 .levels button.on small { color: #ffe0d8; }
+.bossTag { color: #fff4ee; background: var(--red-dark); border-radius: 4px; padding: 0 5px; font-size: 11px; letter-spacing: 0.06em; }

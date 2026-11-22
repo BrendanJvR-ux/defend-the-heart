@@ -5,7 +5,9 @@
 
 /** Vessel ids are per level ('left', 'portal', 'lowerLeft' …). */
 export type VesselId = string;
-export type PathogenType = 'bacterium' | 'virus' | 'hijacker' | 'infected';
+export type PathogenType = 'bacterium' | 'virus' | 'hijacker' | 'infected' | BossType;
+/** One boss per organ, met in that organ's last wave. */
+export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis';
 export type NodeType = 'igm' | 'igg' | 'iga';
 
 export interface PathogenStats {
@@ -24,6 +26,20 @@ export interface PathogenStats {
   bounty: number;
   /** Hijacker viruses enter a white cell they touch and turn it into an infected cell. */
   infects?: boolean;
+  // ── Boss traits ──
+  boss?: boolean;
+  /** One line for the panel. */
+  blurb?: string;
+  /** On death, breaks into this many of that pathogen. */
+  splitInto?: { type: PathogenType; count: number; hpFactor?: number };
+  /** Releases one of these every `every` seconds as it travels. */
+  sheds?: { type: PathogenType; every: number };
+  /** Health regained per second. */
+  regen?: number;
+  /** IgA cannot slow it. */
+  slowImmune?: boolean;
+  /** Infects every white cell it touches and keeps going. */
+  infectsMany?: boolean;
 }
 
 export interface NodeStats {
@@ -79,6 +95,16 @@ export const CONFIG = {
     virus: { name: 'Virus', plural: 'Viruses', hp: 14, speed: 74, armour: 1, heartDamage: 1, contactDps: 2, bounty: 2 },
     hijacker: { name: 'Hijacker virus', plural: 'Hijacker viruses', hp: 22, speed: 58, armour: 1, heartDamage: 1, contactDps: 0, bounty: 4, infects: true },
     infected: { name: 'Infected white cell', plural: 'Infected white cells', hp: 55, speed: 46, armour: 2, heartDamage: 3, contactDps: 4, bounty: 6 },
+    colony: { name: 'Staph colony', plural: 'Staph colonies', hp: 380, speed: 15, armour: 7, heartDamage: 6, contactDps: 3, bounty: 60, boss: true,
+      splitInto: { type: 'bacterium', count: 3, hpFactor: 0.5 }, blurb: 'A grape-bunch of bacteria under one thick capsule. Burst it and three weakened bacteria spill out.' },
+    flu: { name: 'Mother virus', plural: 'Mother viruses', hp: 420, speed: 20, armour: 3, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
+      sheds: { type: 'virus', every: 2.4 }, blurb: 'Releases a new virus every few seconds as it travels. Kill it fast.' },
+    meningo: { name: 'Meningococcus', plural: 'Meningococci', hp: 290, speed: 20, armour: 8, heartDamage: 6, contactDps: 7, bounty: 60, boss: true,
+      slowImmune: true, blurb: 'Paired cocci in a heavy capsule. IgA cannot slow it; strip its armour with IgG.' },
+    hepatitis: { name: 'Hepatitis giant', plural: 'Hepatitis giants', hp: 520, speed: 17, armour: 4, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
+      regen: 9, blurb: 'Heals itself as it travels. Damage must outpace its regrowth.' },
+    sepsis: { name: 'Sepsis hijacker', plural: 'Sepsis hijackers', hp: 340, speed: 19, armour: 5, heartDamage: 8, contactDps: 0, bounty: 60, boss: true,
+      infects: true, infectsMany: true, blurb: 'A giant hijacker: it infects every white cell it touches and keeps going.' },
   } as Record<PathogenType, PathogenStats>,
 };
 
@@ -184,6 +210,11 @@ export const LEVELS: LevelDef[] = [
           { type: 'hijacker', vessel: 'upper', count: 3, start: 20, interval: 1.2 },
         ],
       },
+      {
+        title: 'Boss: the staph colony',
+        hint: 'A huge bacterial colony crawls up the left vessel. When it bursts, three bacteria spill out: keep nodes behind it.',
+        groups: [{ type: 'colony', vessel: 'left', count: 1, start: 2, interval: 1 }, { type: 'virus', vessel: 'right', count: 6, start: 10, interval: 0.35 }],
+      },
     ],
   },
   {
@@ -209,6 +240,8 @@ export const LEVELS: LevelDef[] = [
         groups: [g('bacterium', 'left', 4, 1, 3.2), g('bacterium', 'right', 4, 4, 3.2), g('bacterium', 'lower', 3, 10, 3.2), g('virus', 'lower', 6, 20, 0.3)] },
       { title: 'Coughing fit', hint: 'Hijackers ride the surges. Keep your white cells away from them, or kill them first.',
         groups: [g('bacterium', 'lower', 5, 1, 2.6), g('virus', 'right', 8, 2, 0.3), g('hijacker', 'left', 4, 4, 1), g('hijacker', 'right', 3, 16, 1), g('virus', 'left', 6, 20, 0.3)] },
+      { title: 'Boss: the mother virus', hint: 'A mother virus comes up from below, shedding new viruses as it goes. Every breath carries the brood faster.',
+        groups: [g('flu', 'lower', 1, 2, 1), g('bacterium', 'left', 3, 6, 3)] },
     ],
   },
   {
@@ -234,6 +267,8 @@ export const LEVELS: LevelDef[] = [
         groups: [g('bacterium', 'left', 4, 1, 3), g('bacterium', 'lowerRight', 4, 3, 3), g('virus', 'right', 7, 10, 0.3), g('hijacker', 'lowerLeft', 3, 16, 1)] },
       { title: 'Fever', hint: 'Everything at once. The brain cannot take many hits.',
         groups: [g('bacterium', 'lowerLeft', 5, 1, 2.6), g('hijacker', 'left', 2, 3, 1), g('virus', 'lowerRight', 7, 6, 0.3), g('hijacker', 'right', 3, 9, 1), g('virus', 'left', 5, 20, 0.3)] },
+      { title: 'Boss: meningococcus', hint: 'Heavy armour, and IgA cannot slow it. IgG opens the capsule for everything else.',
+        groups: [g('meningo', 'lowerLeft', 1, 2, 1), g('virus', 'right', 6, 10, 0.3)] },
     ],
   },
   {
@@ -259,6 +294,8 @@ export const LEVELS: LevelDef[] = [
         groups: [g('bacterium', 'portal', 8, 1, 2.4), g('bacterium', 'lower', 4, 4, 3), g('virus', 'artery', 8, 12, 0.3)] },
       { title: 'Hepatitis', hint: 'Hijackers from the artery and above while the gut keeps up the pressure.',
         groups: [g('bacterium', 'portal', 8, 1, 2.2), g('hijacker', 'artery', 4, 5, 1), g('virus', 'lower', 8, 8, 0.3), g('hijacker', 'upper', 3, 14, 1)] },
+      { title: 'Boss: the hepatitis giant', hint: 'It regrows as it climbs the portal vein. Stack enough damage along the vein to outpace it.',
+        groups: [g('hepatitis', 'portal', 1, 2, 1), g('virus', 'artery', 6, 10, 0.3)] },
     ],
   },
   {
@@ -285,6 +322,8 @@ export const LEVELS: LevelDef[] = [
         groups: [g('bacterium', 'right', 5, 1, 2.6), g('hijacker', 'upper', 4, 3, 1), g('virus', 'left', 8, 6, 0.3), g('hijacker', 'lower', 4, 10, 1)] },
       { title: 'Sepsis', hint: 'The final wave: every vessel, every kind of pathogen.',
         groups: [g('bacterium', 'left', 4, 1, 3), g('bacterium', 'right', 4, 2, 3), g('virus', 'upper', 8, 6, 0.3), g('hijacker', 'left', 3, 10, 1), g('hijacker', 'right', 3, 14, 1), g('virus', 'lower', 6, 18, 0.3), g('hijacker', 'upper', 3, 22, 1)] },
+      { title: 'Boss: sepsis', hint: 'A giant hijacker infects every white cell it touches. Do not dilate its vessel unless your nodes can kill it first.',
+        groups: [g('sepsis', 'upper', 1, 2, 1), g('bacterium', 'left', 4, 4, 3), g('virus', 'right', 6, 12, 0.3)] },
     ],
   },
 ];

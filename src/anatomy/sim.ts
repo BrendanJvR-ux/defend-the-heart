@@ -10,6 +10,8 @@ export interface Pathogen {
   shred: number; shredT: number;
   /** IgA: speed multiplier and how long it lasts. */
   slow: number; slowT: number;
+  /** Bosses that shed: seconds until the next one. */
+  shedT?: number;
 }
 export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; targetId: number | null; home: boolean; infected: boolean }
 export interface LymphNode { id: number; site: string; vessel: VesselId; type: NodeType; cd: number; flash: number }
@@ -88,6 +90,8 @@ export function organFlow(s: State, p: Pathogen): number {
   if (filtered(s, p)) k *= LEVELS[s.level].filtration!.factor;
   return k;
 }
+/** The boss currently in play, if any. */
+export const activeBoss = (s: State) => s.pathogens.find((p) => p.hp > 0 && CONFIG.pathogens[p.type].boss);
 export const aliveCells = (s: State) => s.cells.filter((c) => c.hp > 0 && !c.infected);
 export const nodeAt = (s: State, site: string) => s.nodes.find((n) => n.site === site);
 
@@ -200,23 +204,38 @@ export function hurt(s: State, p: Pathogen, dmg: number, armoured = false) {
   p.hp -= armoured ? Math.max(1, dmg - effectiveArmour(p)) : dmg;
   p.hit = 0.15;
   if (p.hp <= 0) {
+    const st = CONFIG.pathogens[p.type];
     s.killed++;
-    s.energy += CONFIG.pathogens[p.type].bounty;
+    s.energy += st.bounty;
     const q = pathogenPos(p);
-    s.rings.push({ x: q.x, y: q.y, r: 18, t: 0, dur: 0.35, kind: 'pop' });
+    s.rings.push({ x: q.x, y: q.y, r: st.boss ? 70 : 18, t: 0, dur: st.boss ? 0.9 : 0.35, kind: 'pop' });
+    if (st.boss) s.floaters.push({ x: q.x, y: q.y - 50, text: `${st.name} destroyed!`, t: 0, color: '#1e6a8a' });
+    if (st.splitInto) {
+      // the colony bursts: its bacteria spill out around where it died
+      for (let i = 0; i < st.splitInto.count; i++) {
+        const b = newPathogen(s, st.splitInto.type, p.vessel, Math.max(0, p.s - 10 + i * 8));
+        b.side = (i % 2 ? 1 : -1) * (4 + i * 2);
+        b.hp = b.maxHp = Math.round(b.maxHp * (st.splitInto.hpFactor ?? 1));
+      }
+    }
   }
 }
 
 function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pathogen {
   const st = CONFIG.pathogens[type];
-  const p: Pathogen = { id: s.nextId++, type, vessel, s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: (Math.random() * 2 - 1) * 7, wob: Math.random() * 6, shred: 0, shredT: 0, slow: 1, slowT: 0 };
+  const p: Pathogen = { id: s.nextId++, type, vessel, s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (Math.random() * 2 - 1) * 7, wob: Math.random() * 6, shred: 0, shredT: 0, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
+  if (st.boss) {
+    const m = pointAt(VESSELS[vessel], 90);
+    s.floaters.push({ x: Math.max(160, Math.min(1440, m.x)), y: Math.max(80, m.y - 40), text: `Boss: ${st.name}!`, t: 0, color: '#8a1e24' });
+  }
   return p;
 }
 
-/** A hijacker virus enters a white cell: the cell is lost and rises again as an infected cell heading for the heart. */
+/** A hijacker virus enters a white cell: the cell is lost and rises again as an infected cell heading for the heart.
+ *  An ordinary hijacker is used up; the sepsis boss keeps going. */
 export function infect(s: State, c: WhiteCell, virus: Pathogen) {
-  virus.hp = 0;
+  if (!CONFIG.pathogens[virus.type].infectsMany) virus.hp = 0;
   c.hp = 0;
   c.infected = true;
   s.infections++;
@@ -252,14 +271,22 @@ export function step(s: State, dtRaw: number) {
   s.waveTime += dt;
   while (s.spawns.length && s.spawns[0].at <= s.waveTime) { const sp = s.spawns.shift()!; newPathogen(s, sp.type, sp.vessel); }
 
-  // Pathogens drift with the blood towards the heart (IgA slows them).
+  // Pathogens drift with the blood towards the heart (IgA slows them). Bosses heal or shed as they go.
+  const shed: [PathogenType, VesselId, number][] = [];
   for (const p of s.pathogens) {
     p.hit = Math.max(0, p.hit - dt);
     p.wob += dt * 4;
     if (p.slowT > 0) { p.slowT -= dt; if (p.slowT <= 0) p.slow = 1; }
     if (p.shredT > 0) { p.shredT -= dt; if (p.shredT <= 0) p.shred = 0; }
     p.s += CONFIG.pathogens[p.type].speed * p.slow * organFlow(s, p) * dt;
+    const st = CONFIG.pathogens[p.type];
+    if (st.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + st.regen * dt);
+    if (st.sheds && p.hp > 0 && p.s > 0) {
+      p.shedT = (p.shedT ?? st.sheds.every) - dt;
+      if (p.shedT <= 0) { p.shedT += st.sheds.every; shed.push([st.sheds.type, p.vessel, Math.max(0, p.s - 6)]); }
+    }
   }
+  for (const [type, v, at] of shed) newPathogen(s, type, v, at);
 
   // Lymph nodes: each fires its immunoglobulin at the most advanced pathogen on its own vessel within reach.
   for (const n of s.nodes) {
@@ -284,7 +311,7 @@ export function step(s: State, dtRaw: number) {
       const st = CONFIG.nodes[sh.type];
       hurt(s, p, st.damage, true);
       if (st.shred) { p.shred = Math.min(CONFIG.pathogens[p.type].armour, st.shred); p.shredT = st.shredSeconds ?? 3; }
-      if (st.slow) { p.slow = Math.min(p.slow, st.slow); p.slowT = st.slowSeconds ?? 2; }
+      if (st.slow && !CONFIG.pathogens[p.type].slowImmune) { p.slow = Math.min(p.slow, st.slow); p.slowT = st.slowSeconds ?? 2; }
     }
   }
   s.shots = s.shots.filter((sh) => sh.t < sh.dur);

@@ -8,17 +8,29 @@ Clear an organ to unlock the next. Your progress (and the organ you last played)
 
 | Level | Organ | Vessels | Twist | Health | Waves |
 |---|---|---|---|---|---|
-| 1 | **Heart** | 4 | The tutorial organ: dilation, lymph nodes and the pulse. | 20 | 5 |
-| 2 | **Lungs** | 3 | **Breathing.** Every 6 s the lungs inhale for 1.4 s and everything in the vessels surges forward ×1.5 (the panel counts down to the next breath, the map shows INHALE). | 20 | 4 |
-| 3 | **Brain** | 4 | **Blood–brain barrier.** Only two lymph node sites per vessel and less health, but three white cells. | 18 | 4 |
-| 4 | **Liver** | 4 | **Portal vein.** A long vein from the gut brings columns of bacteria; the liver **regrows 3 health** after every cleared wave. | 24 | 4 |
-| 5 | **Kidney** | 4 | **Filtration.** On the last 28% of every vessel (the striped stretch) pathogens crawl at ×0.6 speed, so nodes near the kidney get more shots. The hardest waves, hijackers throughout. | 20 | 4 |
+| 1 | **Heart** | 4 | The tutorial organ: dilation, lymph nodes and the pulse. | 20 | 5 + boss |
+| 2 | **Lungs** | 3 | **Breathing.** Every 6 s the lungs inhale for 1.4 s and everything in the vessels surges forward ×1.5 (the panel counts down to the next breath, the map shows INHALE). | 20 | 4+ boss |
+| 3 | **Brain** | 4 | **Blood–brain barrier.** Only two lymph node sites per vessel and less health, but three white cells. | 18 | 4+ boss |
+| 4 | **Liver** | 4 | **Portal vein.** A long vein from the gut brings columns of bacteria; the liver **regrows 3 health** after every cleared wave. | 24 | 4+ boss |
+| 5 | **Kidney** | 4 | **Filtration.** On the last 28% of every vessel (the striped stretch) pathogens crawl at ×0.6 speed, so nodes near the kidney get more shots. The hardest waves, hijackers throughout. | 20 | 4+ boss |
 
 **Play it:** https://brendanjvr-ux.github.io/the-last-ward/
 
 Also in this project: **The Last Ward: Siege of Goosebridge** (the storybook game this was converted from) at [/goosebridge.html](https://brendanjvr-ux.github.io/the-last-ward/goosebridge.html), and the **art style studies** at [/styles.html](https://brendanjvr-ux.github.io/the-last-ward/styles.html).
 
 **Run it locally:** `npm install`, then `npm run dev`, and open http://localhost:5173/. Tests: `npm test`.
+
+## Bosses
+
+Every organ ends with a boss wave: one giant pathogen with its own trick, plus a small escort. While it lives, a **BOSS** banner across the top of the map shows its health; a leaked boss costs 6 to 8 organ health.
+
+| Organ | Boss | Trick |
+|---|---|---|
+| Heart | **Staph colony** | A golden grape-bunch under a thick capsule (armour 7). When it bursts, three weakened bacteria spill out. |
+| Lungs | **Mother virus** | Releases a new virus every 2.4 s as it travels, and rides the breathing surges. |
+| Brain | **Meningococcus** | A heavily armoured diplococcus (armour 8) that IgA cannot slow. Bring IgG. |
+| Liver | **Hepatitis giant** | Regrows 9 health per second as it climbs the long portal vein. |
+| Kidney | **Sepsis hijacker** | A giant hijacker that infects **every** white cell it touches and keeps going. |
 
 ## How it plays
 
@@ -54,7 +66,7 @@ Everything is in [`src/anatomy/config.ts`](src/anatomy/config.ts). Shared rules 
 
 ### Balance assumptions
 
-- A scripted sensible player (dilate the busiest vessel, spend energy on nodes matched to each vessel's threat, pulse into clusters of three) wins every organ: heart 9/20, lungs 11/20, brain 4–7/18, liver 9/24, kidney 11/20. Never building loses on every organ. The brain is deliberately the tightest: its few sites reward placing nodes better than the script does.
+- A scripted sensible player (dilate the busiest vessel, spend energy on nodes matched to each vessel's threat, pulse into clusters of three) wins every organ, bosses included: heart 9/20, lungs 10/20, brain 7/18, liver 12/24, kidney 11/20. Each boss dies, but only in the last third of its vessel. Never building loses on every organ. The brain is deliberately the tightest: its few sites reward placing nodes better than the script does.
 - Virus health (14) is set so IgM kills one in a single hit and IgG/IgA need two or three; bacteria (70, armour 5) shrug off much of IgM until IgG opens them.
 - White cells alone (no nodes) leak 6 heart health in wave 1: they help, they do not carry.
 - Hijackers appear in wave 5 on three vessels, so they meet the white cells whichever vessel you dilate; the scripted player lost 2 cells to them.
@@ -66,10 +78,11 @@ Everything is in [`src/anatomy/config.ts`](src/anatomy/config.ts). Shared rules 
 | `src/anatomy/config.ts` | All tuning values, and the five organ levels (maps, twists, waves). |
 | `src/anatomy/level.ts` | The loaded organ's vessels and the build sites beside them (`loadLevel`). Reuses the Goosebridge path maths. |
 | `src/anatomy/sim.ts` | State, rules and simulation (no DOM): placement, dilation, waves, immunoglobulins, white cells, infection, the pulse, recall. |
+| `src/anatomy/bosses.ts` | The five boss pathogens' drawings. |
 | `src/anatomy/organs.ts` | The lungs, brain, liver (with the gut) and kidney as anatomy-plate drawings. |
 | `src/anatomy/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
 | `src/anatomy/main.ts` | HUD, panel, level picker and saved progress, build popover, mouse / touch / keyboard input, overlays. |
-| `tests/anatomy.test.ts` | Tests for every rule (dilation, cells, pulse, placement, the three immunoglobulins, infection), each organ's map and twist, plus balance on every organ. |
+| `tests/anatomy.test.ts` | Tests for every rule (dilation, cells, pulse, placement, the three immunoglobulins, infection), each organ's map and twist, each boss's trick, plus balance on every organ. |
 
 ---
 

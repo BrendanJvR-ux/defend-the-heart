@@ -1,7 +1,8 @@
 // Drawing for Defend the Heart: a stylised anatomy plate, kept calm so the white cells stand out.
-import { CONFIG, type NodeType, type PathogenType, type VesselId } from './config';
+import { CONFIG, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
+import { drawBoss } from './bosses';
 import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, SITES, pointAt, type Vec } from './level';
-import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging } from './sim';
+import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawGut } from './organs';
 
 export interface View {
@@ -207,6 +208,7 @@ function drawSites(ctx: CanvasRenderingContext2D, s: State, view: View, t: numbe
 }
 
 export function drawPathogen(ctx: CanvasRenderingContext2D, type: PathogenType, x: number, y: number, angle: number, hit: number, scale = 1, t = 0) {
+  if (CONFIG.pathogens[type].boss) { drawBoss(ctx, type as BossType, x, y, angle, hit, scale, t); return; }
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   if (type === 'bacterium') {
     ctx.rotate(angle);
@@ -295,7 +297,7 @@ function drawPreview(ctx: CanvasRenderingContext2D, s: State) {
     ctx.fillStyle = '#c8402a'; ctx.font = '900 22px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('IN', bx + 12, by + 32);
     let x = bx + 70;
     for (const [type, n] of counts) {
-      drawPathogen(ctx, type, x, by + 24, 0, 0, type === 'bacterium' ? 1 : 1.2);
+      drawPathogen(ctx, type, x, by + 24, 0, 0, CONFIG.pathogens[type].boss ? 0.42 : type === 'bacterium' ? 1 : 1.2);
       ctx.fillStyle = C.ink; ctx.font = '700 20px Palatino, Georgia, serif'; ctx.fillText(`×${n}`, x + 24, by + 31);
       x += 86;
     }
@@ -335,16 +337,17 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     const q = pathogenPos(p);
     if (eligible.has(p.id) && (view.touch || view.showPulseRadius)) {
       ctx.strokeStyle = 'rgba(74,184,216,0.95)'; ctx.lineWidth = 2.4; ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.arc(q.x, q.y, p.type === 'bacterium' ? 30 : 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.pathogens[p.type].boss ? 62 : p.type === 'bacterium' ? 30 : 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
     if (p.slowT > 0) { ctx.fillStyle = 'rgba(74,184,138,0.35)'; ctx.beginPath(); ctx.arc(q.x, q.y, 22, 0, Math.PI * 2); ctx.fill(); }
-    drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, p.type === 'infected' ? 1.35 : 1.4, t + p.id);
+    drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, CONFIG.pathogens[p.type].boss ? 1.2 : p.type === 'infected' ? 1.35 : 1.4, t + p.id);
     if (p.shredT > 0) {
       // IgG has opened the capsule: blue cracks
       ctx.strokeStyle = NODE_COLORS.igg.base; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(q.x - 10, q.y - 14); ctx.lineTo(q.x - 4, q.y - 8); ctx.lineTo(q.x - 8, q.y - 2); ctx.moveTo(q.x + 10, q.y - 14); ctx.lineTo(q.x + 5, q.y - 7); ctx.stroke();
     }
-    if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, p.type === 'bacterium' || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, '#c8402a');
+    if (CONFIG.pathogens[p.type].boss) bar(ctx, q.x, q.y - 66, 80, p.hp / p.maxHp, '#c8402a');
+    else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, p.type === 'bacterium' || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, '#c8402a');
   }
 
   for (const c of s.cells) {
@@ -387,4 +390,26 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     ctx.globalAlpha = 1;
   }
   drawPreview(ctx, s);
+  drawBossBanner(ctx, s);
+}
+
+/** While a boss is in play: its name and health across the top of the map. */
+function drawBossBanner(ctx: CanvasRenderingContext2D, s: State) {
+  const b = activeBoss(s);
+  if (!b || s.phase !== 'combat') return;
+  const st = CONFIG.pathogens[b.type];
+  const w = 460, x = W / 2 - w / 2, y = 22;
+  ctx.save();
+  ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.strokeStyle = '#8a1e24'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(x, y, w, 64, 12); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#8a1e24'; ctx.font = '900 15px Palatino, Georgia, serif'; ctx.textAlign = 'left';
+  ctx.fillText('BOSS', x + 18, y + 25);
+  ctx.fillStyle = C.ink; ctx.font = '700 22px Palatino, Georgia, serif'; ctx.fillText(st.name, x + 70, y + 26);
+  ctx.textAlign = 'right'; ctx.font = '700 16px Palatino, Georgia, serif'; ctx.fillStyle = 'rgba(42,30,24,0.7)';
+  ctx.fillText(`${Math.ceil(b.hp)} / ${b.maxHp}`, x + w - 18, y + 25);
+  ctx.fillStyle = 'rgba(30,20,20,0.6)'; ctx.fillRect(x + 18, y + 38, w - 36, 12);
+  const gr = ctx.createLinearGradient(0, y + 38, 0, y + 50); gr.addColorStop(0, '#e0564e'); gr.addColorStop(1, '#7a1e24');
+  ctx.fillStyle = gr; ctx.fillRect(x + 18, y + 38, (w - 36) * Math.max(0, b.hp / b.maxHp), 12);
+  if (b.shredT > 0) { ctx.fillStyle = NODE_COLORS.igg.base; ctx.font = '700 13px Palatino, Georgia, serif'; ctx.fillText('armour stripped', x + w - 18, y + 62); }
+  ctx.restore();
 }
