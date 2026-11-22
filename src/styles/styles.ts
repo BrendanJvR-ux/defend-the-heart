@@ -671,4 +671,137 @@ const neon: Style = {
   post(ctx) { vignette(ctx, 'rgba(0,0,0,0)', 'rgba(0,0,0,0.6)'); },
 };
 
-export const STYLES: Style[] = [lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
+// ── 7. Candlelit tabletop: miniatures under dark-fantasy lighting ───────────
+
+interface Light { x: number; y: number; r: number; color: string; strength: number }
+let lights: Light[] = [];
+let emissive: (() => void)[] = [];
+const addLight = (x: number, y: number, r: number, color: string, strength = 1) => lights.push({ x, y, r, color, strength });
+
+const candlelit: Style = {
+  id: 'candlelit',
+  name: 'Candlelit tabletop',
+  blurb: 'The miniatures board at night. Moonlight falls cold across the table, a candle burns at the edge, and every source of magic lights the models around it: lanterns in the towers, fire on the road, the enchanted thread itself.',
+  unity: '3D miniatures with URP lighting: a dim blue moon, one candle, and real point lights on towers, threads, fire and pulses, plus bloom and a little depth of field. Most of the work is in the models and lighting; the mechanics carry over unchanged.',
+  ground(ctx, R) { lights = []; emissive = []; tabletop.ground(ctx, R); },
+  water(ctx, river, pond) { tabletop.water(ctx, river, pond); addLight(pond.x - 30, pond.y - 20, 60, 'rgba(150,180,230,', 0.35); },
+  road: (ctx, pts, kind) => tabletop.road(ctx, pts, kind),
+  bridge: (ctx, at, a) => tabletop.bridge(ctx, at, a),
+  tree: (ctx, x, y, r, k) => tabletop.tree(ctx, x, y, r, k),
+  ley: (ctx, edges, knots) => tabletop.ley(ctx, edges, knots),
+  bound(ctx, path) {
+    tabletop.bound(ctx, path);
+    for (let i = 0; i < path.length; i += 8) addLight(path[i].x, path[i].y, 55, 'rgba(255,190,80,', 0.55);
+    emissive.push(() => glow(ctx, 'rgba(255,190,70,1)', 18, () => { ctx.strokeStyle = 'rgba(255,200,90,0.85)'; ctx.lineWidth = 4; ctx.setLineDash([6, 3]); line(ctx, path); ctx.setLineDash([]); }));
+  },
+  trace(ctx, path) {
+    // the red string is enchanted: it glows violet where it runs
+    tabletop.trace(ctx, path);
+    for (let i = 0; i < path.length; i += 6) addLight(path[i].x, path[i].y, 60, 'rgba(170,110,255,', 0.6);
+    emissive.push(() => {
+      glow(ctx, 'rgba(170,110,255,1)', 22, () => { ctx.strokeStyle = 'rgba(190,140,255,0.9)'; ctx.lineWidth = 4; ctx.lineCap = 'round'; line(ctx, path); });
+      ctx.strokeStyle = 'rgba(255,220,230,0.9)'; ctx.lineWidth = 1.4; line(ctx, path);
+    });
+  },
+  fire(ctx, pts) {
+    tabletop.fire(ctx, pts);
+    pts.forEach((p, i) => { if (i % 3 === 0) addLight(p.x, p.y - 8, 90, 'rgba(255,140,50,', 0.9); });
+    emissive.push(() => pts.forEach((p, i) => { if (i % 2) return; glow(ctx, 'rgba(255,150,40,1)', 16, () => { ctx.fillStyle = 'rgba(255,210,120,0.9)'; ctx.beginPath(); ctx.moveTo(p.x - 5, p.y + 2); ctx.quadraticCurveTo(p.x - 4, p.y - 10, p.x, p.y - 20); ctx.quadraticCurveTo(p.x + 4, p.y - 10, p.x + 5, p.y + 2); ctx.closePath(); ctx.fill(); }); }));
+  },
+  foundation: (ctx, x, y) => tabletop.foundation(ctx, x, y),
+  tower(ctx, type, x, y, mark) {
+    tabletop.tower(ctx, type, x, y, null);
+    const col = type === 'verdigris' ? 'rgba(90,255,200,' : type === 'bramble' ? 'rgba(160,255,120,' : 'rgba(255,170,70,';
+    addLight(x, y - 30, type === 'ember' ? 150 : 110, col, type === 'ember' ? 1 : 0.75);
+    emissive.push(() => {
+      const wy = type === 'ember' ? y - 9 : type === 'bell' ? y - 38 : type === 'verdigris' ? y - 44 : y - 30;
+      glow(ctx, col + '1)', 14, () => { ctx.fillStyle = col + '0.95)'; ctx.beginPath(); ctx.arc(x, wy, type === 'ember' ? 6 : 3.5, 0, Math.PI * 2); ctx.fill(); });
+      if (mark) {
+        const c = mark === 'bound' ? 'rgba(255,200,90,' : 'rgba(190,140,255,';
+        glow(ctx, c + '1)', 14, () => { ctx.fillStyle = c + '1)'; ctx.beginPath(); ctx.arc(x + 20, y - 72, 6, 0, Math.PI * 2); ctx.fill(); });
+      }
+    });
+    if (mark) addLight(x + 20, y - 72, 40, mark === 'bound' ? 'rgba(255,200,90,' : 'rgba(190,140,255,', 0.7);
+  },
+  enemy(ctx, type, x, y, dir) {
+    tabletop.enemy(ctx, type, x, y, dir);
+    const s = type === 'cairn' ? 1 : 1.25;
+    emissive.push(() => {
+      const eye: [number, number, string] = type === 'hound' ? [x + dir * 18 * s, y - 7 * s, '#9cff7a'] : type === 'cairn' ? [x + dir * 3, y - 66, '#ff9a3a'] : [x + dir * 2 * s, y - 15 * s, '#ff6a4a'];
+      glow(ctx, eye[2], 8, () => { ctx.fillStyle = eye[2]; ctx.beginPath(); ctx.arc(eye[0], eye[1], type === 'cairn' ? 2.6 : 1.6, 0, Math.PI * 2); ctx.fill(); });
+      if (type === 'cairn') {
+        const g = ctx.createRadialGradient(x, y - 37, 0, x, y - 37, 7);
+        g.addColorStop(0, 'rgba(255,140,50,0.7)'); g.addColorStop(1, 'rgba(255,140,50,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y - 37, 7, 0, Math.PI * 2); ctx.fill();
+      }
+    });
+    if (type === 'bearer') { addLight(x, y - 30, 50, 'rgba(255,210,110,', 0.8); emissive.push(() => glow(ctx, '#ffd35c', 14, () => { ctx.fillStyle = 'rgba(255,215,120,0.9)'; ctx.beginPath(); ctx.arc(x, y - 30, 3, 0, Math.PI * 2); ctx.fill(); })); }
+  },
+  castle(ctx, at) {
+    tabletop.castle(ctx, at);
+    for (const [wx, wy] of [[at.x - 20, at.y - 60], [at.x + 20, at.y - 20], [at.x - 10, at.y + 40], [at.x + 30, at.y + 80], [at.x - 66, at.y]]) {
+      addLight(wx, wy, 70, 'rgba(255,170,70,', 0.8);
+      emissive.push(() => glow(ctx, '#ffb040', 10, () => { ctx.fillStyle = 'rgba(255,200,110,0.95)'; ctx.fillRect(wx - 3, wy - 5, 6, 9); }));
+    }
+  },
+  mill(ctx, at) { tabletop.mill(ctx, at); addLight(at.x + 16, at.y, 50, 'rgba(255,170,70,', 0.7); emissive.push(() => { ctx.fillStyle = 'rgba(255,200,110,0.95)'; ctx.fillRect(at.x + 12, at.y - 4, 7, 8); }); },
+  inkwell(ctx, at) {
+    tabletop.inkwell(ctx, at);
+    addLight(at.x, at.y, 170, 'rgba(170,110,255,', 0.9);
+    emissive.push(() => glow(ctx, 'rgba(170,110,255,1)', 30, () => { ctx.fillStyle = 'rgba(210,170,255,0.45)'; ctx.beginPath(); ctx.arc(at.x, at.y, 22, 0, Math.PI * 2); ctx.fill(); }));
+  },
+  pulse(ctx, at, trail) {
+    addLight(at.x, at.y, 130, 'rgba(220,180,255,', 1);
+    emissive.push(() => {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = 'rgba(200,150,255,0.7)'; ctx.lineWidth = 7; ctx.lineCap = 'round'; line(ctx, [trail, at]);
+      ctx.globalCompositeOperation = 'source-over';
+      tabletop.pulse(ctx, at, trail);
+      glow(ctx, 'rgba(200,150,255,1)', 26, () => { ctx.fillStyle = 'rgba(255,235,255,0.85)'; ctx.beginPath(); ctx.arc(at.x - 2, at.y - 2, 5, 0, Math.PI * 2); ctx.fill(); });
+    });
+  },
+  post(ctx) {
+    // Light map: cold moonlit ambient + a candle at the table edge + every recorded light.
+    const lm = document.createElement('canvas');
+    lm.width = MAP_W; lm.height = MAP_H;
+    const l = lm.getContext('2d')!;
+    l.fillStyle = 'rgb(46,54,84)'; l.fillRect(0, 0, MAP_W, MAP_H);
+    l.globalCompositeOperation = 'lighter';
+    const pool = (x: number, y: number, r: number, color: string, a: number) => {
+      const g = l.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, color + a + ')'); g.addColorStop(1, color + '0)');
+      l.fillStyle = g; l.beginPath(); l.arc(x, y, r, 0, Math.PI * 2); l.fill();
+    };
+    pool(1300, 60, 900, 'rgba(70,90,140,', 0.55); // moon through a window
+    pool(70, MAP_H - 70, 760, 'rgba(255,160,70,', 0.85); // the candle at the board's edge
+    pool(70, MAP_H - 70, 260, 'rgba(255,190,110,', 0.6);
+    for (const li of lights) pool(li.x, li.y, li.r, li.color, li.strength);
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(lm, 0, 0);
+    ctx.restore();
+    // emissive bits sit on top, unaffected by shadow
+    for (const e of emissive) e();
+    vignette(ctx, 'rgba(0,0,0,0)', 'rgba(0,0,0,0.5)', 420, 1000);
+    // the candle itself, standing on the board's corner
+    const cx = 70, cy = MAP_H - 70;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(cx + 26, cy + 18, 34, 10, 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a2a1a'; ctx.beginPath(); ctx.ellipse(cx, cy + 10, 30, 11, 0, 0, Math.PI * 2); ctx.fill(); // brass dish (in shadow)
+    ctx.fillStyle = '#c8a050'; ctx.beginPath(); ctx.ellipse(cx, cy + 8, 28, 9, 0, 0, Math.PI * 2); ctx.fill();
+    const wax = ctx.createLinearGradient(cx - 12, 0, cx + 12, 0); wax.addColorStop(0, '#fff3d6'); wax.addColorStop(1, '#c8a878');
+    ctx.fillStyle = wax; ctx.fillRect(cx - 12, cy - 46, 24, 54);
+    ctx.beginPath(); ctx.ellipse(cx, cy - 46, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,240,210,0.8)'; ctx.beginPath(); ctx.ellipse(cx - 7, cy - 30, 2, 9, 0, 0, Math.PI * 2); ctx.fill(); // drip
+    ctx.strokeStyle = '#2a1a0a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx, cy - 48); ctx.lineTo(cx, cy - 54); ctx.stroke();
+    const cg = ctx.createRadialGradient(cx, cy - 64, 0, cx, cy - 64, 90);
+    cg.addColorStop(0, 'rgba(255,240,190,0.95)'); cg.addColorStop(0.15, 'rgba(255,190,90,0.55)'); cg.addColorStop(1, 'rgba(255,140,50,0)');
+    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy - 64, 90, 0, Math.PI * 2); ctx.fill(); ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff4cc'; ctx.beginPath(); ctx.moveTo(cx - 4, cy - 54); ctx.quadraticCurveTo(cx - 3, cy - 68, cx, cy - 76); ctx.quadraticCurveTo(cx + 3, cy - 68, cx + 4, cy - 54); ctx.closePath(); ctx.fill();
+    // shallow depth of field and a dark table edge
+    const d = ctx.createLinearGradient(0, 0, 0, MAP_H);
+    d.addColorStop(0, 'rgba(10,12,22,0.45)'); d.addColorStop(0.16, 'rgba(10,12,22,0)'); d.addColorStop(0.86, 'rgba(10,12,22,0)'); d.addColorStop(1, 'rgba(10,12,22,0.35)');
+    ctx.fillStyle = d; ctx.fillRect(0, 0, MAP_W, MAP_H);
+  },
+};
+
+export const STYLES: Style[] = [candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
