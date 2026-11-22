@@ -1,6 +1,7 @@
 // Six art directions for the same siege. Same map, same mechanics, different worlds.
 import type { EnemyType, TowerType } from '../balance';
 import { MAP_W, MAP_H, line, smooth, rng, type Style, type Vec } from './scene';
+import { renaissance } from './renaissance';
 
 // ── Shared silhouettes ──────────────────────────────────────────────────────
 
@@ -681,6 +682,7 @@ const addLight = (x: number, y: number, r: number, color: string, strength = 1) 
 const candlelit: Style = {
   id: 'candlelit',
   name: 'Candlelit tabletop',
+  featured: 'tabletop miniatures + dark-fantasy lighting',
   blurb: 'The miniatures board at night. Moonlight falls cold across the table, a candle burns at the edge, and every source of magic lights the models around it: lanterns in the towers, fire on the road, the enchanted thread itself.',
   unity: '3D miniatures with URP lighting: a dim blue moon, one candle, and real point lights on towers, threads, fire and pulses, plus bloom and a little depth of field. Most of the work is in the models and lighting; the mechanics carry over unchanged.',
   ground(ctx, R) { lights = []; emissive = []; tabletop.ground(ctx, R); },
@@ -804,4 +806,5 @@ const candlelit: Style = {
   },
 };
 
-export const STYLES: Style[] = [candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
+renaissance.featured = 'new: more detail';
+export const STYLES: Style[] = [renaissance, candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];

@@ -6,12 +6,13 @@ const zoom = document.getElementById('zoom')!;
 
 STYLES.forEach((st, i) => {
   const fig = document.createElement('figure');
-  if (i === 0) fig.className = 'featured';
+  if (st.featured) fig.className = 'featured';
   const cv = document.createElement('canvas');
   cv.setAttribute('aria-label', `${st.name} study`);
   fig.appendChild(cv);
   const cap = document.createElement('figcaption');
-  cap.innerHTML = `<h2>${st.name}<small>${i === 0 ? 'new: tabletop miniatures + dark-fantasy lighting' : `${i} of ${STYLES.length - 1}`}</small></h2><p>${st.blurb}</p><p class="unity"><b>In Unity:</b> ${st.unity}</p>`;
+  const plain = STYLES.filter((x) => !x.featured);
+  cap.innerHTML = `<h2>${st.name}<small>${st.featured ?? `${plain.indexOf(st) + 1} of ${plain.length}`}</small></h2><p>${st.blurb}</p><p class="unity"><b>In Unity:</b> ${st.unity}</p>`;
   fig.appendChild(cap);
   grid.appendChild(fig);
   // render each after a frame so the page appears quickly

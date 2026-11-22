@@ -13,6 +13,8 @@ export interface Style {
   name: string;
   blurb: string;
   unity: string;
+  /** Shown full width at the top of the gallery with this label. */
+  featured?: string;
   /** Optional: draw small then upscale with a fixed palette (pixel art). */
   pixel?: { scale: number; palette: string[] };
   ground(ctx: CanvasRenderingContext2D, R: () => number): void;
