@@ -1,6 +1,6 @@
 # Defend the Heart
 
-A fixed top-down 2D anatomy tower defence. The heart is the base. Two blood vessels approach it from opposite sides, each guarded by a lymph node; two white blood cells are your weak mobile defenders.
+A fixed top-down 2D anatomy tower defence. The heart is the base. Four blood vessels approach it from different sides. You place lymph nodes beside the vessels, choose one vessel to dilate for your two white blood cells each wave, and fire one immune pulse per wave.
 
 **Play it:** https://brendanjvr-ux.github.io/the-last-ward/
 
@@ -8,47 +8,55 @@ Also in this project: **The Last Ward: Siege of Goosebridge** (the storybook gam
 
 **Run it locally:** `npm install`, then `npm run dev`, and open http://localhost:5173/. Tests: `npm test`.
 
-## Level one: Defend the Heart
+## How it plays
 
-1. **Prepare.** The panel and the map show the next wave: which pathogens, how many, roughly when, and which vessel each group enters.
-2. **Dilate vessel.** Click or tap a vessel (or press 1 / 2). Its walls part, the lumen widens and the flow animates towards the heart. Exactly one vessel can be dilated; choosing the other replaces the choice. Start the wave once one is chosen.
-3. **Defend.** Both lymph nodes fire antibodies at pathogens on their own vessel, dilated or not. The white cells set out from the heart along the dilated vessel, against the flow, and fight anything on that vessel. They never leave it, never cross tissue, and never chase into the other vessel.
-4. **Immune pulse.** Once per wave, a burst around each living white cell hits pathogens within its radius on that cell's vessel only. Fire it into a cluster; fired too early it hits nothing. Hover or focus the button to see the radius; on touchscreens, pathogens it would hit are outlined.
-5. **Reset.** Surviving cells return to the heart, the vessel contracts to resting width, and you choose again. Heart damage persists until you restart.
+1. **Prepare.** The panel and the map show the next wave: which pathogens, how many, roughly when, and up which vessel.
+2. **Place lymph nodes** (between waves only). Click a **+** site beside a vessel section and pick a type. Each node fires its immunoglobulin at pathogens on its own vessel. Nodes cost energy; you start with 120 energy and two IgM nodes, and earn energy for every kill and every wave cleared.
 
-Pathogens: **bacteria** (larger, slower green rods, tougher) and **viruses** (small, fast, spiked, in short groups). Three waves: bacteria on the left; a few bacteria left and a fast viral cluster right; staggered pressure on both.
+| Node | Cost | Effect |
+|---|---|---|
+| **IgM** | 60 | High damage. No slow, no armour reduction. |
+| **IgG** | 50 | Lower damage, but strips armour (opsonisation), so every other hit lands harder. |
+| **IgA** | 50 | Lower damage, no armour reduction, but slows what it hits. |
+
+3. **Dilate vessel.** Click or tap a vessel (or press 1 to 4). Its walls part and the flow animates. Exactly one vessel per wave; choosing another replaces the choice.
+4. **Defend.** Nodes fire on their own. The two white cells travel out from the heart along the dilated vessel only, against the flow, under their nodes' cover.
+5. **Immune pulse.** Once per wave, a burst around each white cell hits pathogens on that cell's vessel only. Fire it into a cluster.
+6. **Reset.** Cells return home, the vessel contracts, you earn energy and choose again. Heart damage persists until restart.
+
+**Pathogens:** bacteria (slow, tough, armoured capsule), viruses (small, fast, in groups), and **hijacker viruses**: if one reaches a white cell it gets inside, the cell is lost, and it becomes an **infected white cell** heading for the heart. Five waves introduce these one at a time.
 
 ### Controls
 
 | | Mouse / touch | Keyboard |
 |---|---|---|
-| Dilate vessel | Click / tap a vessel, or the **Left vessel** / **Right vessel** buttons | 1 or L, 2 or R |
+| Place a lymph node | Click / tap a **+** site, then IgM / IgG / IgA | **Place by list** in the panel |
+| Dilate vessel | Click / tap a vessel, or the vessel buttons | 1 left, 2 right, 3 lower, 4 upper |
 | Start wave | **Start wave** | Enter |
-| Immune pulse | **Immune pulse** button | Space |
-| Pause | **Pause** | P |
-| Speed, restart | **Speed ×2**, **Restart** | |
+| Immune pulse | **Immune pulse** | Space |
+| Pause, speed, restart | buttons in the top bar | P to pause, Esc closes the build menu |
 
 ### Tuning
 
-Everything that shapes play is in [`src/anatomy/config.ts`](src/anatomy/config.ts): heart health; vessel resting and dilated widths and dilation speed; lymph node damage, rate and reach; white cell starting count (2), health, speed, contact range and damage, how far out they patrol; the immune pulse count, radius and damage; pathogen health, speed, heart damage and contact damage; and the three waves. Map geometry is in [`src/anatomy/level.ts`](src/anatomy/level.ts).
+Everything is in [`src/anatomy/config.ts`](src/anatomy/config.ts): heart health, energy (start, per wave, bounties), node types (cost, damage, rate, reach, armour strip, slow), starting nodes, white cells, the pulse, pathogens (health, speed, armour, heart damage, contact damage, infection), and the five waves. Vessels and build sites are in [`src/anatomy/level.ts`](src/anatomy/level.ts).
 
 ### Balance assumptions
 
-- White cells patrol between 40% and 100% of the dilated vessel, so they fight under their lymph node's cover instead of wandering off alone.
-- Cells are deliberately weak (4 damage per second each): with the lymph nodes switched off, the two cells alone leak 6 heart health in wave 1.
-- A sensible player (dilating the vessel carrying more pathogen health, pulsing at a cluster of three) wins with 16/20 in the scripted test. Dilating the quieter vessel every wave ends with the heart at 2/20 or less.
-- The resting vessel's lymph node holds wave 2's three bacteria on its own without any loss.
+- A scripted sensible player (dilate the busiest vessel, spend energy on nodes matched to each vessel's threat, pulse into clusters of three) wins with 11/20. Never building loses in wave 4.
+- Virus health (14) is set so IgM kills one in a single hit and IgG/IgA need two or three; bacteria (70, armour 5) shrug off much of IgM until IgG opens them.
+- White cells alone (no nodes) leak 6 heart health in wave 1: they help, they do not carry.
+- Hijackers appear in wave 5 on three vessels, so they meet the white cells whichever vessel you dilate; the scripted player lost 2 cells to them.
 
 ### Files
 
 | File | What it is |
 |---|---|
 | `src/anatomy/config.ts` | All tuning values and the waves. |
-| `src/anatomy/level.ts` | The heart, the two vessels and the lymph nodes. Reuses the Goosebridge path maths. |
-| `src/anatomy/sim.ts` | State, rules and simulation (no DOM): dilation, waves, nodes, white cells, the pulse, recall. |
-| `src/anatomy/draw.ts` | Rendering: tissue, vessels with dilation and flow, heartbeat, nodes, cells, pathogens, effects. |
-| `src/anatomy/main.ts` | HUD, panel, mouse / touch / keyboard input, overlays. |
-| `tests/anatomy.test.ts` | One test per verification point, plus balance checks with a scripted player. |
+| `src/anatomy/level.ts` | The heart, four vessels and the build sites beside them. Reuses the Goosebridge path maths. |
+| `src/anatomy/sim.ts` | State, rules and simulation (no DOM): placement, dilation, waves, immunoglobulins, white cells, infection, the pulse, recall. |
+| `src/anatomy/draw.ts` | Rendering: vessels with dilation and flow, heartbeat, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
+| `src/anatomy/main.ts` | HUD, panel, build popover, mouse / touch / keyboard input, overlays. |
+| `tests/anatomy.test.ts` | Tests for every rule (dilation, cells, pulse, placement, the three immunoglobulins, infection) plus balance. |
 
 ---
 

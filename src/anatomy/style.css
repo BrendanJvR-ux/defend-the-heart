@@ -78,3 +78,23 @@ button.pulse { width: 100%; min-height: 58px; font-size: 19px; font-weight: 700;
   .bar { width: 56px; }
   .lanes { grid-template-columns: 1fr; }
 }
+
+/* Build popover and lymph node key */
+.popover { position: absolute; z-index: 5; width: 300px; transform: translate(30px, -50%); background: var(--paper); border: 1.5px solid var(--ink); border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 22px rgba(42, 30, 24, 0.35); font-size: 14px; }
+.popover.flip-x { transform: translate(calc(-100% - 30px), -50%); }
+.popover.flip-y { transform: translate(30px, -90%); }
+.popover.flip-x.flip-y { transform: translate(calc(-100% - 30px), -90%); }
+.popover h3 { margin: 0 24px 4px 0; font-size: 17px; color: var(--red-dark); }
+.popover p { margin: 4px 0; line-height: 1.35; }
+.popover .sub { color: var(--soft); font-size: 13px; }
+.popover .x { position: absolute; top: 4px; right: 4px; min-height: 30px; padding: 0 9px; border: none; box-shadow: none; background: transparent; font-size: 20px; }
+.types { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.types button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 8px; }
+.types button small, .key small { display: block; font-size: 12px; color: var(--soft); line-height: 1.25; }
+.key { list-style: none; margin: 4px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.key li { display: flex; align-items: center; gap: 8px; }
+.choice { grid-template-columns: 1fr 1fr; }
+details summary { cursor: pointer; font-size: 13px; color: var(--soft); margin-top: 4px; }
+.flist { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.flist button { font-size: 13px; min-height: 36px; padding: 4px 8px; }
+@media (max-width: 700px) { .popover { position: fixed; left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; transform: none !important; } }

@@ -1,14 +1,14 @@
 import './style.css';
-import { CONFIG, TOTAL_WAVES, VESSEL_NAMES, type PathogenType, type VesselId } from './config';
-import { W, H, VESSELS, VESSEL_IDS, nearestOnVessel } from './level';
+import { CONFIG, TOTAL_WAVES, VESSEL_NAMES, NODE_TYPES, type NodeType, type PathogenType, type VesselId } from './config';
+import { W, H, VESSELS, VESSEL_IDS, SITES, siteById, nearestOnVessel, dist } from './level';
 import {
   type State, newGame, step, selectVessel, canStartWave, startWave, firePulse, pulseCheck, pulseTargets,
-  aliveCells, wave, whenLabel,
+  aliveCells, wave, whenLabel, buildCheck, placeNode, nodeAt,
 } from './sim';
-import { draw, drawPathogen, drawWhiteCell, vesselWidth, type View } from './draw';
+import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
 
 let s: State = newGame();
-const view: View = { hoverVessel: null, showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
+const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('board');
@@ -16,6 +16,7 @@ const ctx = canvas.getContext('2d')!;
 const panel = $('panel');
 const overlay = $('overlay');
 const toastEl = $('toast');
+const popover = $('popover');
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 let toastT = 0;
@@ -33,7 +34,6 @@ function toMap(e: PointerEvent) {
   const r = canvas.getBoundingClientRect();
   return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
 }
-/** The vessel under a point, with a generous margin for fingers. */
 function vesselAt(p: { x: number; y: number }): VesselId | null {
   let best: VesselId | null = null, bd = Infinity;
   for (const v of VESSEL_IDS) {
@@ -41,6 +41,11 @@ function vesselAt(p: { x: number; y: number }): VesselId | null {
     const reach = vesselWidth(s, v) / 2 + (view.touch ? 40 : 24);
     if (n.d <= reach && n.d < bd) { bd = n.d; best = v; }
   }
+  return best;
+}
+function siteAt(p: { x: number; y: number }): string | null {
+  let best: string | null = null, bd = view.touch ? 52 : 40;
+  for (const site of SITES) { const d = dist(p, site); if (d < bd) { bd = d; best = site.id; } }
   return best;
 }
 
@@ -52,17 +57,59 @@ function choose(v: VesselId) {
   lastSig = '';
 }
 
+// ── Build popover ───────────────────────────────────────────────────────────
+function openSite(id: string) {
+  if (s.phase !== 'prep') { toast('Lymph nodes can only be placed between waves.'); return; }
+  view.selectedSite = id;
+  const site = siteById(id);
+  const node = nodeAt(s, id);
+  popover.style.left = `${(site.x / W) * 100}%`;
+  popover.style.top = `${(site.y / H) * 100}%`;
+  popover.classList.toggle('flip-x', site.x > W * 0.6);
+  popover.classList.toggle('flip-y', site.y > H * 0.55);
+  if (node) {
+    const st = CONFIG.nodes[node.type];
+    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(VESSEL_NAMES[site.vessel].toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${st.damage} damage every ${st.cooldown}s${st.shred ? `, strips ${st.shred} armour for ${st.shredSeconds}s` : ''}${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}.</p>`;
+  } else {
+    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>Place a lymph node</h3><p class="sub">Beside the ${esc(VESSEL_NAMES[site.vessel].toLowerCase())}. You have <b>${s.energy}</b> energy.</p>
+      <div class="types">${NODE_TYPES.map((t) => { const st = CONFIG.nodes[t]; const c = buildCheck(s, id, t); return `<button data-act="build" data-type="${t}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason)}"><img alt="" src="${nodeIcon(t)}" width="44" height="34"><span><b>${esc(st.short)}</b> · ${st.cost} energy<small>${esc(st.blurb)}</small></span></button>`; }).join('')}</div>`;
+  }
+  popover.hidden = false;
+  (popover.querySelector('button:not([disabled]):not(.x)') as HTMLButtonElement | null)?.focus({ preventScroll: true });
+}
+function closeSite() {
+  if (popover.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+  popover.hidden = true; view.selectedSite = null;
+}
+popover.addEventListener('click', (e) => {
+  const el = (e.target as HTMLElement).closest('[data-act]') as HTMLButtonElement | null;
+  if (!el || el.disabled) return;
+  if (el.dataset.act === 'close') closeSite();
+  if (el.dataset.act === 'build' && view.selectedSite) {
+    const type = el.dataset.type as NodeType;
+    if (placeNode(s, view.selectedSite, type)) { toast(`${CONFIG.nodes[type].name} placed.`); closeSite(); lastSig = ''; }
+  }
+});
+
 canvas.addEventListener('pointerdown', (e) => {
   const p = toMap(e);
-  if (s.phase === 'prep') { const v = vesselAt(p); if (v) choose(v); }
-  else if (s.phase === 'combat') { const v = vesselAt(p); if (v && v !== s.dilated) toast('Dilation is locked during a wave.'); }
+  if (s.phase === 'prep') {
+    const site = siteAt(p);
+    if (site) { openSite(site); return; }
+    closeSite();
+    const v = vesselAt(p); if (v) choose(v);
+  } else if (s.phase === 'combat') {
+    const v = vesselAt(p); if (v && v !== s.dilated) toast('Dilation is locked during a wave.');
+    if (siteAt(p)) toast('Lymph nodes can only be placed between waves.');
+  }
 });
 canvas.addEventListener('pointermove', (e) => {
-  const v = s.phase === 'prep' ? vesselAt(toMap(e)) : null;
-  view.hoverVessel = v;
-  canvas.style.cursor = v ? 'pointer' : 'default';
+  const p = toMap(e);
+  view.hoverSite = siteAt(p);
+  view.hoverVessel = s.phase === 'prep' && !view.hoverSite ? vesselAt(p) : null;
+  canvas.style.cursor = s.phase === 'prep' && (view.hoverSite || view.hoverVessel) ? 'pointer' : 'default';
 });
-canvas.addEventListener('pointerleave', () => { view.hoverVessel = null; });
+canvas.addEventListener('pointerleave', () => { view.hoverVessel = null; view.hoverSite = null; });
 
 function pulse() {
   const c = pulseCheck(s);
@@ -72,7 +119,7 @@ function pulse() {
   lastSig = '';
 }
 
-function restart() { const sp = s.speed; s = newGame(); s.speed = sp; lastSig = ''; toast('A fresh start: the heart is at full health.'); }
+function restart() { const sp = s.speed; s = newGame(); s.speed = sp; closeSite(); lastSig = ''; toast('A fresh start: the heart is at full health.'); }
 function togglePause() { if (s.phase === 'combat' || s.phase === 'prep' || s.phase === 'recall') { s.paused = !s.paused; lastSig = ''; } }
 
 panel.addEventListener('click', (e) => {
@@ -80,10 +127,12 @@ panel.addEventListener('click', (e) => {
   if (!el || el.disabled) return;
   const a = el.dataset.act;
   if (a === 'dilate') choose(el.dataset.v as VesselId);
-  if (a === 'start') { if (startWave(s)) lastSig = ''; }
+  if (a === 'site') openSite(el.dataset.site!);
+  if (a === 'start') { if (startWave(s)) { closeSite(); lastSig = ''; } }
   if (a === 'pulse') pulse();
+  if (a === 'restart') restart();
 });
-panel.addEventListener('pointerover', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = true; });
+panel.addEventListener('pointerover', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = true; const site = (e.target as HTMLElement).closest('[data-site]') as HTMLElement | null; view.hoverSite = site?.dataset.site ?? view.hoverSite; });
 panel.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = false; });
 panel.addEventListener('focusin', (e) => { view.showPulseRadius = !!(e.target as HTMLElement).closest('[data-act=pulse]'); });
 panel.addEventListener('focusout', () => { view.showPulseRadius = false; });
@@ -97,9 +146,10 @@ $('btnSpeed').addEventListener('click', () => { s.speed = s.speed === 1 ? 2 : 1;
 $('btnRestart').addEventListener('click', restart);
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
-  if (e.key === '1' || e.key === 'l' || e.key === 'L') choose('left');
-  else if (e.key === '2' || e.key === 'r' || e.key === 'R') choose('right');
-  else if (e.key === 'Enter' && tag !== 'BUTTON' && s.phase === 'prep') { if (startWave(s)) lastSig = ''; }
+  const keyVessel: Record<string, VesselId> = { '1': 'left', '2': 'right', '3': 'lower', '4': 'upper' };
+  if (keyVessel[e.key]) choose(keyVessel[e.key]);
+  else if (e.key === 'Escape') closeSite();
+  else if (e.key === 'Enter' && tag !== 'BUTTON' && s.phase === 'prep') { if (startWave(s)) { closeSite(); lastSig = ''; } }
   else if (e.key === ' ' && tag !== 'BUTTON' && s.phase === 'combat') { e.preventDefault(); pulse(); }
   else if (e.key === 'p' || e.key === 'P') togglePause();
 });
@@ -112,25 +162,37 @@ function icon(kind: PathogenType | 'cell', size = 36): string {
     const c = document.createElement('canvas'); const dpr = 2; c.width = size * dpr; c.height = size * dpr;
     const x = c.getContext('2d')!; x.scale(dpr, dpr);
     if (kind === 'cell') drawWhiteCell(x, size / 2, size / 2, 0, 0, size / 60);
-    else drawPathogen(x, kind, size / 2, size / 2, 0, 0, kind === 'bacterium' ? size / 40 : size / 30);
+    else drawPathogen(x, kind, size / 2, size / 2, 0, 0, kind === 'bacterium' ? size / 44 : size / 36);
     icons.set(key, c.toDataURL());
   }
   return `<img class="ico" alt="" width="${size}" height="${size}" src="${icons.get(key)}">`;
 }
+function nodeIcon(t: NodeType): string {
+  const key = 'node-' + t;
+  if (!icons.has(key)) {
+    const c = document.createElement('canvas'); c.width = 88; c.height = 68;
+    const x = c.getContext('2d')!; x.scale(2, 2); drawNodeIcon(x, t, 22, 18, 0.48);
+    icons.set(key, c.toDataURL());
+  }
+  return icons.get(key)!;
+}
 
 let lastSig = '';
 function signature() {
-  return JSON.stringify([s.phase, s.paused, s.wave, s.dilated, s.pulsesLeft, aliveCells(s).length, s.phase === 'combat' ? pulseTargets(s).length : 0]);
+  return JSON.stringify([s.phase, s.paused, s.wave, s.dilated, s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
 }
 
 function previewHtml(): string {
   const def = wave(s);
   return VESSEL_IDS.map((v) => {
     const groups = def.groups.filter((g) => g.vessel === v).sort((a, b) => a.start - b.start);
-    const rows = groups.length
-      ? groups.map((g) => `<li>${icon(g.type, 28)}<span><b>${g.count} ${g.count > 1 ? CONFIG.pathogens[g.type].plural.toLowerCase() : CONFIG.pathogens[g.type].name.toLowerCase()}</b> <small>${whenLabel(g.start)}${g.type === 'virus' ? ', fast, grouped' : ', slow, tough'}</small></span></li>`).join('')
-      : '<li class="none">Nothing this wave</li>';
-    return `<div class="lane lane-${v} ${s.dilated === v ? 'on' : ''}"><h4>${VESSEL_NAMES[v]}</h4><ul>${rows}</ul></div>`;
+    if (!groups.length) return '';
+    const rows = groups.map((g) => {
+      const st = CONFIG.pathogens[g.type];
+      const traits = g.type === 'bacterium' ? 'slow, armoured' : g.type === 'virus' ? 'fast, grouped' : 'infects white cells';
+      return `<li>${icon(g.type, 28)}<span><b>${g.count} ${(g.count > 1 ? st.plural : st.name).toLowerCase()}</b> <small>${whenLabel(g.start)}, ${traits}</small></span></li>`;
+    }).join('');
+    return `<div class="lane ${s.dilated === v ? 'on' : ''}"><h4>${VESSEL_NAMES[v]}</h4><ul>${rows}</ul></div>`;
   }).join('');
 }
 
@@ -139,15 +201,19 @@ function renderPanel() {
   let h = '';
   if (s.phase === 'prep') {
     const c = canStartWave(s);
+    const empties = SITES.filter((x) => !nodeAt(s, x.id));
     h = `<h2><small>Prepare · wave ${s.wave} of ${TOTAL_WAVES}</small>${esc(def.title)}</h2>
       <p class="hint">${esc(def.hint)}</p>
       ${s.message ? `<p class="notice">${esc(s.message)}</p>` : ''}
       <section class="card"><h3>Incoming threats</h3><div class="lanes">${previewHtml()}</div></section>
       <section class="card"><h3>Dilate vessel</h3>
-        <p class="hint">Choose exactly one. White cells can only travel along the dilated vessel, and the immune pulse only works there. The other vessel relies on its lymph node.</p>
-        <div class="choice">${VESSEL_IDS.map((v) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.dilated === v}" class="${s.dilated === v ? 'on' : ''}">${VESSEL_NAMES[v]}<small>${s.dilated === v ? 'dilated' : 'resting'}</small></button>`).join('')}</div>
-        <p class="hint small">Click or tap a vessel on the map, or press 1 / 2.</p></section>
-      <div class="start"><button data-act="start" class="primary" ${c.ok ? '' : 'disabled'}>Start wave ${s.wave}</button><p class="hint small">${c.ok ? 'Dilation locks once the wave begins.' : esc(c.reason)}</p></div>`;
+        <p class="hint">Choose exactly one. White cells travel only along the dilated vessel, and the immune pulse only works there.</p>
+        <div class="choice">${VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.dilated === v}" class="${s.dilated === v ? 'on' : ''}">${VESSEL_NAMES[v]}<small>${s.dilated === v ? 'dilated' : `resting · key ${i + 1}`}</small></button>`).join('')}</div></section>
+      <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
+        <p class="hint">Click a + site beside a vessel to place a node. Each fires its immunoglobulin at pathogens on its own vessel.</p>
+        <ul class="key">${NODE_TYPES.map((t) => `<li><img alt="" src="${nodeIcon(t)}" width="40" height="31"><span><b>${CONFIG.nodes[t].short}</b> · ${CONFIG.nodes[t].cost}<small>${esc(CONFIG.nodes[t].blurb)}</small></span></li>`).join('')}</ul>
+        <details><summary>Place by list (keyboard)</summary><div class="flist">${empties.map((x) => `<button data-act="site" data-site="${x.id}">${esc(VESSEL_NAMES[x.vessel])} · ${['outer', 'middle', 'inner'][x.index]}</button>`).join('') || '<em>Every site has a node.</em>'}</div></details></section>
+      <div class="start"><button data-act="start" class="primary" ${c.ok ? '' : 'disabled'}>Start wave ${s.wave}</button><p class="hint small">${c.ok ? 'Dilation and building lock once the wave begins.' : esc(c.reason)}</p></div>`;
   } else if (s.phase === 'combat') {
     const cells = aliveCells(s).length;
     const pc = pulseCheck(s);
@@ -155,23 +221,23 @@ function renderPanel() {
     h = `<h2><small>Defend · wave ${s.wave} of ${TOTAL_WAVES}</small>${esc(def.title)}</h2>
       <section class="card"><h3>White cells <span class="count">${cells} of ${CONFIG.whiteCell.startingCount}</span></h3>
         <p class="cells">${Array.from({ length: CONFIG.whiteCell.startingCount }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 30)}</span>`).join('')}</p>
-        <p class="hint">Patrolling the ${esc(VESSEL_NAMES[s.dilated!].toLowerCase())}. They meet pathogens head-on and help its lymph node; they never leave this vessel.</p></section>
+        <p class="hint">Patrolling the ${esc(VESSEL_NAMES[s.dilated!].toLowerCase())}.${s.infections ? ` <b>${s.infections} infected</b> by hijacker viruses: they now head for the heart.` : ' Keep them clear of hijacker viruses.'}</p></section>
       <section class="card"><h3>Immune pulse <span class="count">${s.pulsesLeft} left</span></h3>
         <button data-act="pulse" class="pulse" ${pc.ok ? '' : 'disabled'}>${s.pulsesLeft > 0 ? 'Immune pulse' : 'Pulse used'}</button>
-        <p class="hint">${s.pulsesLeft > 0 ? `A burst around each white cell, hitting pathogens on its vessel only. <b>Right now it would hit ${would}.</b> Best fired into a cluster. Space bar works too.` : 'One pulse per wave. It returns next wave.'}</p></section>`;
+        <p class="hint">${s.pulsesLeft > 0 ? `A burst around each white cell, hitting pathogens on its vessel only. <b>Right now it would hit ${would}.</b> Space bar works too.` : 'One pulse per wave. It returns next wave.'}</p></section>`;
   } else if (s.phase === 'recall') {
-    h = `<h2><small>Wave ${s.wave} cleared</small>Recalling white cells</h2><p class="hint">Survivors return to the heart, then the vessel contracts to its resting width.</p>`;
+    h = `<h2><small>Wave ${s.wave} cleared</small>Recalling white cells</h2><p class="hint">Survivors return to the heart, then the vessel contracts.</p>`;
   } else {
-    h = `<h2><small>${s.phase === 'victory' ? 'Level one complete' : 'The heart has stopped'}</small>${s.phase === 'victory' ? 'The heart is safe' : 'Defeat'}</h2><div class="start"><button data-act="restart" class="primary" onclick="">Restart</button></div>`;
+    h = `<h2><small>${s.phase === 'victory' ? 'Level complete' : 'The heart has stopped'}</small>${s.phase === 'victory' ? 'The heart is safe' : 'Defeat'}</h2><div class="start"><button data-act="restart" class="primary">Restart</button></div>`;
   }
   panel.innerHTML = h;
-  panel.querySelector('[data-act=restart]')?.addEventListener('click', restart);
 }
 
 function renderHud() {
   $('hp').textContent = `${s.heartHp}/${CONFIG.heartHp}`;
   $('hpbar').style.width = `${(s.heartHp / CONFIG.heartHp) * 100}%`;
   $('wave').textContent = `${Math.min(s.wave, TOTAL_WAVES)}/${TOTAL_WAVES}`;
+  $('energy').textContent = String(s.energy);
   $('cells').textContent = s.phase === 'combat' || s.phase === 'recall' ? `${aliveCells(s).length}/${CONFIG.whiteCell.startingCount}` : `${CONFIG.whiteCell.startingCount} ready`;
   $('pulseStat').textContent = s.phase === 'combat' ? (s.pulsesLeft > 0 ? 'Ready' : 'Used') : s.phase === 'prep' ? 'Next wave' : '—';
   $('btnPause').textContent = s.paused ? 'Resume' : 'Pause';
@@ -186,10 +252,10 @@ function renderOverlay() {
   overlaySig = sig;
   if (s.phase === 'victory') {
     overlay.hidden = false; overlay.className = 'victory';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">Level one</p><h2>The heart is safe</h2><p>Heart health ${s.heartHp}/${CONFIG.heartHp} · ${s.killed} pathogens destroyed</p><button data-act="restart" class="primary">Play again</button></div>`;
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Level complete</p><h2>The heart is safe</h2><p>Heart health ${s.heartHp}/${CONFIG.heartHp} · ${s.killed} pathogens destroyed</p><button data-act="restart" class="primary">Play again</button></div>`;
   } else if (s.phase === 'defeat') {
     overlay.hidden = false; overlay.className = 'defeat';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">Wave ${s.wave}</p><h2>The heart has stopped</h2><p>Too many pathogens reached the heart. Try dilating the vessel under more pressure, and save the pulse for a cluster.</p><button data-act="restart" class="primary">Restart</button></div>`;
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Wave ${s.wave}</p><h2>The heart has stopped</h2><p>Too many pathogens reached the heart. Place nodes where your white cells are not, match IgG to armour and IgA to speed, and keep the cells away from hijackers.</p><button data-act="restart" class="primary">Restart</button></div>`;
   } else if (s.paused) {
     overlay.hidden = false; overlay.className = 'paused';
     overlay.innerHTML = `<div class="plate"><h2>Paused</h2><button data-act="resume" class="primary">Resume</button> <button data-act="restart">Restart</button></div>`;
@@ -201,6 +267,7 @@ function refresh(now: number) {
   if (sig !== lastSig) { lastSig = sig; renderPanel(); }
   renderHud();
   renderOverlay();
+  if (s.phase !== 'prep' && !popover.hidden) closeSite();
   const k = canvas.width / W;
   ctx.setTransform(k, 0, 0, k, 0, 0);
   draw(ctx, s, view, now / 1000);
@@ -219,7 +286,6 @@ resize();
 refresh(performance.now());
 requestAnimationFrame(frame);
 
-// Hooks for automated checks (harmless in play).
 Object.assign(window, {
   __heart: () => s,
   __advance: (sec: number) => { for (let t = 0; t < sec && !s.paused; t += 1 / 30) step(s, 1 / 30); refresh(performance.now()); return { phase: s.phase, wave: s.wave, hp: s.heartHp }; },
