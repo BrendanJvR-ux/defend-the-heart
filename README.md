@@ -9,10 +9,10 @@ Clear an organ to unlock the next. Your progress (and the organ you last played)
 | Level | Organ | Vessels | Twist | Health | Waves |
 |---|---|---|---|---|---|
 | 1 | **Heart** | 4 | The tutorial organ: dilation, lymph nodes and the pulse. | 20 | 5 + boss |
-| 2 | **Lungs** | 3 | **Breathing.** Every 6 s the lungs inhale for 1.4 s and everything in the vessels surges forward ×1.5 (the panel counts down to the next breath, the map shows INHALE). | 20 | 4+ boss |
-| 3 | **Brain** | 4 | **Blood–brain barrier.** Only two lymph node sites per vessel and less health, but three white cells. | 18 | 4+ boss |
-| 4 | **Liver** | 4 | **Portal vein.** A long vein from the gut brings columns of bacteria; the liver **regrows 3 health** after every cleared wave. | 24 | 4+ boss |
-| 5 | **Kidney** | 4 | **Filtration.** On the last 28% of every vessel (the striped stretch) pathogens crawl at ×0.6 speed, so nodes near the kidney get more shots. The hardest waves, hijackers throughout. | 20 | 4+ boss |
+| 2 | **Lungs** | 3 | **Breathing.** Every 6 s the lungs inhale for 1.4 s and everything in the vessels surges forward ×1.5 (the panel counts down to the next breath, the map shows INHALE). | 20 | 4 + boss |
+| 3 | **Brain** | 4 | **Blood–brain barrier.** Only two lymph node sites per vessel and less health, but three white cells. | 18 | 4 + boss |
+| 4 | **Liver** | 4 | **Portal vein.** A long vein from the gut brings columns of bacteria; the liver **regrows 3 health** after every cleared wave. | 24 | 4 + boss |
+| 5 | **Kidney** | 4 | **Filtration.** On the last 28% of every vessel (the striped stretch) pathogens crawl at ×0.6 speed, so nodes near the kidney get more shots. The hardest waves, hijackers throughout. | 20 | 4 + boss |
 
 **Play it:** https://brendanjvr-ux.github.io/the-last-ward/
 
