@@ -6,6 +6,7 @@ import { vanGogh } from './vangogh';
 import { anime } from './anime';
 import { mangaMedical } from './mangaMedical';
 import { anim3d } from './anim3d';
+import { anatomy } from './anatomy';
 import { mangaTokyo, mangaAncient } from './mangaJapan';
 
 import { towerPath, enemyPath } from './shapes';
@@ -777,11 +778,12 @@ const candlelit: Style = {
   },
 };
 
-anim3d.featured = 'new';
+anatomy.featured = 'new: the medical setting as an anatomy atlas';
+anim3d.featured = 'animated 3D feature';
 mangaMedical.featured = 'coloured manga, medical';
 mangaTokyo.featured = 'coloured manga, modern Tokyo';
 mangaAncient.featured = 'coloured manga, ancient Japan';
 anime.featured = 'pastoral anime study';
 vanGogh.featured = 'Van Gogh study';
 renaissance.featured = 'Renaissance study';
-export const STYLES: Style[] = [anim3d, mangaMedical, mangaTokyo, mangaAncient, anime, vanGogh, renaissance, candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
+export const STYLES: Style[] = [anatomy, anim3d, mangaMedical, mangaTokyo, mangaAncient, anime, vanGogh, renaissance, candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
