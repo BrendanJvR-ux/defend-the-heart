@@ -1,6 +1,6 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
-import { CONFIG, TOTAL_WAVES, NODE_TYPES, type NodeType, type PathogenType, type VesselId } from './config';
-import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, pointAt, dist, type Vec } from './level';
+import { CONFIG, LEVELS, NODE_TYPES, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
+import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
 
@@ -19,6 +19,8 @@ export interface Floater { x: number; y: number; text: string; t: number; color:
 export interface Spawn { type: PathogenType; vessel: VesselId; at: number }
 
 export interface State {
+  /** Index into LEVELS: which organ is being defended. */
+  level: number;
   phase: Phase;
   paused: boolean;
   speed: number;
@@ -49,20 +51,43 @@ export interface State {
 
 const zeroWidths = () => Object.fromEntries(VESSEL_IDS.map((v) => [v, 0])) as Record<VesselId, number>;
 
-export function newGame(): State {
+/** A fresh game on the given organ (default: the one already loaded). Loads that organ's map. */
+export function newGame(level = LEVEL_INDEX): State {
+  loadLevel(level);
+  const L = LEVELS[level];
   const s: State = {
-    phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: CONFIG.heartHp, energy: CONFIG.startEnergy, dilated: null,
+    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null,
     width: zeroWidths(), nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
-  for (const n of CONFIG.startingNodes) {
+  for (const n of L.startingNodes) {
     const site = SITES.find((x) => x.vessel === n.vessel && x.index === n.site);
     if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0 });
   }
   return s;
 }
 
-export const wave = (s: State) => CONFIG.waves[s.wave - 1];
+export const levelDef = (s: State): LevelDef => LEVELS[s.level];
+export const totalWaves = (s: State) => LEVELS[s.level].waves.length;
+export const wave = (s: State) => LEVELS[s.level].waves[s.wave - 1];
+/** Lungs: true while the lungs are inhaling and the blood surges. */
+export function surging(s: State): boolean {
+  const sg = LEVELS[s.level].surge;
+  if (!sg || s.phase !== 'combat') return false;
+  return s.waveTime % sg.every >= sg.every - sg.length;
+}
+/** Kidney: true when a pathogen is in the filtered last stretch of its vessel. */
+export function filtered(s: State, p: { vessel: VesselId; s: number }): boolean {
+  const f = LEVELS[s.level].filtration;
+  return !!f && p.s >= VESSELS[p.vessel].length * (1 - f.fraction);
+}
+/** Speed multiplier from the organ itself (surges, filtration). */
+export function organFlow(s: State, p: Pathogen): number {
+  let k = 1;
+  if (surging(s)) k *= LEVELS[s.level].surge!.factor;
+  if (filtered(s, p)) k *= LEVELS[s.level].filtration!.factor;
+  return k;
+}
 export const aliveCells = (s: State) => s.cells.filter((c) => c.hp > 0 && !c.infected);
 export const nodeAt = (s: State, site: string) => s.nodes.find((n) => n.site === site);
 
@@ -82,7 +107,7 @@ export function cellPos(c: WhiteCell): Vec & { angle: number } {
 
 /** Choose the one vessel to dilate. Selecting another replaces the choice. Locked during combat. */
 export function selectVessel(s: State, v: VesselId): boolean {
-  if (s.phase !== 'prep') return false;
+  if (s.phase !== 'prep' || !VESSELS[v]) return false;
   s.dilated = v;
   return true;
 }
@@ -107,13 +132,13 @@ export function placeNode(s: State, siteId: string, type: NodeType): boolean {
 
 export function canStartWave(s: State): { ok: boolean; reason: string } {
   if (s.phase !== 'prep') return { ok: false, reason: '' };
-  if (!s.dilated) return { ok: false, reason: 'Dilate one vessel first.' };
+  if (!s.dilated || !VESSELS[s.dilated]) return { ok: false, reason: 'Dilate one vessel first.' };
   return { ok: true, reason: '' };
 }
 
-export function waveSpawns(n: number): Spawn[] {
+export function waveSpawns(n: number, level = LEVEL_INDEX): Spawn[] {
   const out: Spawn[] = [];
-  for (const g of CONFIG.waves[n - 1].groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: g.vessel, at: g.start + i * g.interval });
+  for (const g of LEVELS[level].waves[n - 1].groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: g.vessel, at: g.start + i * g.interval });
   return out.sort((a, b) => a.at - b.at);
 }
 
@@ -122,13 +147,13 @@ export function startWave(s: State): boolean {
   const v = s.dilated!;
   s.phase = 'combat';
   s.waveTime = 0;
-  s.spawns = waveSpawns(s.wave);
+  s.spawns = waveSpawns(s.wave, s.level);
   s.pulsesLeft = CONFIG.immunePulse.perWave;
   s.lastPulseHits = 0;
   for (const n of s.nodes) n.cd = 0.3;
   const L = VESSELS[v].length;
   s.cells = [];
-  for (let i = 0; i < CONFIG.whiteCell.startingCount; i++) {
+  for (let i = 0; i < LEVELS[s.level].cells; i++) {
     s.cells.push({ id: s.nextId++, vessel: v, s: L - 8 - i * 30, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (i % 2 ? 1 : -1) * 11, targetId: null, home: false, infected: false });
   }
   s.message = '';
@@ -233,7 +258,7 @@ export function step(s: State, dtRaw: number) {
     p.wob += dt * 4;
     if (p.slowT > 0) { p.slowT -= dt; if (p.slowT <= 0) p.slow = 1; }
     if (p.shredT > 0) { p.shredT -= dt; if (p.shredT <= 0) p.shred = 0; }
-    p.s += CONFIG.pathogens[p.type].speed * p.slow * dt;
+    p.s += CONFIG.pathogens[p.type].speed * p.slow * organFlow(s, p) * dt;
   }
 
   // Lymph nodes: each fires its immunoglobulin at the most advanced pathogen on its own vessel within reach.
@@ -297,8 +322,8 @@ export function step(s: State, dtRaw: number) {
       s.heartHp = Math.max(0, s.heartHp - dmg);
       s.leaked++;
       s.heartKick = 1;
-      s.rings.push({ x: HEART.x, y: HEART.y, r: 130, t: 0, dur: 0.6, kind: 'heart' });
-      s.floaters.push({ x: HEART.x, y: HEART.y - 150, text: `−${dmg} heart health`, t: 0, color: '#c8202a' });
+      s.rings.push({ x: HEART.x, y: HEART.y, r: Math.max(LEVELS[s.level].map.rx, LEVELS[s.level].map.ry) + 30, t: 0, dur: 0.6, kind: 'heart' });
+      s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `−${dmg} ${LEVELS[s.level].organ.toLowerCase()} health`, t: 0, color: '#c8202a' });
     }
   }
   s.pathogens = s.pathogens.filter((p) => p.hp > 0);
@@ -327,12 +352,15 @@ function recall(s: State, dt: number) {
     s.cells = [];
     s.dilated = null;
     s.pulsesLeft = 0;
-    if (s.wave >= TOTAL_WAVES) { s.phase = 'victory'; return; }
+    if (s.wave >= totalWaves(s)) { s.phase = 'victory'; return; }
     const bonus = CONFIG.waveClearEnergy(s.wave);
     s.energy += bonus;
+    const L = LEVELS[s.level];
+    const regen = L.regenPerWave ? Math.min(L.regenPerWave, L.hp - s.heartHp) : 0;
+    s.heartHp += regen;
     s.wave += 1;
     s.phase = 'prep';
-    s.message = `Wave cleared: +${bonus} energy. The vessel has contracted; choose again for the next wave.`;
+    s.message = `Wave cleared: +${bonus} energy${regen > 0 ? `, the ${L.organ.toLowerCase()} regrows +${regen} health` : ''}. The vessel has contracted; choose again for the next wave.`;
   }
 }
 

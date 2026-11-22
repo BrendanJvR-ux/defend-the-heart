@@ -98,3 +98,11 @@ details summary { cursor: pointer; font-size: 13px; color: var(--soft); margin-t
 .flist { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .flist button { font-size: 13px; min-height: 36px; padding: 4px 8px; }
 @media (max-width: 700px) { .popover { position: fixed; left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; transform: none !important; } }
+
+/* Organ level picker */
+.organ h3 { color: var(--red-dark); }
+.levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-top: 6px; }
+.levels button { min-height: 46px; padding: 3px 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; }
+.levels button small { font-weight: 400; font-size: 10.5px; color: var(--soft); }
+.levels button.on { background: var(--red); color: #fff4ee; border-color: var(--red-dark); }
+.levels button.on small { color: #ffe0d8; }

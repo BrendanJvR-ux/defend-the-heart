@@ -1,33 +1,34 @@
-// The map: four vessels approaching the heart from different sides, never joining,
-// with build sites for lymph nodes beside different sections of each vessel.
+// The map of the current organ: its vessels (never joining) and the build sites
+// beside different sections of each vessel. loadLevel() swaps the whole map; the
+// exports are live bindings, so importers always see the current organ.
 import { pointAt as lanePointAt, projectOnSegment, dist, type Vec, type Lane } from '../map';
-import type { VesselId } from './config';
+import { LEVELS, type LevelDef, type VesselId } from './config';
 
 export const W = 1600;
 export const H = 1000;
 
-export const HEART: Vec = { x: 800, y: 480 };
-export const HEART_R = 100;
+export interface Vessel { id: VesselId; name: string; label: string; pts: Vec[]; cum: number[]; length: number }
 
-export interface Vessel { id: VesselId; pts: Vec[]; cum: number[]; length: number }
+/** A place a lymph node can stand: beside one section of one vessel, guarding that vessel. */
+export interface Site { id: string; vessel: VesselId; index: number; x: number; y: number; anchor: Vec }
 
-function build(id: VesselId, pts: Vec[]): Vessel {
+export let LEVEL_INDEX = 0;
+export let LEVEL: LevelDef = LEVELS[0];
+/** The organ's centre (kept under its old name: everything flows to it). */
+export let HEART: Vec = LEVEL.map.center;
+export let HEART_R = 100;
+export let VESSELS: Record<VesselId, Vessel> = {};
+export let VESSEL_IDS: VesselId[] = [];
+export let SITES: Site[] = [];
+
+function build(def: { id: VesselId; name: string; label: string; pts: Vec[] }): Vessel {
   const cum = [0];
-  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + dist(pts[i - 1], pts[i]));
-  return { id, pts, cum, length: cum[cum.length - 1] };
+  for (let i = 1; i < def.pts.length; i++) cum.push(cum[i - 1] + dist(def.pts[i - 1], def.pts[i]));
+  return { ...def, cum, length: cum[cum.length - 1] };
 }
 
-// Blood (and pathogens) flow from the outer end (s = 0) to the heart entrance (s = length).
-export const VESSELS: Record<VesselId, Vessel> = {
-  left: build('left', [{ x: -40, y: 500 }, { x: 170, y: 500 }, { x: 330, y: 420 }, { x: 520, y: 450 }, { x: 682, y: 485 }]),
-  right: build('right', [{ x: 1640, y: 600 }, { x: 1420, y: 600 }, { x: 1260, y: 520 }, { x: 1080, y: 520 }, { x: 918, y: 500 }]),
-  lower: build('lower', [{ x: 200, y: 1040 }, { x: 260, y: 880 }, { x: 440, y: 800 }, { x: 600, y: 760 }, { x: 735, y: 615 }]),
-  upper: build('upper', [{ x: 1420, y: -40 }, { x: 1370, y: 120 }, { x: 1190, y: 190 }, { x: 1010, y: 250 }, { x: 880, y: 372 }]),
-};
-export const VESSEL_IDS: VesselId[] = ['left', 'right', 'lower', 'upper'];
-
 export function pointAt(v: Vessel, s: number): Vec & { angle: number } {
-  return lanePointAt({ ...v, id: 'mill', name: '', junctionS: v.length } as Lane, s);
+  return lanePointAt({ ...v, id: 'mill', name: '', junctionS: v.length } as unknown as Lane, s);
 }
 
 export function nearestOnVessel(v: Vessel, p: Vec): { s: number; d: number } {
@@ -39,27 +40,30 @@ export function nearestOnVessel(v: Vessel, p: Vec): { s: number; d: number } {
   return best;
 }
 
-/** A place a lymph node can stand: beside one section of one vessel, guarding that vessel. */
-export interface Site { id: string; vessel: VesselId; index: number; x: number; y: number; anchor: Vec }
+/** Roughly how far a point is outside the organ (negative inside). */
+export function organClearance(p: Vec): number {
+  const { center, rx, ry } = LEVEL.map;
+  const dx = (p.x - center.x) / rx, dy = (p.y - center.y) / ry;
+  return (Math.hypot(dx, dy) - 1) * Math.min(rx, ry);
+}
 
-const SITE_FRACTIONS = [0.3, 0.52, 0.74];
 const SITE_OFFSET = 88;
 
 function makeSites(): Site[] {
   const out: Site[] = [];
   for (const v of VESSEL_IDS) {
     const ves = VESSELS[v];
-    SITE_FRACTIONS.forEach((f, index) => {
+    LEVEL.map.siteFractions.forEach((f, index) => {
       const a = pointAt(ves, ves.length * f);
-      // try both sides; keep the one furthest from the heart and other vessels, inside the map
+      // try both sides; keep the one with the most room from the organ and other vessels, inside the map
       let best: Site | null = null, bestScore = -Infinity;
       for (const side of [1, -1]) {
         for (const extra of [0, 20, -14]) {
           const off = SITE_OFFSET + extra;
           const p = { x: a.x - Math.sin(a.angle) * off * side, y: a.y + Math.cos(a.angle) * off * side };
           if (p.x < 50 || p.x > W - 50 || p.y < 50 || p.y > H - 50) continue;
-          let clear = dist(p, HEART) - 170;
-          for (const o of VESSEL_IDS) if (o !== v) clear = Math.min(clear, nearestOnVessel(VESSELS[o], p).d - 70);
+          let clear = organClearance(p) - 70;
+          for (const o of VESSEL_IDS) clear = Math.min(clear, nearestOnVessel(VESSELS[o], p).d - (o === v ? 50 : 70));
           for (const s of out) clear = Math.min(clear, dist(p, s) - 80);
           const score = clear - Math.abs(extra) * 0.5;
           if (clear > 0 && score > bestScore) { bestScore = score; best = { id: `${v}-${index}`, vessel: v, index, x: p.x, y: p.y, anchor: { x: a.x, y: a.y } }; }
@@ -70,7 +74,19 @@ function makeSites(): Site[] {
   }
   return out;
 }
-export const SITES: Site[] = makeSites();
+
+/** Switch the map to another organ. */
+export function loadLevel(index: number) {
+  LEVEL_INDEX = Math.max(0, Math.min(LEVELS.length - 1, index));
+  LEVEL = LEVELS[LEVEL_INDEX];
+  HEART = LEVEL.map.center;
+  HEART_R = Math.min(LEVEL.map.rx, LEVEL.map.ry);
+  VESSELS = Object.fromEntries(LEVEL.map.vessels.map((v) => [v.id, build(v)]));
+  VESSEL_IDS = LEVEL.map.vessels.map((v) => v.id);
+  SITES = makeSites();
+}
+loadLevel(0);
+
 export const siteById = (id: string) => SITES.find((s) => s.id === id)!;
 
 export { dist };

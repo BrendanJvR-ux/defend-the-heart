@@ -1,7 +1,8 @@
 // Drawing for Defend the Heart: a stylised anatomy plate, kept calm so the white cells stand out.
 import { CONFIG, type NodeType, type PathogenType, type VesselId } from './config';
-import { W, H, HEART, HEART_R, VESSELS, VESSEL_IDS, SITES, siteById, pointAt, type Vec } from './level';
-import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt } from './sim';
+import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, SITES, pointAt, type Vec } from './level';
+import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging } from './sim';
+import { drawLungs, drawBrain, drawLiver, drawKidney, drawGut } from './organs';
 
 export interface View {
   hoverVessel: VesselId | null;
@@ -27,8 +28,10 @@ const C = {
 };
 
 let bg: HTMLCanvasElement | null = null;
+let bgFor = '';
 function background(): HTMLCanvasElement {
-  if (bg) return bg;
+  if (bg && bgFor === LEVEL.id) return bg;
+  bgFor = LEVEL.id;
   bg = document.createElement('canvas');
   bg.width = W * 2; bg.height = H * 2;
   const ctx = bg.getContext('2d')!;
@@ -43,13 +46,14 @@ function background(): HTMLCanvasElement {
   }
   ctx.strokeStyle = 'rgba(170,110,95,0.14)'; ctx.lineWidth = 1;
   for (let i = 0; i < 160; i++) { const x = R() * W, y = R() * H; ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x + 40, y - 10, x + 80, y + 12, x + 130, y); ctx.stroke(); }
-  const g = ctx.createRadialGradient(HEART.x, HEART.y, 60, HEART.x, HEART.y, 520);
+  const g = ctx.createRadialGradient(HEART.x, HEART.y, 60, HEART.x, HEART.y, 420 + Math.max(LEVEL.map.rx, LEVEL.map.ry));
   g.addColorStop(0, 'rgba(230,170,150,0.35)'); g.addColorStop(1, 'rgba(230,170,150,0)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   const v = ctx.createRadialGradient(W / 2, H / 2, 380, W / 2, H / 2, 980);
   v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(90,50,30,0.22)');
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.strokeRect(10, 10, W - 20, H - 20);
+  if (LEVEL.id === 'liver') drawGut(ctx);
   return bg;
 }
 
@@ -64,7 +68,7 @@ export function vesselWidth(s: State, v: VesselId) {
   return CONFIG.vesselRestWidth + (CONFIG.vesselDilatedWidth - CONFIG.vesselRestWidth) * e;
 }
 
-function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: View, t: number) {
+function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: View, t: number, flowT: number) {
   const ves = VESSELS[v], w = vesselWidth(s, v), open = s.width[v];
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (view.hoverVessel === v && s.phase === 'prep') { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; smooth(ctx, ves.pts); ctx.stroke(); }
@@ -87,9 +91,18 @@ function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: 
     }
     ctx.globalAlpha = 1;
   }
+  const filt = LEVEL.filtration;
+  if (filt) {
+    // the filtered stretch: a pale sieve across the vessel
+    ctx.strokeStyle = 'rgba(255,236,170,0.75)'; ctx.lineWidth = 2.2;
+    for (let d = ves.length * (1 - filt.fraction); d < ves.length; d += 11) {
+      const p = pointAt(ves, d), nx = -Math.sin(p.angle) * (w / 2 + 2), ny = Math.cos(p.angle) * (w / 2 + 2);
+      ctx.beginPath(); ctx.moveTo(p.x - nx, p.y - ny); ctx.lineTo(p.x + nx, p.y + ny); ctx.stroke();
+    }
+  }
   ctx.fillStyle = 'rgba(240,120,110,0.35)';
   for (let i = 0; i < 12; i++) {
-    const d = ((t * 40 + i * 71) % ves.length);
+    const d = ((flowT * 40 + i * 71) % ves.length);
     const p = pointAt(ves, d), side = ((i * 37) % 9 - 4) * (w / 12);
     ctx.beginPath(); ctx.ellipse(p.x - Math.sin(p.angle) * side, p.y + Math.cos(p.angle) * side, 4.5, 3, p.angle, 0, Math.PI * 2); ctx.fill();
   }
@@ -114,12 +127,39 @@ function drawHeart(ctx: CanvasRenderingContext2D, s: State, t: number) {
   ctx.lineWidth = 1.6; for (const sgn of [-1, 1]) for (let i = 0; i < 3; i++) { const yy = -30 + i * 36; ctx.beginPath(); ctx.moveTo(-10, yy); ctx.quadraticCurveTo(-10 + sgn * 24, yy + 8, -10 + sgn * 40, yy + 22); ctx.stroke(); }
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(-50, -50, 14, 24, -0.5, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
-  const n = CONFIG.heartHp;
+}
+
+/** Organ health as a ring of beads around the organ. */
+function drawHealthBeads(ctx: CanvasRenderingContext2D, s: State) {
+  const n = LEVEL.hp, heart = LEVEL.id === 'heart';
+  const rx = heart ? 159 : LEVEL.map.rx + 50, ry = heart ? 159 : LEVEL.map.ry + 50;
   for (let i = 0; i < n; i++) {
-    const a = -Math.PI / 2 + (i / n) * Math.PI * 2, r = HEART_R * 1.15 + 44;
-    ctx.fillStyle = i < s.heartHp ? '#d8343a' : 'rgba(60,40,40,0.18)';
-    ctx.beginPath(); ctx.arc(HEART.x + Math.cos(a) * r, HEART.y + 4 + Math.sin(a) * r, 7, 0, Math.PI * 2); ctx.fill();
+    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    const x = HEART.x + Math.cos(a) * rx, y = HEART.y + 4 + Math.sin(a) * ry;
+    ctx.fillStyle = 'rgba(244,234,216,0.9)'; ctx.beginPath(); ctx.arc(x, y, 9.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = i < s.heartHp ? '#d8343a' : 'rgba(60,40,40,0.2)';
+    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
   }
+}
+
+function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
+  const m = LEVEL.map, kick = s.heartKick;
+  if (LEVEL.id === 'heart') drawHeart(ctx, s, t);
+  else if (LEVEL.id === 'lungs') {
+    const breath = surging(s) ? 1.05 : 1 + 0.012 * Math.sin(t * 1.6);
+    drawLungs(ctx, m.center, breath + kick * 0.03, kick);
+    if (surging(s)) {
+      ctx.save(); ctx.font = '900 30px Palatino, Georgia, serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(244,234,216,0.92)'; ctx.fillRect(m.center.x - 90, m.center.y - 395, 180, 44);
+      ctx.fillStyle = '#1e6a8a'; ctx.fillText('INHALE', m.center.x, m.center.y - 362); ctx.restore();
+    }
+  } else {
+    const swell = 1 + Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 0.5)), 6) * 0.012 + kick * 0.04;
+    if (LEVEL.id === 'brain') drawBrain(ctx, m.center, m.rx, m.ry, swell, kick);
+    else if (LEVEL.id === 'liver') drawLiver(ctx, m.center, m.rx, m.ry, swell, kick);
+    else drawKidney(ctx, m.center, m.rx, m.ry, swell, kick);
+  }
+  drawHealthBeads(ctx, s);
 }
 
 /** A lymph node in its type colour, with a letter badge (M / G / A). */
@@ -248,7 +288,8 @@ function drawPreview(ctx: CanvasRenderingContext2D, s: State) {
     for (const m of mine) counts.set(m.type, (counts.get(m.type) ?? 0) + 1);
     const p = pointAt(VESSELS[v], 70);
     const w = 70 + counts.size * 86;
-    const bx = Math.max(24, Math.min(W - w - 24, p.x - w / 2)), by = Math.max(24, Math.min(H - 70, p.y + (v === 'upper' ? 40 : v === 'lower' ? -110 : 46)));
+    const from = VESSELS[v].pts[0];
+    const bx = Math.max(24, Math.min(W - w - 24, p.x - w / 2)), by = Math.max(24, Math.min(H - 70, p.y + (from.y < 0 ? 40 : from.y > H ? -110 : 46)));
     ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.strokeStyle = '#c8402a'; ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.roundRect(bx, by, w, 48, 10); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#c8402a'; ctx.font = '900 22px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('IN', bx + 12, by + 32);
@@ -261,15 +302,21 @@ function drawPreview(ctx: CanvasRenderingContext2D, s: State) {
   }
 }
 
+let flowT = 0, lastT = 0;
 export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: number) {
+  const dt = Math.max(0, Math.min(0.1, t - lastT)); lastT = t;
+  flowT += dt * (surging(s) ? LEVEL.surge!.factor * 1.6 : 1);
   ctx.drawImage(background(), 0, 0, W, H);
-  for (const v of VESSEL_IDS) drawVessel(ctx, s, v, view, t);
+  for (const v of VESSEL_IDS) drawVessel(ctx, s, v, view, t, flowT);
   for (const v of VESSEL_IDS) {
-    const p = pointAt(VESSELS[v], 150);
+    const ves = VESSELS[v], from = ves.pts[0];
+    const p = pointAt(ves, 150);
     ctx.font = '700 24px Palatino, Georgia, serif'; ctx.textAlign = 'center';
-    const label = v[0].toUpperCase() + v.slice(1);
-    const ly = p.y + (v === 'upper' ? 6 : -40);
-    const lx = p.x + (v === 'upper' ? 70 : 0);
+    const label = ves.label;
+    const top = from.y < 0;
+    const ly = p.y + (top ? 6 : -40);
+    const half = ctx.measureText(label).width / 2;
+    const lx = Math.max(half + 24, Math.min(W - half - 24, p.x + (top ? 40 + half : 0)));
     ctx.fillStyle = 'rgba(244,234,216,0.9)'; const tw = ctx.measureText(label).width;
     ctx.fillRect(lx - tw / 2 - 10, ly - 23, tw + 20, 32);
     ctx.fillStyle = C.ink; ctx.fillText(label, lx, ly);
@@ -279,7 +326,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     }
   }
   drawSites(ctx, s, view, t);
-  drawHeart(ctx, s, t);
+  drawOrgan(ctx, s, t);
 
   for (const sh of s.shots) drawAntibody(ctx, sh.type, sh.x, sh.y, Math.atan2(sh.y - sh.sy, sh.x - sh.sx));
 
@@ -340,5 +387,4 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     ctx.globalAlpha = 1;
   }
   drawPreview(ctx, s);
-  void siteById;
 }
