@@ -4,6 +4,8 @@ import { MAP_W, MAP_H, line, smooth, rng, type Style, type Vec } from './scene';
 import { renaissance } from './renaissance';
 import { vanGogh } from './vangogh';
 import { anime } from './anime';
+import { mangaMedical } from './mangaMedical';
+import { mangaTokyo, mangaAncient } from './mangaJapan';
 
 import { towerPath, enemyPath } from './shapes';
 
@@ -774,7 +776,10 @@ const candlelit: Style = {
   },
 };
 
-anime.featured = 'new';
+mangaMedical.featured = 'new: coloured manga, medical';
+mangaTokyo.featured = 'new: coloured manga, modern Tokyo';
+mangaAncient.featured = 'new: coloured manga, ancient Japan';
+anime.featured = 'pastoral anime study';
 vanGogh.featured = 'Van Gogh study';
 renaissance.featured = 'Renaissance study';
-export const STYLES: Style[] = [anime, vanGogh, renaissance, candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
+export const STYLES: Style[] = [mangaMedical, mangaTokyo, mangaAncient, anime, vanGogh, renaissance, candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
