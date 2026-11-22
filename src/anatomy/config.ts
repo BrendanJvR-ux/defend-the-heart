@@ -8,7 +8,7 @@ export type VesselId = string;
 export type PathogenType = 'bacterium' | 'virus' | 'hijacker' | 'infected' | BossType;
 /** One boss per organ, met in that organ's last wave. */
 export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis';
-export type NodeType = 'igm' | 'igg' | 'iga';
+export type NodeType = 'igm' | 'igg' | 'iga' | 'ige';
 
 export interface PathogenStats {
   name: string;
@@ -57,6 +57,8 @@ export interface NodeStats {
   /** IgA: target speed multiplied by this for a while. */
   slow?: number;
   slowSeconds?: number;
+  /** IgE: locks onto a boss in reach before anything else, and hits bosses for this much, through their armour. */
+  bossDamage?: number;
   blurb: string;
 }
 
@@ -75,6 +77,8 @@ export const CONFIG = {
     igm: { name: 'IgM lymph node', short: 'IgM', cost: 60, damage: 15, cooldown: 0.9, range: 175, shotSpeed: 520, blurb: 'High damage. No slow, no armour reduction.' },
     igg: { name: 'IgG lymph node', short: 'IgG', cost: 50, damage: 7, cooldown: 0.8, range: 175, shotSpeed: 560, shred: 5, shredSeconds: 4, blurb: 'Lower damage, but strips armour so every other hit lands harder.' },
     iga: { name: 'IgA lymph node', short: 'IgA', cost: 50, damage: 6, cooldown: 0.7, range: 175, shotSpeed: 560, slow: 0.5, slowSeconds: 2.2, blurb: 'Lower damage, no armour reduction, but slows what it hits.' },
+    ige: { name: 'IgE lymph node', short: 'IgE', cost: 80, damage: 5, cooldown: 1.8, range: 230, shotSpeed: 440, bossDamage: 38,
+      blurb: 'Boss hunter. Locks onto a boss in reach and hits it hard, straight through armour. Weak against anything else.' },
   } as Record<NodeType, NodeStats>,
 
   whiteCell: {
@@ -328,4 +332,4 @@ export const LEVELS: LevelDef[] = [
   },
 ];
 
-export const NODE_TYPES: NodeType[] = ['igm', 'igg', 'iga'];
+export const NODE_TYPES: NodeType[] = ['igm', 'igg', 'iga', 'ige'];

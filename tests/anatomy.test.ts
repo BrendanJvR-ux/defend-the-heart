@@ -34,7 +34,7 @@ function sensibleBuild(s: State) {
     let placed = false;
     for (const v of order) {
       const types = new Set(waveSpawns(n).filter((x) => x.vessel === v).map((x) => x.type));
-      const want: NodeType = [...types].some((t) => CONFIG.pathogens[t].armour >= 5) && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
+      const want: NodeType = [...types].some((t) => CONFIG.pathogens[t].boss) && !nodeOn(s, v, 'ige') ? 'ige' : [...types].some((t) => CONFIG.pathogens[t].armour >= 5) && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
       const site = M.SITES.filter((x) => x.vessel === v && !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
       if (site && placeNode(s, site.id, want)) placed = true;
     }
@@ -370,5 +370,50 @@ describe('Defend the Heart: bosses', () => {
     expect(s.cells.every((c) => c.infected)).toBe(true);
     expect(b.hp).toBeGreaterThan(0);
     expect(s.pathogens.filter((p) => p.type === 'infected').length).toBe(2);
+  });
+});
+
+describe('Defend the Heart: the IgE boss-hunter node', () => {
+  /** Heart level, a single node of `type` at left-1, a still boss and a still virus both within its reach. */
+  function setup(type: NodeType) {
+    const s = newGame(0); s.wave = 6; selectVessel(s, 'right'); startWave(s); quiet(s); s.cells = [];
+    const site = M.SITES.find((x) => x.vessel === 'left' && x.index === 1)!;
+    s.nodes = [{ id: 999, site: site.id, vessel: 'left', type, cd: 0, flash: 0 }];
+    // the two points on the vessel nearest the site
+    const near: number[] = [];
+    const probe = mk(s, 'virus', 'left', 0);
+    let best = 0, bd = Infinity;
+    for (let d = 0; d < M.VESSELS.left.length; d += 2) { probe.s = d; const dd = dist(pathogenPos(probe), site); if (dd < bd) { bd = dd; best = d; } }
+    near.push(best - 30, best + 30);
+    s.pathogens = [];
+    const boss = mk(s, 'colony', 'left', near[0]);
+    const virus = mk(s, 'virus', 'left', near[1]); // further along, so ordinary nodes would aim at it
+    const saved = [CONFIG.pathogens.colony.speed, CONFIG.pathogens.virus.speed];
+    CONFIG.pathogens.colony.speed = 0; CONFIG.pathogens.virus.speed = 0;
+    return { s, boss, virus, restore: () => { [CONFIG.pathogens.colony.speed, CONFIG.pathogens.virus.speed] = saved; } };
+  }
+
+  it('locks onto a boss before a more advanced ordinary pathogen, and hits it through armour', () => {
+    const { s, boss, virus, restore } = setup('ige');
+    tick(s, 0.8); restore();
+    expect(virus.hp).toBe(CONFIG.pathogens.virus.hp);
+    expect(boss.maxHp - boss.hp).toBe(CONFIG.nodes.ige.bossDamage);
+  });
+
+  it('is weak against ordinary pathogens', () => {
+    const { s, boss, virus, restore } = setup('ige');
+    s.pathogens = [virus]; void boss;
+    tick(s, 0.8); restore();
+    expect(CONFIG.pathogens.virus.hp - virus.hp).toBe(CONFIG.nodes.ige.damage - CONFIG.pathogens.virus.armour);
+    expect(CONFIG.nodes.ige.damage).toBeLessThan(CONFIG.nodes.iga.damage);
+  });
+
+  it('out-damages an IgM node on a boss, while IgM is better on ordinary pathogens', () => {
+    const e = setup('ige'); e.s.pathogens = [e.boss]; tick(e.s, 10); e.restore();
+    const m = setup('igm'); m.s.pathogens = [m.boss]; tick(m.s, 10); m.restore();
+    expect(e.boss.maxHp - e.boss.hp).toBeGreaterThan(2 * (m.boss.maxHp - m.boss.hp));
+    const ev = setup('ige'); ev.s.pathogens = [ev.virus]; ev.virus.hp = ev.virus.maxHp = 1000; tick(ev.s, 10); ev.restore();
+    const mv = setup('igm'); mv.s.pathogens = [mv.virus]; mv.virus.hp = mv.virus.maxHp = 1000; tick(mv.s, 10); mv.restore();
+    expect(1000 - mv.virus.hp).toBeGreaterThan(2 * (1000 - ev.virus.hp));
   });
 });

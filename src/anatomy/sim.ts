@@ -294,8 +294,10 @@ export function step(s: State, dtRaw: number) {
     if (n.cd > 0) continue;
     const st = CONFIG.nodes[n.type];
     const site = siteById(n.site);
+    // most advanced pathogen in reach; an IgE node takes any boss in reach first
+    const rank = (p: Pathogen) => p.s + (st.bossDamage && CONFIG.pathogens[p.type].boss ? 1e6 : 0);
     let best: Pathogen | null = null;
-    for (const p of s.pathogens) if (p.hp > 0 && p.vessel === n.vessel && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || p.s > best.s)) best = p;
+    for (const p of s.pathogens) if (p.hp > 0 && p.vessel === n.vessel && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || rank(p) > rank(best))) best = p;
     if (!best) continue;
     n.cd = st.cooldown;
     n.flash = 0.4;
@@ -309,7 +311,8 @@ export function step(s: State, dtRaw: number) {
     if (p) { const q = pathogenPos(p); sh.x = sh.sx + (q.x - sh.sx) * k; sh.y = sh.sy + (q.y - sh.sy) * k; }
     if (k >= 1 && p) {
       const st = CONFIG.nodes[sh.type];
-      hurt(s, p, st.damage, true);
+      if (st.bossDamage && CONFIG.pathogens[p.type].boss) hurt(s, p, st.bossDamage, false);
+      else hurt(s, p, st.damage, true);
       if (st.shred) { p.shred = Math.min(CONFIG.pathogens[p.type].armour, st.shred); p.shredT = st.shredSeconds ?? 3; }
       if (st.slow && !CONFIG.pathogens[p.type].slowImmune) { p.slow = Math.min(p.slow, st.slow); p.slowT = st.slowSeconds ?? 2; }
     }

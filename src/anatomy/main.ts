@@ -74,18 +74,21 @@ function openSite(id: string) {
   view.selectedSite = id;
   const site = siteById(id);
   const node = nodeAt(s, id);
-  popover.style.left = `${(site.x / W) * 100}%`;
-  popover.style.top = `${(site.y / H) * 100}%`;
-  popover.classList.toggle('flip-x', site.x > W * 0.6);
-  popover.classList.toggle('flip-y', site.y > H * 0.55);
   if (node) {
     const st = CONFIG.nodes[node.type];
-    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${st.damage} damage every ${st.cooldown}s${st.shred ? `, strips ${st.shred} armour for ${st.shredSeconds}s` : ''}${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}.</p>`;
+    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${st.damage} damage every ${st.cooldown}s${st.shred ? `, strips ${st.shred} armour for ${st.shredSeconds}s` : ''}${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}${st.bossDamage ? `; ${st.bossDamage} to a boss, through its armour, and bosses first` : ''}.</p>`;
   } else {
     popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>Place a lymph node</h3><p class="sub">Beside the ${esc(vesselName(site.vessel).toLowerCase())}. You have <b>${s.energy}</b> energy.</p>
       <div class="types">${NODE_TYPES.map((t) => { const st = CONFIG.nodes[t]; const c = buildCheck(s, id, t); return `<button data-act="build" data-type="${t}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason)}"><img alt="" src="${nodeIcon(t)}" width="44" height="34"><span><b>${esc(st.short)}</b> · ${st.cost} energy<small>${esc(st.blurb)}</small></span></button>`; }).join('')}</div>`;
   }
   popover.hidden = false;
+  // beside the site, on the side with more room, kept wholly inside the map
+  const field = canvas.parentElement!, fw = field.clientWidth, fh = field.clientHeight;
+  const pw = popover.offsetWidth, ph = popover.offsetHeight;
+  const cx = (site.x / W) * fw, cy = (site.y / H) * fh;
+  const left = site.x > W * 0.6 ? cx - pw - 30 : cx + 30;
+  popover.style.left = `${Math.max(6, Math.min(fw - pw - 6, left))}px`;
+  popover.style.top = `${Math.max(6, Math.min(fh - ph - 6, cy - ph / 2))}px`;
   (popover.querySelector('button:not([disabled]):not(.x)') as HTMLButtonElement | null)?.focus({ preventScroll: true });
 }
 function closeSite() {

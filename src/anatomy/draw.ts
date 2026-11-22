@@ -17,6 +17,7 @@ export const NODE_COLORS: Record<NodeType, { base: string; dark: string; light: 
   igm: { base: '#e0a33a', dark: '#8a5a12', light: '#f6d68a' },
   igg: { base: '#4a8ad8', dark: '#1e4a8a', light: '#a8ccf6' },
   iga: { base: '#4ab88a', dark: '#1e6a4a', light: '#a8e8c8' },
+  ige: { base: '#c8508a', dark: '#6a1e4a', light: '#f0b8d8' },
 };
 
 const C = {
@@ -174,7 +175,12 @@ export function drawNodeIcon(ctx: CanvasRenderingContext2D, type: NodeType, x: n
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(0, 2, 13, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.fillStyle = col.dark; ctx.font = '900 16px Palatino, Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(type === 'igm' ? 'M' : type === 'igg' ? 'G' : 'A', 0, 3);
+  ctx.fillText(type === 'igm' ? 'M' : type === 'igg' ? 'G' : type === 'iga' ? 'A' : 'E', 0, 3);
+  if (type === 'ige') {
+    // a boss hunter: crosshair ticks around the badge
+    ctx.strokeStyle = col.dark; ctx.lineWidth = 2.4;
+    for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 15, 2 + Math.sin(a) * 15); ctx.lineTo(Math.cos(a) * 21, 2 + Math.sin(a) * 21); ctx.stroke(); }
+  }
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
@@ -270,6 +276,13 @@ function drawAntibody(ctx: CanvasRenderingContext2D, type: NodeType, x: number, 
   const Y = (rot: number, k: number) => { ctx.save(); ctx.rotate(rot); ctx.scale(k, k); ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, 0); ctx.lineTo(-4, -5); ctx.moveTo(0, 0); ctx.lineTo(4, -5); ctx.stroke(); ctx.restore(); };
   if (type === 'igm') { for (let i = 0; i < 5; i++) Y((i / 5) * Math.PI * 2, 0.9); ctx.fillStyle = col.base; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill(); }
   else if (type === 'igg') { ctx.lineWidth = 3; Y(0, 1.3); }
+  else if (type === 'ige') {
+    // IgE: a heavy, long-stemmed Y in a glow, like a harpoon
+    const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 16); g.addColorStop(0, 'rgba(240,160,210,0.8)'); g.addColorStop(1, 'rgba(240,160,210,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = col.dark; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(0, 14); ctx.lineTo(0, 0); ctx.stroke();
+    Y(0, 1.7);
+  }
   else { Y(-0.5, 1); Y(Math.PI - 0.5, 1); ctx.fillStyle = col.base; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();
 }
