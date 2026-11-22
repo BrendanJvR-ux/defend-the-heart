@@ -1,8 +1,62 @@
+# Defend the Heart
+
+A fixed top-down 2D anatomy tower defence. The heart is the base. Two blood vessels approach it from opposite sides, each guarded by a lymph node; two white blood cells are your weak mobile defenders.
+
+**Play it:** https://brendanjvr-ux.github.io/the-last-ward/
+
+Also in this project: **The Last Ward: Siege of Goosebridge** (the storybook game this was converted from) at [/goosebridge.html](https://brendanjvr-ux.github.io/the-last-ward/goosebridge.html), and the **art style studies** at [/styles.html](https://brendanjvr-ux.github.io/the-last-ward/styles.html).
+
+**Run it locally:** `npm install`, then `npm run dev`, and open http://localhost:5173/. Tests: `npm test`.
+
+## Level one: Defend the Heart
+
+1. **Prepare.** The panel and the map show the next wave: which pathogens, how many, roughly when, and which vessel each group enters.
+2. **Dilate vessel.** Click or tap a vessel (or press 1 / 2). Its walls part, the lumen widens and the flow animates towards the heart. Exactly one vessel can be dilated; choosing the other replaces the choice. Start the wave once one is chosen.
+3. **Defend.** Both lymph nodes fire antibodies at pathogens on their own vessel, dilated or not. The white cells set out from the heart along the dilated vessel, against the flow, and fight anything on that vessel. They never leave it, never cross tissue, and never chase into the other vessel.
+4. **Immune pulse.** Once per wave, a burst around each living white cell hits pathogens within its radius on that cell's vessel only. Fire it into a cluster; fired too early it hits nothing. Hover or focus the button to see the radius; on touchscreens, pathogens it would hit are outlined.
+5. **Reset.** Surviving cells return to the heart, the vessel contracts to resting width, and you choose again. Heart damage persists until you restart.
+
+Pathogens: **bacteria** (larger, slower green rods, tougher) and **viruses** (small, fast, spiked, in short groups). Three waves: bacteria on the left; a few bacteria left and a fast viral cluster right; staggered pressure on both.
+
+### Controls
+
+| | Mouse / touch | Keyboard |
+|---|---|---|
+| Dilate vessel | Click / tap a vessel, or the **Left vessel** / **Right vessel** buttons | 1 or L, 2 or R |
+| Start wave | **Start wave** | Enter |
+| Immune pulse | **Immune pulse** button | Space |
+| Pause | **Pause** | P |
+| Speed, restart | **Speed ×2**, **Restart** | |
+
+### Tuning
+
+Everything that shapes play is in [`src/anatomy/config.ts`](src/anatomy/config.ts): heart health; vessel resting and dilated widths and dilation speed; lymph node damage, rate and reach; white cell starting count (2), health, speed, contact range and damage, how far out they patrol; the immune pulse count, radius and damage; pathogen health, speed, heart damage and contact damage; and the three waves. Map geometry is in [`src/anatomy/level.ts`](src/anatomy/level.ts).
+
+### Balance assumptions
+
+- White cells patrol between 40% and 100% of the dilated vessel, so they fight under their lymph node's cover instead of wandering off alone.
+- Cells are deliberately weak (4 damage per second each): with the lymph nodes switched off, the two cells alone leak 6 heart health in wave 1.
+- A sensible player (dilating the vessel carrying more pathogen health, pulsing at a cluster of three) wins with 16/20 in the scripted test. Dilating the quieter vessel every wave ends with the heart at 2/20 or less.
+- The resting vessel's lymph node holds wave 2's three bacteria on its own without any loss.
+
+### Files
+
+| File | What it is |
+|---|---|
+| `src/anatomy/config.ts` | All tuning values and the waves. |
+| `src/anatomy/level.ts` | The heart, the two vessels and the lymph nodes. Reuses the Goosebridge path maths. |
+| `src/anatomy/sim.ts` | State, rules and simulation (no DOM): dilation, waves, nodes, white cells, the pulse, recall. |
+| `src/anatomy/draw.ts` | Rendering: tissue, vessels with dilation and flow, heartbeat, nodes, cells, pathogens, effects. |
+| `src/anatomy/main.ts` | HUD, panel, mouse / touch / keyboard input, overlays. |
+| `tests/anatomy.test.ts` | One test per verification point, plus balance checks with a scripted player. |
+
+---
+
 # The Last Ward: Siege of Goosebridge
 
 A single-map fantasy tower defence prototype: an open storybook whose pages are painted in oils, after the Dutch landscape masters (umber ground, olive woods, dark water, warm light from the upper left, varnish and craquelure), with a turning windmill, grazing sheep and cows, haystacks, a farmhouse, drifting cloud shadows, dust in the light and glints on the water. Two painted roads lead to Goosebridge Castle; your magic runs in ink along a separate network of leylines, from an inkwell in the castle garden out to thirteen tower foundations.
 
-**Play it:** https://brendanjvr-ux.github.io/the-last-ward/
+**Play it:** https://brendanjvr-ux.github.io/the-last-ward/goosebridge.html
 
 **Art style studies:** https://brendanjvr-ux.github.io/the-last-ward/styles.html (the same battle moment in alternative art directions, led by the candlelit tabletop, with notes on what each would mean in Unity; source in `src/styles/`)
 
@@ -43,7 +97,7 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5173/. Other commands: `npm test` (rules and balance tests), `npm run build` (production build into `dist/`), `npm run preview` (serve the build), `npm run deploy` (test, build and publish `dist/` to the `gh-pages` branch that GitHub Pages serves).
+Then open http://localhost:5173/ (Defend the Heart), http://localhost:5173/goosebridge.html (Goosebridge) or http://localhost:5173/styles.html (art studies). Other commands: `npm test` (rules and balance tests), `npm run build` (production build into `dist/`), `npm run preview` (serve the build), `npm run deploy` (test, build and publish `dist/` to the `gh-pages` branch that GitHub Pages serves).
 
 ## Controls
 
