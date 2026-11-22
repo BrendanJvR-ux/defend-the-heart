@@ -1,7 +1,7 @@
 // The map of the current organ: its vessels (never joining) and the build sites
 // beside different sections of each vessel. loadLevel() swaps the whole map; the
 // exports are live bindings, so importers always see the current organ.
-import { pointAt as lanePointAt, projectOnSegment, dist, type Vec, type Lane } from '../map';
+import { pointAt as pathPointAt, projectOnSegment, dist, type Vec } from './geometry';
 import { LEVELS, type LevelDef, type VesselId } from './config';
 
 export const W = 1600;
@@ -28,7 +28,7 @@ function build(def: { id: VesselId; name: string; label: string; pts: Vec[] }): 
 }
 
 export function pointAt(v: Vessel, s: number): Vec & { angle: number } {
-  return lanePointAt({ ...v, id: 'mill', name: '', junctionS: v.length } as unknown as Lane, s);
+  return pathPointAt(v, s);
 }
 
 export function nearestOnVessel(v: Vessel, p: Vec): { s: number; d: number } {

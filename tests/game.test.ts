@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { CONFIG, LEVELS, type NodeType, type PathogenType, type VesselId } from '../src/anatomy/config';
-import * as map from '../src/anatomy/level';
-import { siteById, dist } from '../src/anatomy/level';
+import { CONFIG, LEVELS, type NodeType, type PathogenType, type VesselId } from '../src/config';
+import * as map from '../src/level';
+import { siteById, dist } from '../src/level';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
   newGame, selectVessel, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
   waveSpawns, placeNode, buildCheck, nodeAt, hurt, effectiveArmour, type State, type Pathogen,
-} from '../src/anatomy/sim';
+} from '../src/sim';
 
 function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t = 0; t < seconds; t += 1 / 30) { step(s, 1 / 30); each?.(s); } }
 function finishWave(s: State, each?: (s: State) => void) { let n = 0; while ((s.phase === 'combat' || s.phase === 'recall') && n++ < 30 * 400) { step(s, 1 / 30); each?.(s); } }

@@ -1,9 +1,9 @@
 {
-  "name": "the-last-ward",
+  "name": "defend-the-heart",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "The Last Ward: Siege of Goosebridge, a storybook tower defence prototype.",
+  "description": "Defend the Heart: an anatomy tower defence across five organs.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
