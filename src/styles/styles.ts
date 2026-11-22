@@ -3,6 +3,7 @@ import type { TowerType } from '../balance';
 import { MAP_W, MAP_H, line, smooth, rng, type Style, type Vec } from './scene';
 import { renaissance } from './renaissance';
 import { vanGogh } from './vangogh';
+import { anime } from './anime';
 
 import { towerPath, enemyPath } from './shapes';
 
@@ -773,6 +774,7 @@ const candlelit: Style = {
   },
 };
 
-vanGogh.featured = 'new';
+anime.featured = 'new';
+vanGogh.featured = 'Van Gogh study';
 renaissance.featured = 'Renaissance study';
-export const STYLES: Style[] = [vanGogh, renaissance, candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
+export const STYLES: Style[] = [anime, vanGogh, renaissance, candlelit, lowPoly, darkFantasy, pixel, stainedGlass, tabletop, neon];
