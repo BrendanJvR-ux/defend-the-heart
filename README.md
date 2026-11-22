@@ -10,7 +10,7 @@ Clear an organ to unlock the next. Your progress (and the organ you last played)
 |---|---|---|---|---|---|
 | 1 | **Heart** | 4 | The tutorial organ: dilation, lymph nodes and the pulse. | 20 | 5 |
 | 2 | **Lungs** | 3 | **Breathing.** Every 6 s the lungs inhale for 1.4 s and everything in the vessels surges forward ×1.5 (the panel counts down to the next breath, the map shows INHALE). | 20 | 4 |
-| 3 | **Brain** | 4 | **Blood–brain barrier.** Only two lymph node sites per vessel and less health, but three white cells. | 16 | 4 |
+| 3 | **Brain** | 4 | **Blood–brain barrier.** Only two lymph node sites per vessel and less health, but three white cells. | 18 | 4 |
 | 4 | **Liver** | 4 | **Portal vein.** A long vein from the gut brings columns of bacteria; the liver **regrows 3 health** after every cleared wave. | 24 | 4 |
 | 5 | **Kidney** | 4 | **Filtration.** On the last 28% of every vessel (the striped stretch) pathogens crawl at ×0.6 speed, so nodes near the kidney get more shots. The hardest waves, hijackers throughout. | 20 | 4 |
 
@@ -54,7 +54,7 @@ Everything is in [`src/anatomy/config.ts`](src/anatomy/config.ts). Shared rules 
 
 ### Balance assumptions
 
-- A scripted sensible player (dilate the busiest vessel, spend energy on nodes matched to each vessel's threat, pulse into clusters of three) wins every organ: heart 9/20, lungs 11/20, brain 2–3/16, liver 9/24, kidney 11/20. Never building loses on every organ. The brain is deliberately the tightest: its few sites reward placing nodes better than the script does.
+- A scripted sensible player (dilate the busiest vessel, spend energy on nodes matched to each vessel's threat, pulse into clusters of three) wins every organ: heart 9/20, lungs 11/20, brain 4–7/18, liver 9/24, kidney 11/20. Never building loses on every organ. The brain is deliberately the tightest: its few sites reward placing nodes better than the script does.
 - Virus health (14) is set so IgM kills one in a single hit and IgG/IgA need two or three; bacteria (70, armour 5) shrug off much of IgM until IgG opens them.
 - White cells alone (no nodes) leak 6 heart health in wave 1: they help, they do not carry.
 - Hijackers appear in wave 5 on three vessels, so they meet the white cells whichever vessel you dilate; the scripted player lost 2 cells to them.

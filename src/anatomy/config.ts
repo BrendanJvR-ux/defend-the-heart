@@ -214,7 +214,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'brain', title: 'The Brain', organ: 'Brain', tagline: 'Little room to build, nothing to spare.',
     twist: 'The blood–brain barrier: only two lymph node sites per vessel and less health, but you get three white cells.',
-    hp: 16, startEnergy: 190, cells: 3,
+    hp: 18, startEnergy: 190, cells: 3,
     startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
     map: {
       center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.36, 0.66],
@@ -231,9 +231,9 @@ export const LEVELS: LevelDef[] = [
       { title: 'Crossing over', hint: 'Fast viruses on the right side, bacteria behind them.',
         groups: [g('bacterium', 'right', 4, 1, 3.2), g('virus', 'lowerRight', 6, 6, 0.3), g('virus', 'left', 5, 14, 0.3)] },
       { title: 'Meningitis', hint: 'Armoured bacteria on two vessels, and the first hijackers.',
-        groups: [g('bacterium', 'left', 4, 1, 3), g('bacterium', 'lowerRight', 4, 3, 3), g('virus', 'right', 8, 10, 0.3), g('hijacker', 'lowerLeft', 3, 16, 1)] },
+        groups: [g('bacterium', 'left', 4, 1, 3), g('bacterium', 'lowerRight', 4, 3, 3), g('virus', 'right', 7, 10, 0.3), g('hijacker', 'lowerLeft', 3, 16, 1)] },
       { title: 'Fever', hint: 'Everything at once. The brain cannot take many hits.',
-        groups: [g('bacterium', 'lowerLeft', 5, 1, 2.6), g('hijacker', 'left', 3, 3, 1), g('virus', 'lowerRight', 8, 6, 0.3), g('hijacker', 'right', 3, 9, 1), g('virus', 'left', 5, 20, 0.3)] },
+        groups: [g('bacterium', 'lowerLeft', 5, 1, 2.6), g('hijacker', 'left', 2, 3, 1), g('virus', 'lowerRight', 7, 6, 0.3), g('hijacker', 'right', 3, 9, 1), g('virus', 'left', 5, 20, 0.3)] },
     ],
   },
   {
