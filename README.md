@@ -135,8 +135,8 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 | `src/level.ts` | The loaded organ's routes (forks expanded into two routes sharing a stem) and the build sites beside them (`loadLevel`). Path maths in `src/geometry.ts`. |
 | `src/sim.ts` | State, rules and simulation (no DOM): placement, mid-wave dilation and the NO gauge, forks, waves, immunoglobulins, white cells, infection, the pulse, recall. |
 | `src/bosses.ts` | The six boss pathogens' drawings. |
-| `src/bacteria.ts` | The six bacteria's drawings. |
-| `src/organs.ts` | The lungs, brain, liver (with the gut), kidney and spleen as anatomy-plate drawings. |
+| `src/bacteria.ts` | The six bacteria's drawings: cell walls, nucleoid and ribosomes, capsules, pili, beating flagella; each still body is drawn once per size and reused. |
+| `src/organs.ts` | The lungs, brain, liver (with the gut), kidney and spleen as anatomy-plate drawings: lobes, fissures and the bronchial tree; gyri, cerebellum and cerebral arteries; hepatic veins and ligaments; cortex, pyramids, hilar vessels and ureter; trabeculae and splenic vessels. Each organ (and the heart, drawn in `src/draw.ts` with its coronary vessels) is drawn once into an image and reused every frame. |
 | `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
 | `src/career.ts` | The career and its save (no DOM): gold, the upgrade shop and what upgrades do in play, organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |

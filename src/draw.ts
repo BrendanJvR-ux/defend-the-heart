@@ -133,23 +133,85 @@ function drawJunction(ctx: CanvasRenderingContext2D, s: State, v: VesselId) {
   ctx.restore();
 }
 
-function drawHeart(ctx: CanvasRenderingContext2D, s: State, t: number) {
-  const beat = Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 1.15)), 8) * 0.035;
-  const k = (1 + beat + s.heartKick * 0.08) * 1.15;
-  ctx.save(); ctx.translate(HEART.x, HEART.y); ctx.scale(k, k);
+/** The heart at rest, at the origin: great vessels, auricles, chambers, coronary arteries and veins,
+ *  fat along the grooves. Drawn once into the organ image; the beat scales it. */
+function drawHeartBody(ctx: CanvasRenderingContext2D) {
+  ctx.save(); ctx.scale(1.15, 1.15);
   const heart = () => { ctx.beginPath(); ctx.moveTo(0, 105); ctx.bezierCurveTo(-95, 30, -100, -70, -42, -92); ctx.bezierCurveTo(-14, -104, 0, -80, 4, -66); ctx.bezierCurveTo(22, -104, 92, -96, 92, -30); ctx.bezierCurveTo(92, 34, 30, 80, 0, 105); ctx.closePath(); };
+  // the great vessels: aorta and pulmonary arteries (red), superior vena cava (blue), with their walls
   for (const [vx, vw, col] of [[-26, 24, '#b8433a'], [4, 20, '#4a6aa8'], [30, 18, '#b8433a']] as const) {
     ctx.fillStyle = col; ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect(vx - vw / 2, -150, vw, 70, 9); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(vx - vw / 2 + 3, -146, 4, 60);
+    ctx.fillStyle = 'rgba(30,10,10,0.55)'; ctx.beginPath(); ctx.ellipse(vx, -148, vw / 2 - 3, 4, 0, 0, Math.PI * 2); ctx.fill(); // the open lumen
+  }
+  // the auricles: small ear-like flaps of the atria
+  for (const [ax, ay, sx] of [[-60, -78, -1], [64, -74, 1]] as const) {
+    ctx.fillStyle = '#b8504a'; ctx.strokeStyle = C.ink; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.bezierCurveTo(ax + sx * 22, ay - 18, ax + sx * 30, ay + 4, ax + sx * 14, ay + 14); ctx.bezierCurveTo(ax + sx * 6, ay + 10, ax, ay + 6, ax, ay); ctx.fill(); ctx.stroke();
   }
   const g = ctx.createRadialGradient(-30, -40, 10, 0, 0, 120);
   g.addColorStop(0, '#e08a7e'); g.addColorStop(0.6, C.heart); g.addColorStop(1, C.heartDark);
   heart(); ctx.fillStyle = g; ctx.fill();
-  if (s.heartKick > 0) { heart(); ctx.fillStyle = `rgba(255,60,50,${s.heartKick * 0.45})`; ctx.fill(); }
+  ctx.save(); heart(); ctx.clip();
+  // the right ventricle a shade lighter than the thick left one
+  ctx.fillStyle = 'rgba(255,200,190,0.12)'; ctx.beginPath(); ctx.ellipse(-40, 10, 50, 80, 0.2, 0, Math.PI * 2); ctx.fill();
+  // fat along the coronary and interventricular grooves
+  ctx.strokeStyle = 'rgba(250,220,140,0.75)'; ctx.lineWidth = 9; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(4, -64); ctx.bezierCurveTo(-18, -14, -20, 40, -2, 100); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-88, -36); ctx.quadraticCurveTo(0, -58, 90, -40); ctx.stroke();
+  // coronary arteries (red) in the grooves, branching over the ventricles; cardiac veins (blue) beside them
+  const branch = (x: number, y: number, a: number, len: number, w: number, d: number, col: string) => {
+    const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + Math.cos(a + 0.35) * len * 0.5, y + Math.sin(a + 0.35) * len * 0.5, x2, y2); ctx.stroke();
+    if (d > 0) { branch(x2, y2, a - 0.55, len * 0.66, w * 0.7, d - 1, col); branch(x2, y2, a + 0.45, len * 0.62, w * 0.7, d - 1, col); }
+  };
+  ctx.strokeStyle = '#a8202a'; ctx.lineWidth = 3.4;
+  ctx.beginPath(); ctx.moveTo(4, -64); ctx.bezierCurveTo(-18, -14, -20, 40, -2, 100); ctx.stroke(); // left anterior descending
+  ctx.beginPath(); ctx.moveTo(-6, -58); ctx.quadraticCurveTo(-60, -52, -90, -30); ctx.stroke(); // right coronary
+  ctx.beginPath(); ctx.moveTo(8, -60); ctx.quadraticCurveTo(50, -54, 90, -34); ctx.stroke(); // circumflex
+  for (const [x, y, a] of [[-8, -30, 2.3], [-12, 10, 2.5], [-10, 50, 2.4], [-6, -20, 0.6], [-10, 20, 0.7], [-6, 60, 0.6], [50, -50, 1.5], [-55, -48, 1.7]] as const) branch(x, y, a, 24, 2.2, 2, '#a8202a');
+  ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = '#3a5a9a'; ctx.lineWidth = 2.6;
+  ctx.beginPath(); ctx.moveTo(14, -62); ctx.bezierCurveTo(-8, -14, -10, 40, 8, 98); ctx.stroke(); // great cardiac vein
+  for (const [x, y, a] of [[4, -20, 0.5], [0, 30, 0.6]] as const) branch(x, y, a, 22, 1.8, 1, '#3a5a9a');
+  ctx.globalAlpha = 1;
+  ctx.restore();
   heart(); ctx.strokeStyle = C.ink; ctx.lineWidth = 3; ctx.stroke();
-  ctx.strokeStyle = '#7a2420'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(4, -64); ctx.bezierCurveTo(-18, -14, -20, 40, -2, 100); ctx.stroke();
-  ctx.lineWidth = 1.6; for (const sgn of [-1, 1]) for (let i = 0; i < 3; i++) { const yy = -30 + i * 36; ctx.beginPath(); ctx.moveTo(-10, yy); ctx.quadraticCurveTo(-10 + sgn * 24, yy + 8, -10 + sgn * 40, yy + 22); ctx.stroke(); }
   ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(-50, -50, 14, 24, -0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+// ── Organ images: each organ's still drawing is made once and reused every frame ──
+const ORGAN_HALF = 420; // map units around the organ's centre that the image covers
+let organCache: { key: string; img: HTMLCanvasElement; red: HTMLCanvasElement } | null = null;
+function organImages(px: number) {
+  const m = LEVEL.map, key = `${LEVEL.id}:${m.rx}:${m.ry}:${px}`;
+  if (organCache?.key === key) return organCache;
+  const size = Math.ceil(ORGAN_HALF * 2 * px);
+  const img = document.createElement('canvas'); img.width = img.height = size;
+  const x = img.getContext('2d')!; x.scale(px, px);
+  const c = { x: ORGAN_HALF, y: ORGAN_HALF };
+  if (LEVEL.id === 'heart') { x.translate(c.x, c.y); drawHeartBody(x); }
+  else if (LEVEL.id === 'lungs') drawLungs(x, c, 1, 0);
+  else if (LEVEL.id === 'brain') drawBrain(x, c, m.rx, m.ry, 1, 0);
+  else if (LEVEL.id === 'liver') drawLiver(x, c, m.rx, m.ry, 1, 0);
+  else if (LEVEL.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
+  else drawKidney(x, c, m.rx, m.ry, 1, 0);
+  // a red copy of the same shape, laid over it when the organ is hit
+  const red = document.createElement('canvas'); red.width = red.height = size;
+  const r = red.getContext('2d')!; r.drawImage(img, 0, 0); r.globalCompositeOperation = 'source-atop'; r.fillStyle = 'rgb(255,60,50)'; r.fillRect(0, 0, size, size);
+  organCache = { key, img, red };
+  return organCache;
+}
+
+/** Draw the organ from its image, scaled by its beat or breath, with the hit flash over it. */
+function drawOrganImage(ctx: CanvasRenderingContext2D, scale: number, kick: number) {
+  const m = ctx.getTransform(), px = Math.max(1, Math.round(Math.hypot(m.a, m.b) * 2 * 2) / 2);
+  const { img, red } = organImages(px), c = LEVEL.map.center;
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(scale, scale);
+  ctx.drawImage(img, -ORGAN_HALF, -ORGAN_HALF, ORGAN_HALF * 2, ORGAN_HALF * 2);
+  if (kick > 0) { ctx.globalAlpha = kick * 0.42; ctx.drawImage(red, -ORGAN_HALF, -ORGAN_HALF, ORGAN_HALF * 2, ORGAN_HALF * 2); }
   ctx.restore();
 }
 
@@ -168,10 +230,12 @@ function drawHealthBeads(ctx: CanvasRenderingContext2D, s: State) {
 
 function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
   const m = LEVEL.map, kick = s.heartKick;
-  if (LEVEL.id === 'heart') drawHeart(ctx, s, t);
-  else if (LEVEL.id === 'lungs') {
+  if (LEVEL.id === 'heart') {
+    const beat = Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 1.15)), 8) * 0.035;
+    drawOrganImage(ctx, 1 + beat + kick * 0.08, kick);
+  } else if (LEVEL.id === 'lungs') {
     const breath = surging(s) ? 1.05 : 1 + 0.012 * Math.sin(t * 1.6);
-    drawLungs(ctx, m.center, breath + kick * 0.03, kick);
+    drawOrganImage(ctx, breath + kick * 0.03, kick);
     if (surging(s)) {
       ctx.save(); ctx.font = '900 30px Palatino, Georgia, serif'; ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(244,234,216,0.92)'; ctx.fillRect(m.center.x - 90, m.center.y - 395, 180, 44);
@@ -179,10 +243,7 @@ function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
     }
   } else {
     const swell = 1 + Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 0.5)), 6) * 0.012 + kick * 0.04;
-    if (LEVEL.id === 'brain') drawBrain(ctx, m.center, m.rx, m.ry, swell, kick);
-    else if (LEVEL.id === 'liver') drawLiver(ctx, m.center, m.rx, m.ry, swell, kick);
-    else if (LEVEL.id === 'spleen') drawSpleen(ctx, m.center, m.rx, m.ry, swell, kick);
-    else drawKidney(ctx, m.center, m.rx, m.ry, swell, kick);
+    drawOrganImage(ctx, swell, kick);
   }
   drawHealthBeads(ctx, s);
   drawNoGauge(ctx, s, t);
