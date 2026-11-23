@@ -21,7 +21,7 @@ The **Menu** button in the top bar opens it at any time (the game pauses). Betwe
 | 3 | **Brain** | 6 (one fork) | **Blood–brain barrier.** Only two lymph node sites guard each route and less health, but three white cells. | 18 | 4 + boss |
 | 4 | **Liver** | 7 (two forks) | **Portal vein.** A long vein from the gut brings columns of bacteria (it forks before the liver); the liver **regrows 3 health** after every cleared wave. | 24 | 4 + boss |
 | 5 | **Kidney** | 8 (three forks) | **Filtration.** On the last 28% of every vessel (the striped stretch) pathogens crawl at ×0.6 speed, so nodes near the kidney get more shots. Hijackers throughout. | 20 | 4 + boss |
-| 6 | **Spleen** | 9 (three forks) | **It remakes white cells.** A white cell that is killed or infected comes back at the spleen 8 s later, but each one remade costs the spleen 1 health. The bacteria it exists to clear: pneumococci, meningococci, *Klebsiella*. | 22 | 4 + boss |
+| 6 | **Spleen** | 9 (three forks) | **It remakes white cells.** A white cell that is killed or infected comes back at the spleen 8 s later, and the spleen pays 1 health when it does (a cell lost too late in a wave to come back costs nothing). The bacteria it exists to clear: pneumococci, meningococci, *Klebsiella*. | 22 | 4 + boss |
 
 **Play it:** https://brendanjvr-ux.github.io/defend-the-heart/
 
@@ -31,7 +31,7 @@ It began as a conversion of [The Last Ward: Siege of Goosebridge](https://github
 
 ## When an organ falls
 
-The defeat screen says where the damage came from (how much came up the worst vessel, and which pathogen did the most harm) and suggests the counter: an IgG aimed at that bacterium, IgA for fast viruses, IgM and IgE for viral bosses, or keeping white cells away from hijackers.
+The defeat screen says where the damage came from (how much came up the worst vessel and which pathogen did the most harm, or, on the spleen, how much went on remaking lost white cells) and suggests the counter: an IgG aimed at that bacterium, IgA for fast viruses, IgM and IgE for viral bosses, or keeping white cells away from hijackers.
 
 ## The tutorial
 

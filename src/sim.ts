@@ -53,7 +53,7 @@ export interface State {
   /** Spleen: wave times at which lost white cells come back. */
   respawns: number[];
   /** Organ health lost, by the vessel it came up (as it enters the map) and by pathogen. */
-  leaks: { byVessel: Record<VesselId, number>; byType: Partial<Record<PathogenType, number>> };
+  leaks: { byVessel: Record<VesselId, number>; byType: Partial<Record<PathogenType, number>>; remade?: number };
   nodes: LymphNode[];
   pathogens: Pathogen[];
   cells: WhiteCell[];
@@ -398,15 +398,13 @@ function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pa
   return p;
 }
 
-/** A hijacker virus enters a white cell: the cell is lost and rises again as an infected cell heading for the heart.
- *  An ordinary hijacker is used up; the sepsis boss keeps going. */
-/** A white cell has been lost (killed or infected). The spleen remakes it later, at a health cost. */
+/** A white cell has been lost (killed or infected). The spleen will remake it later; the health is paid when it does,
+ *  so a cell lost too late in a wave to come back costs nothing. */
 function loseCell(s: State) {
   const r = LEVELS[s.level].respawn;
   if (!r) return;
-  s.heartHp = Math.max(0, s.heartHp - r.cost);
   s.respawns.push(s.waveTime + r.after);
-  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `−${r.cost} to remake a white cell`, t: 0, color: '#8a1e24' });
+  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `The spleen will remake it in ${r.after} s`, t: 0, color: '#1e6a8a' });
 }
 
 /** A hiding boss inside a red blood cell: nothing can target or hit it. */
@@ -415,6 +413,8 @@ export function hidden(s: State, p: Pathogen): boolean {
   return !!h && s.phase === 'combat' && s.waveTime % h.every >= h.every - h.for;
 }
 
+/** A hijacker virus enters a white cell: the cell is lost and rises again as an infected cell heading for the heart.
+ *  An ordinary hijacker is used up; the sepsis boss keeps going. */
 export function infect(s: State, c: WhiteCell, virus: Pathogen) {
   if (!CONFIG.pathogens[virus.type].infectsMany) virus.hp = 0;
   c.hp = 0;
@@ -446,20 +446,29 @@ export function rand(s: State): number {
   return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
 }
 
-/** What cost the most organ health, and what would have helped: for the defeat screen. Null if nothing leaked. */
-export function leakSummary(s: State): { vessel: VesselId; type: PathogenType; share: number; advice: string } | null {
-  const total = Object.values(s.leaks.byVessel).reduce((a, n) => a + n, 0);
+export type LeakSummary =
+  | { kind: 'leak'; vessel: VesselId; type: PathogenType; share: number; advice: string }
+  | { kind: 'remake'; share: number; advice: string };
+
+/** What cost the most organ health, and what would have helped: for the defeat screen. Null if nothing was lost. */
+export function leakSummary(s: State): LeakSummary | null {
+  const leaked = Object.values(s.leaks.byVessel).reduce((a, n) => a + n, 0), remade = s.leaks.remade ?? 0, total = leaked + remade;
   if (!total) return null;
-  const top = <K extends string>(r: Partial<Record<K, number>>) => (Object.entries(r) as [K, number][]).sort((a, b) => b[1] - a[1])[0][0];
-  const vessel = top(s.leaks.byVessel), type = top(s.leaks.byType), st = CONFIG.pathogens[type];
+  const top = <K extends string>(r: Partial<Record<K, number>>) => (Object.entries(r) as [K, number][]).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const type = top(s.leaks.byType);
+  if (!leaked || remade >= (s.leaks.byType[type!] ?? 0)) {
+    return { kind: 'remake', share: remade / total, advice: 'Every white cell the spleen remade cost it 1 health: keep your cells away from hijackers, and close a vessel before its cells are overwhelmed.' };
+  }
+  const vessel = top(s.leaks.byVessel)!, st = CONFIG.pathogens[type!];
   const name = st.taxon ? CONFIG.pathogens[st.taxon.species].plural : st.name;
   let advice: string;
   if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
   else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`;
+  else if (type === 'plasmodium') advice = 'Plasmodium is a parasite, not a bacterium: IgM and IgE wear it down, and time the pulse for when it comes out of its red blood cell.';
   else if (st.boss) advice = `${st.name}: IgM and IgE hit it hardest; IgG barely scratches a virus.`;
   else if (type === 'virus') advice = 'Viruses are fast and come in groups: an IgA node slows them so your other nodes can land their hits.';
   else advice = 'Hijacker viruses turned your white cells against you: kill them before they reach your cells, or keep the cells on another vessel.';
-  return { vessel, type, share: (s.leaks.byVessel[vessel] ?? 0) / total, advice };
+  return { kind: 'leak', vessel, type: type!, share: (s.leaks.byVessel[vessel] ?? 0) / total, advice };
 }
 
 /** Game speeds the Speed button steps through. */
@@ -553,9 +562,12 @@ export function step(s: State, dtRaw: number) {
   // the spleen remakes lost white cells: they appear at home, then set out along any open vessel
   while (s.respawns.length && s.respawns[0] <= s.waveTime) {
     s.respawns.shift();
+    const cost = LEVELS[s.level].respawn!.cost;
+    s.heartHp = Math.max(0, s.heartHp - cost);
+    s.leaks.remade = (s.leaks.remade ?? 0) + cost;
+    s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `−${cost} to remake a white cell`, t: 0, color: '#8a1e24' });
     const v = VESSEL_IDS[0];
     s.cells.push({ id: s.nextId++, vessel: v, s: VESSELS[v].length, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (s.cells.length % 2 ? 1 : -1) * 11, targetId: null, mode: 'home', infected: false });
-    s.floaters.push({ x: HEART.x, y: HEART.y - 40, text: 'White cell remade', t: 0, color: '#1e6a8a' });
   }
   deployHome(s);
   for (const c of outCells(s)) {

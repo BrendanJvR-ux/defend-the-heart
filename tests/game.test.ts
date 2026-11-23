@@ -482,7 +482,7 @@ function holdOpen(s: State) {
 }
 
 describe('Defend the Heart: organ levels', () => {
-  it('there are five organs, each with its own map, waves and a full set of build sites', () => {
+  it('there are six organs, each with its own map, waves and a full set of build sites', () => {
     expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney', 'spleen']);
     for (let i = 0; i < LEVELS.length; i++) {
       const s = newGame(i);
@@ -946,11 +946,18 @@ describe('Defend the Heart: what leaked', () => {
     const s = newGame(0);
     s.leaks = { byVessel: { lower: 9, left: 3 }, byType: { saureus: 9, virus: 3 } };
     const sum = leakSummary(s)!;
+    if (sum.kind !== 'leak') throw new Error('expected a leak');
     expect(sum.vessel).toBe('lower'); expect(sum.type).toBe('saureus'); expect(sum.share).toBeCloseTo(0.75);
     expect(sum.advice).toMatch(/IgG aimed at S\. aureus/);
     s.leaks = { byVessel: { right: 5 }, byType: { virus: 5 } }; expect(leakSummary(s)!.advice).toMatch(/IgA/);
     s.leaks = { byVessel: { right: 5 }, byType: { infected: 5 } }; expect(leakSummary(s)!.advice).toMatch(/hijacker/i);
     s.leaks = { byVessel: {}, byType: {} }; expect(leakSummary(s)).toBeNull();
+    // the spleen's remake cost counts too, and can be the main cause
+    s.leaks = { byVessel: { left: 2 }, byType: { virus: 2 }, remade: 6 };
+    const r = leakSummary(s)!; expect(r.kind).toBe('remake'); expect(r.share).toBeCloseTo(0.75); expect(r.advice).toMatch(/remade/);
+    s.leaks = { byVessel: {}, byType: {}, remade: 3 }; expect(leakSummary(s)!.kind).toBe('remake');
+    // a boss that is not a virus is not called one
+    s.leaks = { byVessel: { left: 8 }, byType: { plasmodium: 8 } }; expect(leakSummary(s)!.advice).not.toMatch(/virus/);
   });
 });
 
@@ -958,12 +965,19 @@ describe('Defend the Heart: the spleen', () => {
   const SPLEEN = 5;
   const outCell = (s: State) => { const v = M.VESSEL_IDS[0]; go(s, v); quiet(s); mk(s, 'saureus', M.VESSEL_IDS[1], 0); endlessNo(s); tick(s, 1); return outCells(s)[0]; };
 
-  it('a lost white cell comes back 8 s later, costing 1 spleen health', () => {
+  it('a lost white cell comes back 8 s later, and the 1 health is paid when it does', () => {
     const s = newGame(SPLEEN); const c = outCell(s); const n = s.cells.filter((x) => x.hp > 0 && !x.infected).length, hp = s.heartHp;
     c.hp = 0.01; mk(s, 'saureus', c.vessel, c.s); step(s, 1 / 30); // a bacterium finishes it off
-    expect(s.heartHp).toBe(hp - 1);
-    tick(s, 7.8); expect(s.cells.filter((x) => x.hp > 0 && !x.infected).length).toBe(n - 1);
-    tick(s, 0.4); expect(s.cells.filter((x) => x.hp > 0 && !x.infected).length).toBe(n);
+    s.pathogens = s.pathogens.filter((p) => p.type !== 'saureus' || p.vessel !== c.vessel); mk(s, 'saureus', M.VESSEL_IDS[1], 0);
+    expect(s.heartHp).toBe(hp);
+    tick(s, 7.8); expect(s.cells.filter((x) => x.hp > 0 && !x.infected).length).toBe(n - 1); expect(s.heartHp).toBe(hp);
+    tick(s, 0.4); expect(s.cells.filter((x) => x.hp > 0 && !x.infected).length).toBe(n); expect(s.heartHp).toBe(hp - 1);
+    expect(s.leaks.remade).toBe(1);
+  });
+  it('a cell lost too late in a wave to be remade costs nothing', () => {
+    const s = newGame(SPLEEN); const c = outCell(s); const hp = s.heartHp;
+    infect(s, c, mk(s, 'hijacker', c.vessel, c.s)); s.pathogens = [];
+    finishWave(s); expect(s.phase).toBe('prep'); expect(s.heartHp).toBe(hp); expect(s.leaks.remade ?? 0).toBe(0);
   });
   it('an infected cell is remade too', () => {
     const s = newGame(SPLEEN); const c = outCell(s); const n = aliveCells(s).length;
@@ -972,7 +986,8 @@ describe('Defend the Heart: the spleen', () => {
   });
   it('remaking a cell at 1 health loses the spleen, never below 0', () => {
     const s = newGame(SPLEEN); const c = outCell(s); s.heartHp = 1;
-    infect(s, c, mk(s, 'hijacker', c.vessel, c.s)); step(s, 1 / 30);
+    infect(s, c, mk(s, 'hijacker', c.vessel, c.s)); s.pathogens = s.pathogens.filter((p) => p.type !== 'infected');
+    tick(s, 8.2);
     expect(s.phase).toBe('defeat'); expect(s.heartHp).toBe(0);
   });
   it('other organs do not remake cells', () => {

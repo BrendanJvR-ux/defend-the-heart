@@ -546,6 +546,7 @@ let overlaySig = '';
 function defeatAdvice(): string {
   const sum = leakSummary(s), organ = esc(levelDef(s).organ.toLowerCase());
   if (!sum) return `<p>Too many pathogens reached the ${organ}.</p>`;
+  if (sum.kind === 'remake') return `<p>${Math.round(sum.share * 100)}% of the damage was the ${organ} remaking lost white cells.</p><p class="tip"><b>Next time:</b> ${esc(sum.advice)}</p>`;
   const st = CONFIG.pathogens[sum.type], who = st.boss ? `the ${esc(st.name.toLowerCase())}` : st.taxon ? `<i>${esc(st.plural)}</i>` : esc(st.plural.toLowerCase());
   const where = `${Math.round(sum.share * 100)}% of the damage came up the ${esc(map.entryDef(sum.vessel).name.toLowerCase())}`;
   return `<p>${where}, and ${who} did the most harm.</p><p class="tip"><b>Next time:</b> ${esc(sum.advice)}</p>`;

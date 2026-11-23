@@ -207,7 +207,9 @@ function organImages(px: number) {
 
 /** Draw the organ from its image, scaled by its beat or breath, with the hit flash over it. */
 function drawOrganImage(ctx: CanvasRenderingContext2D, scale: number, kick: number) {
-  const m = ctx.getTransform(), px = Math.max(1, Math.round(Math.hypot(m.a, m.b) * 2 * 2) / 2);
+  // the image is made at the on-screen scale (rounded to a half, so resizing only rebuilds it at each step),
+  // and never more than 4096 pixels across
+  const m = ctx.getTransform(), px = Math.min(4096 / (ORGAN_HALF * 2), Math.max(0.5, Math.round(Math.hypot(m.a, m.b) * 2) / 2));
   const { img, red } = organImages(px), c = LEVEL.map.center;
   ctx.save(); ctx.translate(c.x, c.y); ctx.scale(scale, scale);
   ctx.drawImage(img, -ORGAN_HALF, -ORGAN_HALF, ORGAN_HALF * 2, ORGAN_HALF * 2);

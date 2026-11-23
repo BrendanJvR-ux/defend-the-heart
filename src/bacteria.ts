@@ -143,6 +143,7 @@ function sprite(type: BacteriumType, px: number): HTMLCanvasElement {
   const key = `${type}:${px}`;
   let c = SPRITES.get(key);
   if (!c) {
+    if (SPRITES.size > 48) SPRITES.clear(); // sizes change with the window: keep the store small
     c = document.createElement('canvas');
     c.width = Math.ceil(HALF_W * 2 * px); c.height = Math.ceil(HALF_H * 2 * px);
     const x = c.getContext('2d')!; x.scale(px, px); x.translate(HALF_W, HALF_H);

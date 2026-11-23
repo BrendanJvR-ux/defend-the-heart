@@ -112,7 +112,7 @@ describe('Career: continuing a game', () => {
     expect(c.run).toBeNull(); expect(c.cleared[2]).toBe(false);
   });
 
-  it('every organ can be cleared and unlocks the next, up to five', () => {
+  it('every organ can be cleared and unlocks the next, up to six', () => {
     const c = freshCareer();
     for (let i = 0; i < LEVELS.length; i++) { const s = newGame(i); s.phase = 'victory'; onOrganEnd(c, s); }
     expect(unlockedCount(c)).toBe(6);
