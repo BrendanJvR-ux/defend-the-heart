@@ -160,7 +160,7 @@ const g = (type: PathogenType, vessel: VesselId, count: number, start: number, i
 export const LEVELS: LevelDef[] = [
   {
     id: 'heart', title: 'The Heart', organ: 'Heart', tagline: 'Four vessels, one beating target.',
-    twist: 'The first organ: learn dilation, lymph nodes and the pulse.',
+    twist: 'The first organ: learn lymph nodes, dilating with NO during the wave, and the pulse.',
     hp: 20, startEnergy: 240, cells: 2,
     startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
     map: {
@@ -175,7 +175,7 @@ export const LEVELS: LevelDef[] = [
     waves: [
       {
         title: 'First infection',
-        hint: 'Bacteria come up the left vessel. Dilate it so your white cells can meet them.',
+        hint: 'Bacteria come up the left vessel. Once they are well on their way, open it so your white cells can meet them: opening and holding it open costs NO.',
         groups: [{ type: 'bacterium', vessel: 'left', count: 5, start: 1, interval: 3.4 }],
       },
       {
@@ -259,7 +259,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'brain', title: 'The Brain', organ: 'Brain', tagline: 'Little room to build, nothing to spare.',
-    twist: 'The blood–brain barrier: only two lymph node sites per vessel and less health, but you get three white cells.',
+    twist: 'The blood–brain barrier: only two lymph node sites guard each route and less health, but you get three white cells. The lower-right vessel forks.',
     hp: 18, startEnergy: 440, cells: 3,
     startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
     map: {
@@ -279,7 +279,7 @@ export const LEVELS: LevelDef[] = [
     waves: [
       { title: 'The barrier', hint: 'Few sites: pick them well. Three white cells patrol whichever vessel you dilate.',
         groups: [g('bacterium', 'lowerLeft', 4, 1, 3.4), g('virus', 'left', 6, 4, 0.35), g('virus', 'midLeft', 5, 10, 0.35)] },
-      { title: 'Crossing over', hint: 'Fast viruses on the right side, bacteria behind them.',
+      { title: 'Crossing over', hint: 'Viruses come up the lower-right vessel, which forks: at the fork they take the branch you have not opened. Nodes on the shared stem guard both.',
         groups: [g('bacterium', 'right', 4, 1, 3.2), g('virus', 'lowerRight', 6, 6, 0.3), g('virus', 'left', 5, 14, 0.3), g('bacterium', 'midLeft', 3, 4, 3.2)] },
       { title: 'Meningitis', hint: 'Armoured bacteria on two vessels, and the first hijackers.',
         groups: [g('bacterium', 'left', 4, 1, 3), g('bacterium', 'lowerRight', 4, 3, 3), g('virus', 'right', 7, 10, 0.3), g('hijacker', 'lowerLeft', 3, 16, 1), g('virus', 'midLeft', 6, 8, 0.3)] },
