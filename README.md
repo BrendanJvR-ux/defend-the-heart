@@ -105,12 +105,15 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 
 ### Balance assumptions
 
+The figures come from the scripted players in `tests/game.test.ts`; pathogens drift slightly at random across the vessel, so a run can differ by a point or so.
+
+
 - A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG with the unlocked target that does most to that vessel's wave, and builds IgM instead when no target helps; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; pulses into clusters of three):
-  - **without upgrades** wins the heart (19/20) and the lungs (9/20), and loses the liver and kidney;
-  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 19/20, lungs 12/20 (buying the *S. pneumoniae* target), brain 14/18 (*Listeria*, *N. meningitidis* and IgM damage), liver 15/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 14/20 (IgM and IgG damage).
+  - **without upgrades** wins the heart (19/20) and the lungs (12/20), and loses the liver and kidney;
+  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 19/20, lungs 11/20 (buying the *S. pneumoniae* target), brain 14/18 (*Listeria*, *N. meningitidis* and IgM damage), liver 16/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 15/20 (IgM and IgG damage).
 - **A clumsy new player wins the heart.** A scripted player who builds only IgM on the first free sites in the list, opens a vessel only once a pathogen is 80% of the way in, and never pulses, still clears the heart without losing health. (The **Place by list** order takes each vessel's outermost site first, then the next.)
-- Never building loses every organ, even with every upgrade; white cells alone leak most of the heart's health in wave 1.
-- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs and brain at least 2 health worse (heart 17, lungs 6, brain 3). The tests require this on every organ.
+- Never building loses every organ, even with every upgrade; white cells alone leak most of the heart's health in wave 1 (it ends on 5/20).
+- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs and brain at least 2 health worse (heart 16, lungs 5, brain 4). The tests require this on every organ.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
 ### Files
