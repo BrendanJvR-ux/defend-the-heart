@@ -78,6 +78,19 @@ function sensibleDilate(s: State) {
   if (best !== s.dilated && danger(s, best) > 2 * danger(s, s.dilated) && s.no >= N.openCost + 2 * N.drainPerSec) toggleRoute(s, best);
 }
 const noBuild = () => {};
+/** A clumsy new player: spends all energy on IgM, on the first free sites in list order. */
+function clumsyBuild(s: State) {
+  for (const site of M.SITES) if (!nodeAt(s, site.id) && !placeNode(s, site.id, 'igm') && s.energy < CONFIG.nodes.igm.cost) break;
+}
+/** …and opens the vessel with the most pathogens only once one is past 80% of it, closing it when that vessel is clear. */
+function clumsyDilate(s: State) {
+  if (s.phase !== 'combat') return;
+  const count = (v: VesselId) => s.pathogens.filter((p) => p.hp > 0 && covers(v, p)).length;
+  if (s.dilated) { if (!count(s.dilated)) toggleRoute(s, s.dilated); return; }
+  const late = M.VESSEL_IDS.filter((v) => s.pathogens.some((p) => p.hp > 0 && covers(v, p) && p.s > 0.8 * M.VESSELS[v].length));
+  const v = late.sort((a, b) => count(b) - count(a))[0];
+  if (v && s.no >= CONFIG.no.openCost + CONFIG.no.drainPerSec) toggleRoute(s, v);
+}
 function play(prep: (s: State) => void, dilate: (s: State) => void = sensibleDilate, pulseMin = 3, level = 0, perks: Perks = NO_PERKS) {
   const s = newGame(level, perks); const hp: number[] = [];
   const pulse = pulseAtCluster(pulseMin);
@@ -401,6 +414,17 @@ describe('Defend the Heart: balance', () => {
       console.log(LEVELS[i].id, 'no upgrades', hp, s.phase);
       expect(s.phase).toBe('victory');
     }
+  });
+
+  it('a clumsy player (IgM only, first free sites, opens late, never pulses) wins the heart without upgrades', () => {
+    const { s, hp } = play(clumsyBuild, clumsyDilate, 999, 0);
+    console.log('heart clumsy', hp, s.phase);
+    expect(s.phase).toBe('victory');
+  });
+
+  it('the sensible player ends the heart on at least 12/20 without upgrades', () => {
+    const { s } = play(sensibleBuild, sensibleDilate, 3, 0);
+    expect(s.phase).toBe('victory'); expect(s.heartHp).toBeGreaterThanOrEqual(12);
   });
 
   it('white cells alone cannot clear wave 1 without lymph nodes', () => {

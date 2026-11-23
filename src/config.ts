@@ -178,8 +178,8 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'heart', title: 'The Heart', organ: 'Heart', tagline: 'Four vessels, one beating target.',
     twist: 'The first organ: learn lymph nodes, dilating with NO during the wave, and the pulse.',
-    hp: 20, startEnergy: 120, cells: 2,
-    startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
+    hp: 20, startEnergy: 160, cells: 2,
+    startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }, { vessel: 'lower', site: 1, type: 'igm' }],
     map: {
       center: { x: 800, y: 480 }, rx: 100, ry: 100, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -192,21 +192,21 @@ export const LEVELS: LevelDef[] = [
     waves: [
       {
         title: 'First infection',
-        hint: 'Bacteria come up the left vessel. Once they are well on their way, open it so your white cells can meet them: opening and holding it open costs NO.',
-        groups: [{ type: 'saureus', vessel: 'left', count: 9, start: 1, interval: 3.4 }],
+        hint: 'Staph comes up the left vessel. Step 1: click a + beside it and place an IgM. Step 2: start the wave. Step 3: when the bacteria are halfway in, click the left vessel to open it: your white cells go out to meet them. Opening and holding it open costs NO.',
+        groups: [{ type: 'saureus', vessel: 'left', count: 7, start: 1, interval: 3.4 }],
       },
       {
         title: 'Two fronts',
-        hint: 'A fast viral cluster on the right, a few bacteria from below. Place a lymph node where you will not send your white cells.',
+        hint: 'Fast viruses on the right, staph from below. Put an IgA (it slows) by the right vessel, and open the lower vessel for your white cells when the staph gets close.',
         groups: [
-          { type: 'virus', vessel: 'right', count: 11, start: 4, interval: 0.35 },
-          { type: 'saureus', vessel: 'lower', count: 5, start: 1, interval: 4 },
-          { type: 'virus', vessel: 'right', count: 9, start: 16, interval: 0.35 },
+          { type: 'virus', vessel: 'right', count: 9, start: 4, interval: 0.35 },
+          { type: 'saureus', vessel: 'lower', count: 4, start: 1, interval: 4 },
+          { type: 'virus', vessel: 'right', count: 7, start: 16, interval: 0.35 },
         ],
       },
       {
         title: 'Staph clusters',
-        hint: 'Staph comes in clusters. An IgG node aimed at S. aureus hits it three times as hard.',
+        hint: 'More staph. Place an IgG and aim it at S. aureus: it hits staph three times as hard as an IgM.',
         groups: [
           { type: 'saureus', vessel: 'upper', count: 7, start: 1, interval: 3.4 },
           { type: 'saureus', vessel: 'left', count: 5, start: 8, interval: 3.5 },

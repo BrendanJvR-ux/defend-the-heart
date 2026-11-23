@@ -15,7 +15,7 @@ The **Menu** button in the top bar opens it at any time (the game pauses). Betwe
 
 | Level | Organ | Routes in | Twist | Health | Waves |
 |---|---|---|---|---|---|
-| 1 | **Heart** | 4 | The tutorial organ: lymph nodes, dilating with NO, and the pulse. | 20 | 5 + boss |
+| 1 | **Heart** | 4 | The tutorial organ, made for new players: three nodes already placed, gentler first waves, and hints that walk you through building, opening a vessel and aiming IgG. | 20 | 5 + boss |
 | 2 | **Lungs** | 5 | **Breathing.** Every 6 s the lungs inhale for 1.4 s and everything in the vessels surges forward ×1.5 (the panel counts down to the next breath, the map shows INHALE). | 20 | 4 + boss |
 | 3 | **Brain** | 6 (one fork) | **Blood–brain barrier.** Only two lymph node sites guard each route and less health, but three white cells. | 18 | 4 + boss |
 | 4 | **Liver** | 7 (two forks) | **Portal vein.** A long vein from the gut brings columns of bacteria (it forks before the liver); the liver **regrows 3 health** after every cleared wave. | 24 | 4 + boss |
@@ -72,7 +72,7 @@ All six have 70 health and the same speed; viruses (10 health) are fast and come
 ## How it plays
 
 1. **Prepare.** The panel and the map show the next wave: which pathogens, how many, roughly when, and up which vessel (and whether it forks).
-2. **Place lymph nodes** (between waves only). Click a **+** site beside a vessel section and pick a type. Each node fires its immunoglobulin at pathogens on its own route; a node on a fork's shared stem guards both branches. Nodes cost energy; you start with 120–295 energy and two nodes already placed, and earn energy for every kill and every wave cleared. Most routes have five sites (the liver's more, the brain's two).
+2. **Place lymph nodes** (between waves only). Click a **+** site beside a vessel section and pick a type. Each node fires its immunoglobulin at pathogens on its own route; a node on a fork's shared stem guards both branches. Nodes cost energy; you start with 160–312 energy and two nodes already placed (three on the heart), and earn energy for every kill and every wave cleared. Most routes have five sites (the liver's more, the brain's two).
 
 | Node | Cost | Damage | Effect |
 |---|---|---|---|
@@ -106,10 +106,11 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 ### Balance assumptions
 
 - A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG with the unlocked target that does most to that vessel's wave, and builds IgM instead when no target helps; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; pulses into clusters of three):
-  - **without upgrades** wins the heart (18/20) and the lungs (9–12/20), and loses the liver and kidney;
-  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 17/20, lungs 8/20 (buying the *S. pneumoniae* target), brain 13/18 (*Listeria* and *N. meningitidis*), liver 15/24 (*E. coli*, *Klebsiella*, IgM and IgA damage), kidney 14/20 (IgM and IgG damage).
-- Never building loses every organ, even with every upgrade; white cells alone lose the heart in wave 1.
-- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs and brain at least 2 health worse (heart 15, lungs 7, brain 3). The tests require this on every organ.
+  - **without upgrades** wins the heart (19/20) and the lungs (9/20), and loses the liver and kidney;
+  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 19/20, lungs 12/20 (buying the *S. pneumoniae* target), brain 14/18 (*Listeria*, *N. meningitidis* and IgM damage), liver 15/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 14/20 (IgM and IgG damage).
+- **A clumsy new player wins the heart.** A scripted player who builds only IgM on the first free sites in the list, opens a vessel only once a pathogen is 80% of the way in, and never pulses, still clears the heart without losing health. (The **Place by list** order takes each vessel's outermost site first, then the next.)
+- Never building loses every organ, even with every upgrade; white cells alone leak most of the heart's health in wave 1.
+- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs and brain at least 2 health worse (heart 17, lungs 6, brain 3). The tests require this on every organ.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
 ### Files

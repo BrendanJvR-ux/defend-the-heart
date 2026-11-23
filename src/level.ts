@@ -99,7 +99,8 @@ function makeSites(): Site[] {
       if (best) out.push(best);
     });
   }
-  return out;
+  // list order (the panel's "Place by list"): each vessel's outermost site, then each vessel's next, and so on
+  return out.sort((a, b) => a.index - b.index || VESSEL_IDS.indexOf(a.vessel) - VESSEL_IDS.indexOf(b.vessel));
 }
 
 /** Switch the map to another organ. */
