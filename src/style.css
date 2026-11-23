@@ -138,3 +138,16 @@ body.menu-open #btnPause, body.menu-open #btnSpeed, body.menu-open #btnRestart {
 .pips i.on { background: var(--blue); }
 .gold { color: #8a6410; font-weight: 700; }
 #menu .plate:has(.shop) { max-width: min(560px, 94%); }
+
+#coach { position: absolute; z-index: 4; max-width: 300px; background: var(--paper); border: 2px solid #e8a028; border-radius: 12px; padding: 10px 14px; box-shadow: 0 6px 18px rgba(42, 30, 24, 0.3); }
+#coach h3 { margin: 0 0 4px; font-size: 17px; color: var(--red-dark); }
+#coach p { margin: 0 0 8px; font-size: 14px; line-height: 1.38; }
+.coachButtons { display: flex; gap: 8px; flex-wrap: wrap; }
+.coach-hl { outline: 4px solid #e8a028 !important; outline-offset: 3px; animation: coachPulse 0.9s ease-in-out infinite alternate; }
+@keyframes coachPulse { from { outline-color: #e8a028; } to { outline-color: rgba(232, 160, 40, 0.35); } }
+@media (max-width: 600px) {
+  #coach { max-width: 210px; padding: 6px 9px; }
+  #coach h3 { font-size: 14px; }
+  #coach p { font-size: 12px; margin-bottom: 5px; }
+  .coachButtons button { min-height: 30px; padding: 3px 8px; font-size: 13px; }
+}

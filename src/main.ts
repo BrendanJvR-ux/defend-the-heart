@@ -7,6 +7,7 @@ import {
   aliveCells, wave, whenLabel, resumeGame, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
 import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, type Career, type KV, type UpgradeId } from './career';
+import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
 import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
 
 // ── The career: organs cleared, the game in progress, saved in this browser ──
@@ -21,7 +22,7 @@ const vesselName = (v: VesselId) => map.VESSELS[v]?.name ?? v;
 const organTitle = (i: number) => LEVELS[i].title.replace(/^The /, '');
 
 let s: State = career.run ? resumeGame(career.run, perksOf(career)) : newGame(0, perksOf(career));
-const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, popMode: 'main', dualFirst: null, showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
+const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, popMode: 'main', dualFirst: null, coachAt: null, showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('board');
@@ -206,14 +207,61 @@ function pulse() {
   lastSig = '';
 }
 
-function restart() { const sp = s.speed; s = newGame(s.level, perksOf(career)); lastPhase = ''; spentToasted = 0; s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
+function restart() { const sp = s.speed; s = newGame(s.level, perksOf(career)); lastPhase = ''; spentToasted = 0; if (tut) { wantTutorial = true; maybeTutorial(); } s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
 /** A run worth asking about before it is thrown away: past the first wave, or with nodes built. */
 const runInProgress = () => (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.phase !== 'prep' || s.energy !== levelDef(s).startEnergy);
+// ── The guided first wave on the heart ─────────────────────────────────────
+let tut: Tutorial | null = null;
+/** Set by the menu's Tutorial button: the next heart started runs the tutorial. */
+let wantTutorial = false;
+const coachEl = $('coach');
+let coachSig = '';
+/** Start the tutorial on a fresh heart if it is wanted (asked for, or never seen in this career). */
+function maybeTutorial() {
+  tut = s.level === 0 && s.wave === 1 && (wantTutorial || !career.tutorialSeen) ? startTutorial(s) : null;
+  wantTutorial = false; coachSig = '';
+}
+function endTutorial() {
+  tut = null; coachSig = ''; career.tutorialSeen = true; saveNow();
+  coachEl.hidden = true; document.querySelectorAll('.coach-hl').forEach((el) => el.classList.remove('coach-hl'));
+}
+coachEl.addEventListener('click', (e) => {
+  const el = (e.target as HTMLElement).closest('[data-coach]') as HTMLElement | null;
+  if (!el || !tut) return;
+  if (el.dataset.coach === 'skip') { endTutorial(); toast('Tutorial skipped. The menu can replay it.'); return; }
+  tutorialNext(tut); coachSig = '';
+  if (!tut.step) endTutorial();
+});
+/** Draw the coach: the callout box beside what it points at, and a highlight on panel controls. */
+function renderCoach() {
+  const text = tut && !menuPage ? tutorialText(tut, s) : null;
+  const target = tut && text ? tutorialTarget(tut, s) : null;
+  view.coachAt = target?.at ?? null;
+  const sig = JSON.stringify([tut?.step, text?.title, target, panel.innerHTML.length]);
+  if (sig === coachSig) return;
+  coachSig = sig;
+  document.querySelectorAll('.coach-hl').forEach((el) => el.classList.remove('coach-hl'));
+  if (!tut || !text) { coachEl.hidden = true; return; }
+  const sel = target?.panel === 'start' ? '[data-act=start]' : target?.panel === 'no' ? '.nogauge' : target?.panel === 'pulse' ? '[data-act=pulse]' : '';
+  if (sel) panel.querySelector(sel)?.classList.add('coach-hl');
+  coachEl.innerHTML = `<h3>${esc(text.title)}</h3><p>${esc(text.body)}</p><div class="coachButtons">${manualStep(tut) && text.button ? `<button data-coach="next" class="primary">${esc(text.button)}</button>` : ''}${tut.step !== 'done' ? '<button data-coach="skip">Skip tutorial</button>' : ''}</div>`;
+  coachEl.hidden = false;
+  // beside the map point it is about, else at the bottom of the map
+  const field = canvas.parentElement!, fw = field.clientWidth, fh = field.clientHeight, cw = coachEl.offsetWidth, ch = coachEl.offsetHeight;
+  if (target?.at) {
+    const x = (target.at.x / W) * fw, y = (target.at.y / H) * fh;
+    const left = target.at.x > W * 0.5 ? x - cw - 40 : x + 40;
+    coachEl.style.left = `${Math.max(6, Math.min(fw - cw - 6, left))}px`;
+    coachEl.style.top = `${Math.max(6, Math.min(fh - ch - 6, y - ch / 2))}px`;
+  } else { coachEl.style.left = '12px'; coachEl.style.top = `${Math.max(6, fh - ch - 12)}px`; }
+}
+
 function playLevel(i: number, confirmed = false) {
   if (i >= unlocked) { toast('Clear the previous organ to unlock this one.'); return; }
   if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: i }); return; }
   const sp = s.speed; s = newGame(i, perksOf(career)); s.speed = sp;
   closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = ''; spentToasted = 0;
+  maybeTutorial();
   toast(`Level ${i + 1}: defend the ${organTitle(i).toLowerCase()}.`);
 }
 
@@ -253,6 +301,7 @@ function renderMenu() {
         ${run ? `<button data-menu="continue" class="primary">Continue<small>${esc(organTitle(run.level))} · wave ${run.wave} of ${LEVELS[run.level].waves.length}</small></button>` : ''}
         <button data-menu="new" ${run ? '' : 'class="primary"'}>New career</button>
         <button data-menu="organs">Organs<small>${unlocked} unlocked</small></button>
+        <button data-menu="tutorial">Tutorial<small>a guided first wave on the heart</small></button>
         <button data-menu="shop">Upgrades<small>${career.gold} gold</small></button>
         ${gameShown ? '<button data-menu="close">Back to the game</button>' : ''}
       </div>`;
@@ -336,12 +385,15 @@ menuEl.addEventListener('click', (e) => {
   else if (a === 'back') openMenu({ page: 'main' });
   else if (a === 'close') { gameShown = true; closeMenu(); }
   else if (a === 'level') { gameShown = true; playLevel(Number(el.dataset.level)); if (menuPage?.page !== 'switch') { s.paused = false; pausedBeforeMenu = false; } }
+  else if (a === 'tutorial') { wantTutorial = true; gameShown = true; playLevel(0); if (menuPage?.page !== 'switch') { s.paused = false; pausedBeforeMenu = false; } }
   else if (a === 'switchYes') { gameShown = true; pausedBeforeMenu = false; playLevel(Number(el.dataset.level), true); s.paused = false; }
 });
 function startCareer() {
-  career = freshCareer(); unlocked = unlockedCount(career); saveNow();
+  // a new career starts over, but someone who has seen the tutorial needn't see it again
+  const seen = career.tutorialSeen; career = freshCareer(); career.tutorialSeen = seen; unlocked = unlockedCount(career); saveNow();
   const sp = s.speed; s = newGame(0, perksOf(career)); s.speed = sp; lastPhase = ''; spentToasted = 0; gameShown = true;
   closeMenu(); pausedBeforeMenu = false; s.paused = false;
+  maybeTutorial();
   toast('A new career: defend the heart.');
 }
 $('btnPause').addEventListener('click', togglePause);
@@ -513,6 +565,7 @@ function refresh(now: number) {
   if (sig !== lastSig) { lastSig = sig; renderPanel(); }
   renderHud();
   renderOverlay();
+  renderCoach();
   if (s.phase !== 'prep' && !popover.hidden) closeSite();
   const k = canvas.width / W;
   ctx.setTransform(k, 0, 0, k, 0, 0);
@@ -523,7 +576,9 @@ let last = performance.now();
 function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
-  if (!s.paused) advance(s, dt);
+  if (tut) { tutorialTick(tut, s); if (!tut.step) endTutorial(); }
+  // the tutorial stops time at the moments that can't wait, until the player acts
+  if (!s.paused && !(tut && tutorialHolds(tut, s))) advance(s, dt);
   autosave();
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
   refresh(now);
@@ -537,6 +592,6 @@ requestAnimationFrame(frame);
 Object.assign(window, {
   __heart: () => s,
   __level: (i: number) => { unlocked = Math.max(unlocked, i + 1); playLevel(i); return levelDef(s).id; },
-  __advance: (sec: number) => { for (let t = 0; t < sec && !s.paused; t += 1 / 30) { step(s, 1 / 30); autosave(); } refresh(performance.now()); return { phase: s.phase, wave: s.wave, hp: s.heartHp }; },
+  __advance: (sec: number) => { for (let t = 0; t < sec && !s.paused; t += 1 / 30) { if (tut) tutorialTick(tut, s); if (tut && tutorialHolds(tut, s)) break; step(s, 1 / 30); autosave(); } refresh(performance.now()); return { phase: s.phase, wave: s.wave, hp: s.heartHp }; },
   __refresh: () => refresh(performance.now()),
 });

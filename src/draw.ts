@@ -16,6 +16,8 @@ export interface View {
   /** Dual-target IgG: the first target chosen. */
   dualFirst: BacteriumType | null;
   showPulseRadius: boolean;
+  /** The tutorial's map pointer: a pulsing ring here. */
+  coachAt: Vec | null;
   touch: boolean;
 }
 
@@ -395,6 +397,12 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     bar(ctx, q.x, q.y - 38, 40, c.hp / c.maxHp, '#4ab8d8');
   }
 
+  if (view.coachAt) {
+    // the tutorial points here
+    const k = 0.5 + 0.5 * Math.sin(t * 5), q = view.coachAt;
+    ctx.save(); ctx.strokeStyle = `rgba(232,160,40,${0.55 + 0.45 * k})`; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(q.x, q.y, 40 + 8 * k, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   for (const r of s.rings) {
     const k = r.t / r.dur;
     ctx.save();

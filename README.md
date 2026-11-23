@@ -9,6 +9,7 @@ Clear an organ to unlock the next. The game opens on a **menu**:
 - **Continue** picks up your game where you left it: the organ, the wave, your nodes (with their IgG targets and IgE waves left), energy, organ health and NO. It is saved in your browser at the start of every build phase, so leaving mid-wave brings you back to that wave's build phase. Losing an organ ends that run.
 - **New career** starts over at the heart (it asks first if you have progress).
 - **Upgrades** is the gold shop (below).
+- **Tutorial** replays the guided first wave on the heart.
 - **Organs** lists the five organs: cleared ones show your best health and can be replayed. Starting a different organ while a game is in progress asks first.
 
 The **Menu** button in the top bar opens it at any time (the game pauses). Between waves, the **Level** card at the top of the panel also switches organ.
@@ -26,6 +27,10 @@ The **Menu** button in the top bar opens it at any time (the game pauses). Betwe
 It began as a conversion of [The Last Ward: Siege of Goosebridge](https://github.com/BrendanJvR-ux/the-last-ward), a storybook tower defence, and now lives in its own repository.
 
 **Run it locally:** `npm install`, then `npm run dev`, and open http://localhost:5173/. Tests: `npm test`.
+
+## The tutorial
+
+The first time you play the heart, a guided first wave walks you through it, one step at a time, waiting for you at each: place a lymph node (a ring marks the spot), start the wave, open the left vessel when the bacteria are on their way in, how NO keeps it open, and the immune pulse. At the two moments that can't wait (opening the vessel, firing the pulse) time stands still until you act. **Skip tutorial** is always there; the menu's **Tutorial** button replays it.
 
 ## Gold and upgrades
 
@@ -129,6 +134,8 @@ The figures come from the scripted players in `tests/game.test.ts`; pathogens dr
 | `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
 | `src/career.ts` | The career and its save (no DOM): gold, the upgrade shop and what upgrades do in play, organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |
-| `src/main.ts` | HUD, panel, the menu, autosave, build popover and IgG target picker, mouse / touch / keyboard input, overlays. |
+| `src/tutorial.ts` | The heart's guided first wave (no DOM): its steps, when each is done, when time holds, what the callout says and points at. |
+| `src/main.ts` | HUD, panel, the menu, the tutorial's callout, autosave, build popover and IgG target picker, mouse / touch / keyboard input, overlays. |
+| `tests/tutorial.test.ts` | The tutorial played through on the real simulation: every step in order, the holds, skipping the pulse if the wave ends, the saved seen flag. |
 | `tests/career.test.ts` | The save (fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing), gold, the shop and upgrade effects. |
 | `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the four lymph nodes and the IgG match, IgE burn-out, infection), each organ's map and twist, each boss's trick, map labels that never cover a site or each other, plus balance on every organ (including the hold-open check). |

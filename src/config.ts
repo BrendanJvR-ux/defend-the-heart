@@ -192,7 +192,7 @@ export const LEVELS: LevelDef[] = [
     waves: [
       {
         title: 'First infection',
-        hint: 'Staph comes up the left vessel. Step 1: click a + beside it and place an IgM. Step 2: start the wave. Step 3: when the bacteria are halfway in, click the left vessel to open it: your white cells go out to meet them. Opening and holding it open costs NO.',
+        hint: 'Staph comes up the left vessel. Step 1: click a + beside it and place an IgM. Step 2: start the wave. Step 3: when the bacteria are on their way in, click the left vessel to open it: your white cells go out to meet them. Opening and holding it open costs NO.',
         groups: [{ type: 'saureus', vessel: 'left', count: 7, start: 1, interval: 3.4 }],
       },
       {

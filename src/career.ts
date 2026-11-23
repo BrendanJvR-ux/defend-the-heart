@@ -86,6 +86,8 @@ export interface Career {
   bought: Partial<Record<UpgradeId, number>>;
   /** The game in progress, saved at the start of each build phase; null when none. */
   run: RunSave | null;
+  /** The heart's guided first wave has been finished or skipped. */
+  tutorialSeen: boolean;
 }
 
 /** Where things are kept. localStorage, or a stand-in in tests. */
@@ -97,7 +99,7 @@ export const BACKUP_KEY = 'dth-career-unreadable';
 
 export function freshCareer(): Career {
   const n = LEVELS.length;
-  return { version: 1, gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null };
+  return { version: 1, gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null, tutorialSeen: false };
 }
 
 const safeGet = (kv: KV, k: string) => { try { return kv.get(k); } catch { return null; } };
@@ -145,6 +147,8 @@ function parse(raw: string): Career | null {
     c.bought[k as UpgradeId] = Math.min(n as number, UPGRADES[k as UpgradeId].prices.length);
   }
   c.run = validRun(o.run) ? o.run : null;
+  // older saves had no flag: a player who has cleared an organ has no need of the tutorial
+  c.tutorialSeen = typeof o.tutorialSeen === 'boolean' ? o.tutorialSeen : c.cleared.some(Boolean);
   return c;
 }
 
