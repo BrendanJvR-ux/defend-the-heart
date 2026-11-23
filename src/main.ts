@@ -3,7 +3,7 @@ import { CONFIG, LEVELS, NODE_TYPES, BACTERIA, type BacteriumType, type NodeType
 import * as map from './level';
 import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
-  type State, newGame, step, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
+  type State, newGame, step, advance, nextSpeed, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
   aliveCells, wave, whenLabel, resumeGame, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
 import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, type Career, type KV, type UpgradeId } from './career';
@@ -345,7 +345,7 @@ function startCareer() {
   toast('A new career: defend the heart.');
 }
 $('btnPause').addEventListener('click', togglePause);
-$('btnSpeed').addEventListener('click', () => { s.speed = s.speed === 1 ? 2 : 1; });
+$('btnSpeed').addEventListener('click', () => { s.speed = nextSpeed(s.speed); });
 $('btnRestart').addEventListener('click', restart);
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
@@ -523,7 +523,7 @@ let last = performance.now();
 function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
-  if (!s.paused) for (let i = 0; i < s.speed; i++) step(s, dt);
+  if (!s.paused) advance(s, dt);
   autosave();
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
   refresh(now);

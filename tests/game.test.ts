@@ -8,7 +8,7 @@ import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type Upgra
 const M = map;
 import {
   newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
-  waveSpawns, placeNode, buildCheck, nodeAt, hurt, iggMultiplier, retargetNode, type State, type Pathogen,
+  waveSpawns, placeNode, buildCheck, nodeAt, hurt, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, type State, type Pathogen,
 } from '../src/sim';
 
 function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t = 0; t < seconds; t += 1 / 30) { step(s, 1 / 30); each?.(s); } }
@@ -892,4 +892,26 @@ describe('Defend the Heart: upgrades in play', () => {
     startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0); s.no = 139; tick(s, 2); expect(s.no).toBe(140);
   });
   it('perksOf(freshCareer()) is NO_PERKS', () => { expect(perksOf(freshCareer())).toEqual(NO_PERKS); });
+});
+
+describe('Defend the Heart: game speed', () => {
+  it('the speed button steps through ×1, ×1.5 and ×2, then back to ×1', () => {
+    expect(SPEEDS).toEqual([1, 1.5, 2]);
+    expect([nextSpeed(1), nextSpeed(1.5), nextSpeed(2)]).toEqual([1.5, 2, 1]);
+    expect(nextSpeed(3)).toBe(1); // an unknown speed falls back to ×1
+  });
+  it('a frame at ×1.5 or ×2 moves the game on 1.5 or 2 times as far', () => {
+    for (const sp of SPEEDS) {
+      const s = newGame(0); startWave(s); s.speed = sp;
+      const t0 = s.waveTime; advance(s, 1 / 30);
+      expect(s.waveTime - t0).toBeCloseTo(sp / 30, 6);
+    }
+  });
+  it('a long frame at ×2 is split into small steps, never one big leap', () => {
+    const s = newGame(0); startWave(s); quiet(s); s.speed = 2;
+    const p = mk(s, 'saureus', 'left', 0); const t0 = s.waveTime;
+    advance(s, 0.1);
+    expect(s.waveTime - t0).toBeCloseTo(0.2, 6);
+    expect(p.s).toBeCloseTo(CONFIG.pathogens.saureus.speed * 0.2, 3);
+  });
 });

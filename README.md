@@ -97,7 +97,7 @@ All six have 70 health and the same speed; viruses (10 health) are fast and come
 | Open / switch / close a route (during a wave) | Click / tap a vessel, or the route buttons | 1–8, in the order the panel lists the routes |
 | Start wave | **Start wave** | Enter |
 | Immune pulse | **Immune pulse** | Space |
-| Menu, pause, speed, restart | buttons in the top bar | P to pause; Esc closes the build menu or steps back in the menu |
+| Menu, pause, speed, restart | buttons in the top bar (**Speed** steps through ×1, ×1.5 and ×2) | P to pause; Esc closes the build menu or steps back in the menu |
 
 ### Tuning
 

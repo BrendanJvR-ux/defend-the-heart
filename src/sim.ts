@@ -414,6 +414,16 @@ function easeWidths(s: State, dt: number) {
   }
 }
 
+/** Game speeds the Speed button steps through. */
+export const SPEEDS = [1, 1.5, 2];
+export const nextSpeed = (sp: number) => SPEEDS[(SPEEDS.indexOf(sp) + 1) % SPEEDS.length] ?? 1;
+
+/** Move the game on by one frame of real time at the game's speed, in equal sub-steps no longer than a real frame. */
+export function advance(s: State, dt: number) {
+  const n = Math.max(1, Math.ceil(s.speed));
+  for (let i = 0; i < n; i++) step(s, (dt * s.speed) / n);
+}
+
 export function step(s: State, dtRaw: number) {
   const dt = Math.min(dtRaw, 0.1);
   s.time += dt;
