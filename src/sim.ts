@@ -48,6 +48,10 @@ export interface State {
   perks: Perks;
   /** The cheaper-first-node discount has been used this build phase. */
   discountUsed: boolean;
+  /** State of the game's own random source (seeded, so the same game always plays the same way). */
+  rng: number;
+  /** Organ health lost, by the vessel it came up (as it enters the map) and by pathogen. */
+  leaks: { byVessel: Record<VesselId, number>; byType: Partial<Record<PathogenType, number>> };
   nodes: LymphNode[];
   pathogens: Pathogen[];
   cells: WhiteCell[];
@@ -71,12 +75,12 @@ export interface State {
 const zeroWidths = () => Object.fromEntries(VESSEL_IDS.map((v) => [v, 0])) as Record<VesselId, number>;
 
 /** A fresh game on the given organ (default: the one already loaded). Loads that organ's map. */
-export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS): State {
+export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 + level): State {
   loadLevel(level);
   const L = LEVELS[level];
   const s: State = {
     level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: perks.noMax, noOuts: 0,
-    perks, discountUsed: false,
+    perks, discountUsed: false, rng: seed >>> 0, leaks: { byVessel: {}, byType: {} },
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
@@ -382,7 +386,7 @@ export function hurt(s: State, p: Pathogen, dmg: number) {
 
 function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pathogen {
   const st = CONFIG.pathogens[type];
-  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (Math.random() * 2 - 1) * 7, wob: Math.random() * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
+  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
   if (st.boss) {
     const m = pointAt(VESSELS[vessel], 90);
@@ -412,6 +416,31 @@ function easeWidths(s: State, dt: number) {
     const k = CONFIG.dilateRate * dt;
     s.width[v] = s.width[v] < target ? Math.min(target, s.width[v] + k) : Math.max(target, s.width[v] - k);
   }
+}
+
+/** The game's random source: a small seeded generator (mulberry32), so a game can be replayed exactly. */
+export function rand(s: State): number {
+  s.rng = (s.rng + 0x6d2b79f5) >>> 0;
+  let x = s.rng;
+  x = Math.imul(x ^ (x >>> 15), x | 1);
+  x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+  return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+}
+
+/** What cost the most organ health, and what would have helped: for the defeat screen. Null if nothing leaked. */
+export function leakSummary(s: State): { vessel: VesselId; type: PathogenType; share: number; advice: string } | null {
+  const total = Object.values(s.leaks.byVessel).reduce((a, n) => a + n, 0);
+  if (!total) return null;
+  const top = <K extends string>(r: Partial<Record<K, number>>) => (Object.entries(r) as [K, number][]).sort((a, b) => b[1] - a[1])[0][0];
+  const vessel = top(s.leaks.byVessel), type = top(s.leaks.byType), st = CONFIG.pathogens[type];
+  const name = st.taxon ? CONFIG.pathogens[st.taxon.species].plural : st.name;
+  let advice: string;
+  if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
+  else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`;
+  else if (st.boss) advice = `${st.name}: IgM and IgE hit it hardest; IgG barely scratches a virus.`;
+  else if (type === 'virus') advice = 'Viruses are fast and come in groups: an IgA node slows them so your other nodes can land their hits.';
+  else advice = 'Hijacker viruses turned your white cells against you: kill them before they reach your cells, or keep the cells on another vessel.';
+  return { vessel, type, share: (s.leaks.byVessel[vessel] ?? 0) / total, advice };
 }
 
 /** Game speeds the Speed button steps through. */
@@ -531,6 +560,9 @@ export function step(s: State, dtRaw: number) {
       p.hp = 0;
       const dmg = CONFIG.pathogens[p.type].heartDamage;
       s.heartHp = Math.max(0, s.heartHp - dmg);
+      const entry = entryOf(p.vessel);
+      s.leaks.byVessel[entry] = (s.leaks.byVessel[entry] ?? 0) + dmg;
+      s.leaks.byType[p.type] = (s.leaks.byType[p.type] ?? 0) + dmg;
       s.leaked++;
       s.heartKick = 1;
       s.rings.push({ x: HEART.x, y: HEART.y, r: Math.max(LEVELS[s.level].map.rx, LEVELS[s.level].map.ry) + 30, t: 0, dur: 0.6, kind: 'heart' });

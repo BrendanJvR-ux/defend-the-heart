@@ -8,7 +8,7 @@ import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type Upgra
 const M = map;
 import {
   newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
-  waveSpawns, placeNode, buildCheck, nodeAt, hurt, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, type State, type Pathogen,
+  waveSpawns, placeNode, buildCheck, nodeAt, hurt, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
 } from '../src/sim';
 
 function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t = 0; t < seconds; t += 1 / 30) { step(s, 1 / 30); each?.(s); } }
@@ -913,5 +913,43 @@ describe('Defend the Heart: game speed', () => {
     advance(s, 0.1);
     expect(s.waveTime - t0).toBeCloseTo(0.2, 6);
     expect(p.s).toBeCloseTo(CONFIG.pathogens.saureus.speed * 0.2, 3);
+  });
+});
+
+describe('Defend the Heart: repeatable games', () => {
+  it('the same game played the same way ends the same, every time', () => {
+    const a = play(sensibleBuild, sensibleDilate, 3, 1), b = play(sensibleBuild, sensibleDilate, 3, 1);
+    expect(b.hp).toEqual(a.hp);
+    expect(b.s.killed).toBe(a.s.killed);
+  });
+  it('a different seed can play differently, but the same seed never does', () => {
+    const x = newGame(0, NO_PERKS, 7), y = newGame(0, NO_PERKS, 7);
+    startWave(x); startWave(y); tick(x, 5); tick(y, 5);
+    expect(x.pathogens.map((p) => [p.side, p.wob])).toEqual(y.pathogens.map((p) => [p.side, p.wob]));
+  });
+});
+
+describe('Defend the Heart: what leaked', () => {
+  it('records the health each vessel and each pathogen cost', () => {
+    const s = newGame(0); startWave(s); quiet(s);
+    mk(s, 'saureus', 'lower', M.VESSELS.lower.length - 0.5); mk(s, 'virus', 'lower', M.VESSELS.lower.length - 1); mk(s, 'virus', 'upper', M.VESSELS.upper.length - 1);
+    step(s, 1 / 30);
+    expect(s.leaks.byVessel).toEqual({ lower: CONFIG.pathogens.saureus.heartDamage + CONFIG.pathogens.virus.heartDamage, upper: CONFIG.pathogens.virus.heartDamage });
+    expect(s.leaks.byType).toEqual({ saureus: CONFIG.pathogens.saureus.heartDamage, virus: 2 * CONFIG.pathogens.virus.heartDamage });
+  });
+  it('leaks on a fork count against the vessel the player sees enter the map', () => {
+    const s = newGame(2); startWave(s); quiet(s);
+    const r = M.routesOf('lowerRight')[1]; mk(s, 'listeria', r, M.VESSELS[r].length - 1); step(s, 1 / 30);
+    expect(Object.keys(s.leaks.byVessel)).toEqual(['lowerRight']);
+  });
+  it('the defeat summary names the worst vessel and pathogen and how to counter it', () => {
+    const s = newGame(0);
+    s.leaks = { byVessel: { lower: 9, left: 3 }, byType: { saureus: 9, virus: 3 } };
+    const sum = leakSummary(s)!;
+    expect(sum.vessel).toBe('lower'); expect(sum.type).toBe('saureus'); expect(sum.share).toBeCloseTo(0.75);
+    expect(sum.advice).toMatch(/IgG aimed at S\. aureus/);
+    s.leaks = { byVessel: { right: 5 }, byType: { virus: 5 } }; expect(leakSummary(s)!.advice).toMatch(/IgA/);
+    s.leaks = { byVessel: { right: 5 }, byType: { infected: 5 } }; expect(leakSummary(s)!.advice).toMatch(/hijacker/i);
+    s.leaks = { byVessel: {}, byType: {} }; expect(leakSummary(s)).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import * as map from './level';
 import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
   type State, newGame, step, advance, nextSpeed, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
-  aliveCells, wave, whenLabel, resumeGame, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
+  aliveCells, wave, whenLabel, resumeGame, leakSummary, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
 import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
@@ -521,6 +521,7 @@ function renderHud() {
   $('hpbar').style.width = `${(s.heartHp / levelDef(s).hp) * 100}%`;
   $('wave').textContent = `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)}`;
   $('energy').textContent = String(s.energy);
+  $('gold').textContent = String(career.gold);
   $('cells').textContent = s.phase === 'combat' || s.phase === 'recall' ? `${aliveCells(s).length}/${levelDef(s).cells}` : `${levelDef(s).cells} ready`;
   // the NO figure and bar change every frame: update them in place rather than redrawing the panel
   const noText = String(Math.floor(s.no));
@@ -541,6 +542,14 @@ function renderHud() {
 
 let lastNoOuts = 0, spentToasted = 0;
 let overlaySig = '';
+/** The defeat screen's explanation: where the damage came from, and what would have helped. */
+function defeatAdvice(): string {
+  const sum = leakSummary(s), organ = esc(levelDef(s).organ.toLowerCase());
+  if (!sum) return `<p>Too many pathogens reached the ${organ}.</p>`;
+  const st = CONFIG.pathogens[sum.type], who = st.boss ? `the ${esc(st.name.toLowerCase())}` : st.taxon ? `<i>${esc(st.plural)}</i>` : esc(st.plural.toLowerCase());
+  const where = `${Math.round(sum.share * 100)}% of the damage came up the ${esc(map.entryDef(sum.vessel).name.toLowerCase())}`;
+  return `<p>${where}, and ${who} did the most harm.</p><p class="tip"><b>Next time:</b> ${esc(sum.advice)}</p>`;
+}
 function renderOverlay() {
   const sig = `${s.phase}|${s.paused}`;
   if (sig === overlaySig) return;
@@ -553,7 +562,7 @@ function renderOverlay() {
     overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>Unlocked: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : '<p><b>Every organ is safe.</b> The whole body has been defended.</p><button data-act="restart" class="primary">Play again</button>'}</div>`;
   } else if (s.phase === 'defeat') {
     overlay.hidden = false; overlay.className = 'defeat';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">Wave ${s.wave}</p><h2>The ${esc(L.organ.toLowerCase())} has failed</h2><p>Too many pathogens reached the ${esc(L.organ.toLowerCase())}. Place nodes where your white cells are not, aim IgG at the bacteria that are coming, use IgA on fast swarms, and keep the cells away from hijackers.</p><button data-act="restart" class="primary">Restart</button></div>`;
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Wave ${s.wave}</p><h2>The ${esc(L.organ.toLowerCase())} has failed</h2>${defeatAdvice()}<button data-act="restart" class="primary">Restart</button></div>`;
   } else if (s.paused) {
     overlay.hidden = false; overlay.className = 'paused';
     overlay.innerHTML = `<div class="plate"><h2>Paused</h2><button data-act="resume" class="primary">Resume</button> <button data-act="restart">Restart</button></div>`;

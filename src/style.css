@@ -151,3 +151,4 @@ body.menu-open #btnPause, body.menu-open #btnSpeed, body.menu-open #btnRestart {
   #coach p { font-size: 12px; margin-bottom: 5px; }
   .coachButtons button { min-height: 30px; padding: 3px 8px; font-size: 13px; }
 }
+.plate .tip { text-align: left; background: #fbf5ea; border-left: 4px solid #e8a028; padding: 6px 10px; border-radius: 6px; }
