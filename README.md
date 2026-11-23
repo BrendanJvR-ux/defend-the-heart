@@ -8,6 +8,7 @@ Clear an organ to unlock the next. The game opens on a **menu**:
 
 - **Continue** picks up your game where you left it: the organ, the wave, your nodes (with their IgG targets and IgE waves left), energy, organ health and NO. It is saved in your browser at the start of every build phase, so leaving mid-wave brings you back to that wave's build phase. Losing an organ ends that run.
 - **New career** starts over at the heart (it asks first if you have progress).
+- **Upgrades** is the gold shop (below).
 - **Organs** lists the five organs: cleared ones show your best health and can be replayed. Starting a different organ while a game is in progress asks first.
 
 The **Menu** button in the top bar opens it at any time (the game pauses). Between waves, the **Level** card at the top of the panel also switches organ.
@@ -25,6 +26,21 @@ The **Menu** button in the top bar opens it at any time (the game pauses). Betwe
 It began as a conversion of [The Last Ward: Siege of Goosebridge](https://github.com/BrendanJvR-ux/the-last-ward), a storybook tower defence, and now lives in its own repository.
 
 **Run it locally:** `npm install`, then `npm run dev`, and open http://localhost:5173/. Tests: `npm test`.
+
+## Gold and upgrades
+
+Winning an organ pays gold: **100 × the organ's number + 5 per organ health left** the first time (the heart with 12 health left pays 160), and a quarter of that on a replay. Spend it in **Upgrades**; everything you buy is kept for the whole career and applies at once.
+
+| Upgrade | Levels | Gold | Effect |
+|---|---|---|---|
+| IgM / IgG / IgA / IgE damage | 3 each | 80, 160, 240 | +15% damage for every node of that type, per level |
+| IgG target | 1 each | 120 | Aim IgG at *S. pneumoniae*, *Listeria*, *N. meningitidis*, *E. coli* or *Klebsiella* (*S. aureus* is always unlocked) |
+| Dual-target IgG | 1 | 600 | An IgG node can be aimed at two unlocked targets; each hit uses the better match. A dual node costs 80 energy, or 30 to add a second target to a placed one |
+| More NO | 2 | 100, 200 | +20 NO capacity per level |
+| Extra starting node | 1 | 150 | Every organ starts with one more IgM already placed |
+| Cheaper first node | 1 | 150 | The first node you place in each build phase costs half |
+
+The heart and lungs can be won without upgrades; from the brain on, the right IgG targets and some damage make a real difference, and the liver and kidney need them.
 
 ## Bosses
 
@@ -89,8 +105,11 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 
 ### Balance assumptions
 
-- A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG at the bacterium bringing the most health up that vessel; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; pulses into clusters of three) wins every organ: heart 18/20, lungs 11/20, brain 15/18, liver 18/24, kidney 13/20. Never building loses on every organ, and white cells alone lose the heart in wave 1.
-- **Holding one route open is worse than dilating with care.** The same player opening the busiest route as soon as it can and never closing it loses the lungs, and finishes the heart on 15/20, the brain on 4/18, the liver on 1/24 and the kidney on 7/20 (the tests require it to lose, or end at least 2 health worse).
+- A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG with the unlocked target that does most to that vessel's wave, and builds IgM instead when no target helps; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; pulses into clusters of three):
+  - **without upgrades** wins the heart (18/20) and the lungs (9–12/20), and loses the liver and kidney;
+  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 17/20, lungs 8/20 (buying the *S. pneumoniae* target), brain 13/18 (*Listeria* and *N. meningitidis*), liver 15/24 (*E. coli*, *Klebsiella*, IgM and IgA damage), kidney 14/20 (IgM and IgG damage).
+- Never building loses every organ, even with every upgrade; white cells alone lose the heart in wave 1.
+- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs and brain at least 2 health worse (heart 15, lungs 7, brain 3). The tests require this on every organ.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
 ### Files
@@ -105,7 +124,7 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 | `src/organs.ts` | The lungs, brain, liver (with the gut) and kidney as anatomy-plate drawings. |
 | `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
-| `src/career.ts` | The career and its save (no DOM): organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |
+| `src/career.ts` | The career and its save (no DOM): gold, the upgrade shop and what upgrades do in play, organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |
 | `src/main.ts` | HUD, panel, the menu, autosave, build popover and IgG target picker, mouse / touch / keyboard input, overlays. |
-| `tests/career.test.ts` | The save: fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing. |
+| `tests/career.test.ts` | The save (fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing), gold, the shop and upgrade effects. |
 | `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the four lymph nodes and the IgG match, IgE burn-out, infection), each organ's map and twist, each boss's trick, map labels that never cover a site or each other, plus balance on every organ (including the hold-open check). |

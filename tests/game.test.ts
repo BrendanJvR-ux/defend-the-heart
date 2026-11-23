@@ -3,7 +3,7 @@ import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type LevelDef, type NodeT
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, type Box } from '../src/labels';
-import { NO_PERKS, perksOf, freshCareer, type Perks } from '../src/career';
+import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type UpgradeId } from '../src/career';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
@@ -45,19 +45,24 @@ function sensibleBuild(s: State) {
     let placed = false;
     for (const v of order) {
       const types = new Set(spawnsFor(n, v).map((x) => x.type));
-      const bug = topBacterium(n, v);
-      const want: NodeType = bug && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
+      const aim = bestAim(s, n, v);
+      const want: NodeType = aim && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
       const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
-      if (site && placeNode(s, site.id, want, want === 'igg' ? [bug!] : undefined)) placed = true;
+      if (site && placeNode(s, site.id, want, want === 'igg' ? aim! : undefined)) placed = true;
     }
     if (!placed) break;
   }
 }
-/** The bacterium (by species, bosses counted as their species) bringing the most health up route v this wave. */
-function topBacterium(n: number, v: VesselId): BacteriumType | null {
-  const hp = new Map<BacteriumType, number>();
-  for (const x of spawnsFor(n, v)) { const tx = CONFIG.pathogens[x.type].taxon; if (tx) hp.set(tx.species, (hp.get(tx.species) ?? 0) + CONFIG.pathogens[x.type].hp); }
-  return [...hp].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+/** The IgG aim (one target, or two with dual-target) from the unlocked targets that does the most to this
+ *  vessel's wave — or null when IgG would do no better on average than an IgM's ×1. */
+function bestAim(s: State, n: number, v: VesselId): BacteriumType[] | null {
+  const sp = spawnsFor(n, v), total = sp.reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
+  if (!total) return null;
+  const score = (ts: BacteriumType[]) => sp.reduce((a, x) => a + CONFIG.pathogens[x.type].hp * iggMultiplier(ts, x.type), 0) / total;
+  const ts = s.perks.targets, options: BacteriumType[][] = ts.map((b) => [b]);
+  if (s.perks.dual) for (let i = 0; i < ts.length; i++) for (let j = i + 1; j < ts.length; j++) options.push([ts[i], ts[j]]);
+  const best = options.sort((a, b) => score(b) - score(a) || a.length - b.length)[0];
+  return best && score(best) > 1.4 ? best : null;
 }
 const nodeOn = (s: State, v: VesselId, t: NodeType) => s.nodes.some((x) => guarding(v).some((g) => g.id === x.site) && x.type === t);
 /** Summed health of the pathogens on a route that are past 65% of the way in (where the cells meet them). */
@@ -73,8 +78,8 @@ function sensibleDilate(s: State) {
   if (best !== s.dilated && danger(s, best) > 2 * danger(s, s.dilated) && s.no >= N.openCost + 2 * N.drainPerSec) toggleRoute(s, best);
 }
 const noBuild = () => {};
-function play(prep: (s: State) => void, dilate: (s: State) => void = sensibleDilate, pulseMin = 3, level = 0) {
-  const s = newGame(level); const hp: number[] = [];
+function play(prep: (s: State) => void, dilate: (s: State) => void = sensibleDilate, pulseMin = 3, level = 0, perks: Perks = NO_PERKS) {
+  const s = newGame(level, perks); const hp: number[] = [];
   const pulse = pulseAtCluster(pulseMin);
   while (s.phase === 'prep') { prep(s); startWave(s); finishWave(s, (st) => { dilate(st); pulse(st); }); hp.push(s.heartHp); }
   return { s, hp };
@@ -390,16 +395,12 @@ describe('Defend the Heart: hijacker viruses', () => {
 });
 
 describe('Defend the Heart: balance', () => {
-  it('a sensible player (dilate the busiest vessel, build matching nodes, pulse clusters) wins', () => {
-    const { s, hp } = play(sensibleBuild);
-    console.log('sensible', hp, s.phase, 'energy left', s.energy, 'nodes', s.nodes.map((n) => n.type).join(','));
-    expect(s.phase).toBe('victory');
-  });
-
-  it('never building any nodes loses', () => {
-    const { s, hp } = play(noBuild);
-    console.log('no building', hp, s.phase);
-    expect(s.phase).toBe('defeat');
+  it('without upgrades the sensible player wins the heart and the lungs', () => {
+    for (const i of [0, 1]) {
+      const { s, hp } = play(sensibleBuild, sensibleDilate, 3, i);
+      console.log(LEVELS[i].id, 'no upgrades', hp, s.phase);
+      expect(s.phase).toBe('victory');
+    }
   });
 
   it('white cells alone cannot clear wave 1 without lymph nodes', () => {
@@ -407,7 +408,47 @@ describe('Defend the Heart: balance', () => {
     console.log('cells only wave 1:', s.heartHp);
     expect(s.heartHp).toBeLessThan(LEVELS[0].hp);
   });
+
+  it('a scripted career wins every organ on its first attempt', () => {
+    const run = careerRun();
+    for (const r of run) console.log('career', LEVELS[r.level].id, r.hp, r.phase, 'gold before', r.goldBefore, 'bought', r.bought.join(','));
+    expect(run.map((r) => r.phase)).toEqual(LEVELS.map(() => 'victory'));
+  });
+
+  it('never building loses every organ, even with every upgrade', () => {
+    for (let i = 0; i < LEVELS.length; i++) expect(play(noBuild, sensibleDilate, 3, i, ALL_PERKS).s.phase, LEVELS[i].id).toBe('defeat');
+  });
 });
+
+/** Every upgrade at its top level. */
+const ALL_PERKS: Perks = { dmg: { igm: 1.45, igg: 1.45, iga: 1.45, ige: 1.45 }, targets: [...BACTERIA], dual: true, noMax: 140, extraNode: true, cheapFirst: true };
+
+/** The bacteria an organ's waves bring (bosses counted as their species). */
+const organSpecies = (i: number) => [...new Set(LEVELS[i].waves.flatMap((w) => w.groups.map((g) => CONFIG.pathogens[g.type].taxon?.species)).filter((x): x is BacteriumType => !!x))];
+
+/** A career played by the sensible player: organs in order, gold banked, upgrades bought before each organ by a
+ *  fixed policy — first the IgG targets for that organ's bacteria, then damage for the node types it built most
+ *  last time, then dual-target, NO, the extra starting node and the cheaper first node. */
+function careerRun() {
+  const c = freshCareer(); const built: Record<NodeType, number> = { igm: 2, igg: 1, iga: 1, ige: 0 };
+  const out: { level: number; phase: string; hp: number[]; goldBefore: number; bought: string[]; perks: Perks }[] = [];
+  for (let i = 0; i < LEVELS.length; i++) {
+    const goldBefore = c.gold, bought: string[] = [];
+    const wish: UpgradeId[] = [
+      ...organSpecies(i).filter((b) => b !== 'saureus').map((b) => `target-${b}` as UpgradeId),
+      ...(Object.entries(built) as [NodeType, number][]).sort((a, b) => b[1] - a[1]).flatMap(([t]) => [`dmg-${t}`, `dmg-${t}`, `dmg-${t}`] as UpgradeId[]),
+      'dual', 'no', 'no', 'extraNode', 'cheapFirst',
+    ];
+    for (const id of wish) if (buy(c, id).ok) bought.push(id);
+    const perks = perksOf(c);
+    const { s, hp } = play(sensibleBuild, sensibleDilate, 3, i, perks);
+    for (const n of s.nodes) built[n.type]++;
+    onOrganEnd(c, s);
+    out.push({ level: i, phase: s.phase, hp, goldBefore, bought, perks });
+    if (s.phase !== 'victory') break;
+  }
+  return out;
+}
 
 /** Holds the route with the most wave threat open: opens it as soon as it can, never closes it. */
 function holdOpen(s: State) {
@@ -525,25 +566,13 @@ describe('Defend the Heart: organ levels', () => {
     expect((near.s - b) / (far.s - a)).toBeCloseTo(LEVELS[4].filtration!.factor, 2);
   });
 
-  for (let i = 0; i < LEVELS.length; i++) {
-    it(`${LEVELS[i].title}: holding one vessel open does worse than dilating with care`, () => {
-      const good = play(sensibleBuild, sensibleDilate, 3, i), hold = play(sensibleBuild, holdOpen, 3, i);
-      console.log(LEVELS[i].id, 'hold-open', hold.hp, hold.s.phase);
-      // by a clear margin: losing, or at least 2 organ health worse
-      expect(hold.s.phase === 'defeat' || hold.s.heartHp <= good.s.heartHp - 2).toBe(true);
-    });
-  }
-
-  for (let i = 1; i < LEVELS.length; i++) {
-    it(`${LEVELS[i].title}: a sensible player wins, and never building loses`, () => {
-      const win = play(sensibleBuild, sensibleDilate, 3, i);
-      console.log(LEVELS[i].id, 'sensible', win.hp, win.s.phase, 'nodes', win.s.nodes.map((n) => n.type).join(','));
-      expect(win.s.phase).toBe('victory');
-      const lose = play(noBuild, sensibleDilate, 3, i);
-      console.log(LEVELS[i].id, 'no building', lose.hp, lose.s.phase);
-      expect(lose.s.phase).toBe('defeat');
-    });
-  }
+  it('holding one vessel open, with the career player\'s upgrades at each organ, loses or ends at least 2 worse', () => {
+    for (const r of careerRun()) {
+      const good = play(sensibleBuild, sensibleDilate, 3, r.level, r.perks), hold = play(sensibleBuild, holdOpen, 3, r.level, r.perks);
+      console.log(LEVELS[r.level].id, 'careful', good.s.heartHp, 'hold-open', hold.hp, hold.s.phase);
+      expect(hold.s.phase === 'defeat' || hold.s.heartHp <= good.s.heartHp - 2, LEVELS[r.level].id).toBe(true);
+    }
+  });
 });
 
 describe('Defend the Heart: bosses', () => {
