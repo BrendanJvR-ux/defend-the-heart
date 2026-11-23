@@ -67,7 +67,7 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 
 ### Balance assumptions
 
-- A scripted sensible player (dilate the busiest vessel, spend energy on nodes matched to each vessel's threat, pulse into clusters of three) wins every organ, bosses included: heart 9/20, lungs 10/20, brain 7/18, liver 12/24, kidney 11/20. Each boss dies, but only in the last third of its vessel. Never building loses on every organ. The brain is deliberately the tightest: its few sites reward placing nodes better than the script does.
+- A scripted sensible player (dilate the busiest vessel, spend energy on nodes matched to each vessel's threat, pulse into clusters of three) wins every organ, bosses included: heart 6/20, lungs 10/20, brain 7/18, liver 12/24, kidney 11/20. Each boss dies, but only in the last third of its vessel. Never building loses on every organ. The brain is deliberately the tightest: its few sites reward placing nodes better than the script does.
 - Virus health (14) is set so IgM kills one in a single hit and IgG/IgA need two or three; bacteria (70, armour 5) shrug off much of IgM until IgG opens them.
 - White cells alone (no nodes) leak 6 heart health in wave 1: they help, they do not carry.
 - Hijackers appear in wave 5 on three vessels, so they meet the white cells whichever vessel you dilate; the scripted player lost 2 cells to them.
