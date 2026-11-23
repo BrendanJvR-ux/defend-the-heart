@@ -3,7 +3,7 @@ import { CONFIG, LEVELS, NODE_TYPES, type NodeType, type PathogenType, type Vess
 import * as map from './level';
 import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
-  type State, newGame, step, selectVessel, canStartWave, startWave, firePulse, pulseCheck, pulseTargets,
+  type State, newGame, step, toggleRoute, dilateCheck, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
   aliveCells, wave, whenLabel, buildCheck, placeNode, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
 import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
@@ -61,10 +61,11 @@ function siteAt(p: { x: number; y: number }): string | null {
 }
 
 function choose(v: VesselId) {
-  if (s.phase !== 'prep') { toast('Dilation is locked during a wave.'); return; }
-  const had = s.dilated;
-  selectVessel(s, v);
-  if (had && had !== v) toast(`${vesselName(v)} dilated; the ${vesselName(had).toLowerCase()} relaxes.`);
+  const had = s.dilated, c = dilateCheck(s, v);
+  if (!c.ok || !toggleRoute(s, v)) { toast(c.reason || 'Dilate during the wave.'); return; }
+  if (had === v) toast(`The ${vesselName(v).toLowerCase()} relaxes; your white cells head home.`);
+  else if (had) toast(`${vesselName(v)} dilated (−${CONFIG.no.openCost} NO); the ${vesselName(had).toLowerCase()} relaxes.`);
+  else toast(`${vesselName(v)} dilated (−${CONFIG.no.openCost} NO).`);
   lastSig = '';
 }
 
@@ -111,17 +112,18 @@ canvas.addEventListener('pointerdown', (e) => {
     const site = siteAt(p);
     if (site) { openSite(site); return; }
     closeSite();
-    const v = vesselAt(p); if (v) choose(v);
+    if (vesselAt(p)) toast('Dilate during the wave: start it, then open a vessel with NO.');
   } else if (s.phase === 'combat') {
-    const v = vesselAt(p); if (v && v !== s.dilated) toast('Dilation is locked during a wave.');
-    if (siteAt(p)) toast('Lymph nodes can only be placed between waves.');
+    const v = vesselAt(p);
+    if (v) choose(v);
+    else if (siteAt(p)) toast('Lymph nodes can only be placed between waves.');
   }
 });
 canvas.addEventListener('pointermove', (e) => {
   const p = toMap(e);
   view.hoverSite = siteAt(p);
-  view.hoverVessel = s.phase === 'prep' && !view.hoverSite ? vesselAt(p) : null;
-  canvas.style.cursor = s.phase === 'prep' && (view.hoverSite || view.hoverVessel) ? 'pointer' : 'default';
+  view.hoverVessel = s.phase === 'combat' ? vesselAt(p) : null;
+  canvas.style.cursor = (s.phase === 'prep' && view.hoverSite) || view.hoverVessel ? 'pointer' : 'default';
 });
 canvas.addEventListener('pointerleave', () => { view.hoverVessel = null; view.hoverSite = null; });
 
@@ -204,7 +206,7 @@ function nodeIcon(t: NodeType): string {
 
 let lastSig = '';
 function signature() {
-  return JSON.stringify([s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.dilated, s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
+  return JSON.stringify([s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.dilated, Math.floor(s.no), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
 }
 
 function previewHtml(): string {
@@ -242,22 +244,29 @@ function renderPanel() {
       <p class="hint">${esc(def.hint)}</p>
       ${s.message ? `<p class="notice">${esc(s.message)}</p>` : ''}
       <section class="card"><h3>Incoming threats</h3><div class="lanes">${previewHtml()}</div></section>
-      <section class="card"><h3>Dilate vessel</h3>
-        <p class="hint">Choose exactly one. White cells travel only along the dilated vessel, and the immune pulse only works there.</p>
-        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.dilated === v}" class="${s.dilated === v ? 'on' : ''}">${vesselName(v)}<small>${s.dilated === v ? 'dilated' : `resting · key ${i + 1}`}</small></button>`).join('')}</div></section>
+      <section class="card"><h3>Dilation <span class="count">${Math.floor(s.no)} NO</span></h3>
+        <p class="hint">During the wave, open one vessel at a time with NO. Opening costs ${CONFIG.no.openCost}; an open vessel drains NO; closed, it refills.</p></section>
       <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
         <p class="hint">Click a + site beside a vessel to place a node. Each fires its immunoglobulin at pathogens on its own vessel.</p>
         <ul class="key">${NODE_TYPES.map((t) => `<li><img alt="" src="${nodeIcon(t)}" width="40" height="31"><span><b>${CONFIG.nodes[t].short}</b> · ${CONFIG.nodes[t].cost}<small>${esc(CONFIG.nodes[t].blurb)}</small></span></li>`).join('')}</ul>
         <details><summary>Place by list (keyboard)</summary><div class="flist">${empties.map((x) => `<button data-act="site" data-site="${x.id}">${esc(vesselName(x.vessel))} · ${['outer', 'middle', 'inner'][x.index]}</button>`).join('') || '<em>Every site has a node.</em>'}</div></details></section>
-      <div class="start"><button data-act="start" class="primary" ${c.ok ? '' : 'disabled'}>Start wave ${s.wave}</button><p class="hint small">${c.ok ? 'Dilation and building lock once the wave begins.' : esc(c.reason)}</p></div>`;
+      <div class="start"><button data-act="start" class="primary" ${c.ok ? '' : 'disabled'}>Start wave ${s.wave}</button><p class="hint small">${c.ok ? 'Building locks once the wave begins.' : esc(c.reason)}</p></div>`;
   } else if (s.phase === 'combat') {
     const cells = aliveCells(s).length;
     const pc = pulseCheck(s);
     const would = pulseTargets(s).length;
+    const out = outCells(s).length, returning = aliveCells(s).some((c) => c.mode === 'returning');
+    const organ = esc(levelDef(s).organ.toLowerCase());
+    const where = s.dilated ? (out ? `Patrolling the ${esc(vesselName(s.dilated).toLowerCase())}.` : `Heading home before setting out along the ${esc(vesselName(s.dilated).toLowerCase())}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
+    const noLow = s.no < CONFIG.no.openCost && !s.dilated;
     h = `<h2><small>Defend · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>
+      <section class="card"><h3>Dilate <span class="count">${Math.floor(s.no)} / ${CONFIG.no.max} NO</span></h3>
+        <p class="nogauge ${noLow ? 'low' : ''}"><i style="width:${(s.no / CONFIG.no.max) * 100}%"></i></p>
+        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.dilated === v}" class="${s.dilated === v ? 'on' : ''}" ${s.dilated === v || s.no >= CONFIG.no.openCost ? '' : 'disabled'}>${vesselName(v)}<small>${s.dilated === v ? `open · key ${i + 1} closes` : `resting · key ${i + 1}`}</small></button>`).join('')}</div>
+        <p class="hint">Opening costs ${CONFIG.no.openCost} NO, an open vessel drains ${CONFIG.no.drainPerSec} a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out the vessel closes.</p></section>
       <section class="card"><h3>White cells <span class="count">${cells} of ${levelDef(s).cells}</span></h3>
         <p class="cells">${Array.from({ length: levelDef(s).cells }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 30)}</span>`).join('')}</p>
-        <p class="hint">Patrolling the ${esc(vesselName(s.dilated!).toLowerCase())}.${s.infections ? ` <b>${s.infections} infected</b> by hijacker viruses: they now head for the ${esc(levelDef(s).organ.toLowerCase())}.` : ' Keep them clear of hijacker viruses.'}</p></section>
+        <p class="hint">${where}${s.infections ? ` <b>${s.infections} infected</b> by hijacker viruses: they now head for the ${esc(levelDef(s).organ.toLowerCase())}.` : ' Keep them clear of hijacker viruses.'}</p></section>
       <section class="card"><h3>Immune pulse <span class="count">${s.pulsesLeft} left</span></h3>
         <button data-act="pulse" class="pulse" ${pc.ok ? '' : 'disabled'}>${s.pulsesLeft > 0 ? 'Immune pulse' : 'Pulse used'}</button>
         ${lungsLine()}
@@ -282,12 +291,14 @@ function renderHud() {
   $('wave').textContent = `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)}`;
   $('energy').textContent = String(s.energy);
   $('cells').textContent = s.phase === 'combat' || s.phase === 'recall' ? `${aliveCells(s).length}/${levelDef(s).cells}` : `${levelDef(s).cells} ready`;
+  if (s.noOuts !== lastNoOuts) { if (s.noOuts > lastNoOuts) toast('NO ran out: the vessel contracts and your white cells return.'); lastNoOuts = s.noOuts; }
   $('pulseStat').textContent = s.phase === 'combat' ? (s.pulsesLeft > 0 ? 'Ready' : 'Used') : s.phase === 'prep' ? 'Next wave' : '—';
   $('btnPause').textContent = s.paused ? 'Resume' : 'Pause';
   $('btnSpeed').textContent = `Speed ×${s.speed}`;
   document.body.dataset.phase = s.phase;
 }
 
+let lastNoOuts = 0;
 let overlaySig = '';
 function renderOverlay() {
   const sig = `${s.phase}|${s.paused}`;

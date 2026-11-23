@@ -94,6 +94,9 @@ export const CONFIG = {
 
   immunePulse: { perWave: 1, radius: 85, damage: 42, ringSeconds: 0.45 },
 
+  /** Nitric oxide: the fuel that holds a vessel open during a wave. */
+  no: { max: 100, openCost: 15, drainPerSec: 8, regenPerSec: 3, waveTopUp: 35 },
+
   pathogens: {
     bacterium: { name: 'Bacterium', plural: 'Bacteria', hp: 70, speed: 30, armour: 5, heartDamage: 3, contactDps: 3, bounty: 7 },
     virus: { name: 'Virus', plural: 'Viruses', hp: 14, speed: 74, armour: 1, heartDamage: 1, contactDps: 2, bounty: 2 },
@@ -154,7 +157,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'heart', title: 'The Heart', organ: 'Heart', tagline: 'Four vessels, one beating target.',
     twist: 'The first organ: learn dilation, lymph nodes and the pulse.',
-    hp: 20, startEnergy: 120, cells: 2,
+    hp: 20, startEnergy: 240, cells: 2,
     startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
     map: {
       center: { x: 800, y: 480 }, rx: 100, ry: 100, siteFractions: [0.3, 0.52, 0.74],
@@ -224,7 +227,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'lungs', title: 'The Lungs', organ: 'Lung', tagline: 'Every breath drags the infection deeper.',
     twist: 'Breathing: every few seconds the lungs inhale and everything in the vessels surges forward.',
-    hp: 20, startEnergy: 150, cells: 2,
+    hp: 20, startEnergy: 270, cells: 2,
     startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'iga' }],
     surge: { every: 6, length: 1.4, factor: 1.5 },
     map: {
@@ -305,7 +308,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. The hardest waves.',
-    hp: 20, startEnergy: 180, cells: 2,
+    hp: 20, startEnergy: 240, cells: 2,
     filtration: { fraction: 0.28, factor: 0.6 },
     startingNodes: [{ vessel: 'left', site: 2, type: 'igm' }, { vessel: 'right', site: 2, type: 'igm' }],
     map: {

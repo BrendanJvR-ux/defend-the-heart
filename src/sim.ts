@@ -13,7 +13,9 @@ export interface Pathogen {
   /** Bosses that shed: seconds until the next one. */
   shedT?: number;
 }
-export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; targetId: number | null; home: boolean; infected: boolean }
+/** home: waiting at the organ; out: travelling and fighting along the open vessel; returning: heading home, not fighting. */
+export type CellMode = 'home' | 'out' | 'returning';
+export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; targetId: number | null; mode: CellMode; infected: boolean }
 export interface LymphNode { id: number; site: string; vessel: VesselId; type: NodeType; cd: number; flash: number }
 export interface Shot { type: NodeType; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
 export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' }
@@ -30,6 +32,10 @@ export interface State {
   heartHp: number;
   energy: number;
   dilated: VesselId | null;
+  /** Nitric oxide left: opening a vessel costs it, an open vessel drains it. */
+  no: number;
+  /** Times NO has run dry (the UI toasts when it changes). */
+  noOuts: number;
   width: Record<VesselId, number>;
   nodes: LymphNode[];
   pathogens: Pathogen[];
@@ -58,7 +64,7 @@ export function newGame(level = LEVEL_INDEX): State {
   loadLevel(level);
   const L = LEVELS[level];
   const s: State = {
-    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null,
+    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: CONFIG.no.max, noOuts: 0,
     width: zeroWidths(), nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
@@ -93,6 +99,8 @@ export function organFlow(s: State, p: Pathogen): number {
 /** The boss currently in play, if any. */
 export const activeBoss = (s: State) => s.pathogens.find((p) => p.hp > 0 && CONFIG.pathogens[p.type].boss);
 export const aliveCells = (s: State) => s.cells.filter((c) => c.hp > 0 && !c.infected);
+/** Living cells out on the open vessel: the only ones that fight, pulse or can be infected. */
+export const outCells = (s: State) => aliveCells(s).filter((c) => c.mode === 'out');
 export const nodeAt = (s: State, site: string) => s.nodes.find((n) => n.site === site);
 
 export function effectiveArmour(p: Pathogen): number { return Math.max(0, CONFIG.pathogens[p.type].armour - p.shred); }
@@ -109,12 +117,6 @@ export function cellPos(c: WhiteCell): Vec & { angle: number } {
 
 // ── Preparation ─────────────────────────────────────────────────────────────
 
-/** Choose the one vessel to dilate. Selecting another replaces the choice. Locked during combat. */
-export function selectVessel(s: State, v: VesselId): boolean {
-  if (s.phase !== 'prep' || !VESSELS[v]) return false;
-  s.dilated = v;
-  return true;
-}
 
 export function buildCheck(s: State, siteId: string, type: NodeType): { ok: boolean; reason: string } {
   if (s.phase !== 'prep') return { ok: false, reason: 'Lymph nodes can only be placed between waves.' };
@@ -136,8 +138,43 @@ export function placeNode(s: State, siteId: string, type: NodeType): boolean {
 
 export function canStartWave(s: State): { ok: boolean; reason: string } {
   if (s.phase !== 'prep') return { ok: false, reason: '' };
-  if (!s.dilated || !VESSELS[s.dilated]) return { ok: false, reason: 'Dilate one vessel first.' };
   return { ok: true, reason: '' };
+}
+
+// ── Combat: dilation, paid for with NO ──────────────────────────────────────
+
+/** Can vessel r be opened (or, if it is the open one, closed) right now? */
+export function dilateCheck(s: State, r: VesselId): { ok: boolean; reason: string } {
+  if (s.phase !== 'combat') return { ok: false, reason: 'Dilate during the wave.' };
+  if (!VESSELS[r]) return { ok: false, reason: 'Not a vessel of this organ.' };
+  if (s.dilated === r) return { ok: true, reason: '' };
+  if (s.no < CONFIG.no.openCost) return { ok: false, reason: `Not enough NO to open the ${VESSELS[r].name.toLowerCase()}.` };
+  return { ok: true, reason: '' };
+}
+
+/** Open r (paying NO; any other open vessel relaxes), or close r if it is already open. */
+export function toggleRoute(s: State, r: VesselId): boolean {
+  if (!dilateCheck(s, r).ok) return false;
+  if (s.dilated === r) { closeRoute(s); return true; }
+  closeRoute(s);
+  s.no -= CONFIG.no.openCost;
+  s.dilated = r;
+  deployHome(s);
+  return true;
+}
+
+/** Close the open vessel: cells out on it head home. */
+export function closeRoute(s: State) {
+  s.dilated = null;
+  for (const c of aliveCells(s)) if (c.mode === 'out') { c.mode = 'returning'; c.targetId = null; }
+}
+
+/** Cells waiting at the organ set out along the open vessel. */
+function deployHome(s: State) {
+  if (!s.dilated) return;
+  const L = VESSELS[s.dilated].length;
+  let i = outCells(s).length;
+  for (const c of aliveCells(s)) if (c.mode === 'home') { c.vessel = s.dilated; c.s = L - 8 - i * 30; c.mode = 'out'; c.targetId = null; i++; }
 }
 
 export function waveSpawns(n: number, level = LEVEL_INDEX): Spawn[] {
@@ -148,8 +185,9 @@ export function waveSpawns(n: number, level = LEVEL_INDEX): Spawn[] {
 
 export function startWave(s: State): boolean {
   if (!canStartWave(s).ok) return false;
-  const v = s.dilated!;
+  const v = VESSEL_IDS[0];
   s.phase = 'combat';
+  s.dilated = null;
   s.waveTime = 0;
   s.spawns = waveSpawns(s.wave, s.level);
   s.pulsesLeft = CONFIG.immunePulse.perWave;
@@ -158,7 +196,7 @@ export function startWave(s: State): boolean {
   const L = VESSELS[v].length;
   s.cells = [];
   for (let i = 0; i < LEVELS[s.level].cells; i++) {
-    s.cells.push({ id: s.nextId++, vessel: v, s: L - 8 - i * 30, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (i % 2 ? 1 : -1) * 11, targetId: null, home: false, infected: false });
+    s.cells.push({ id: s.nextId++, vessel: v, s: L, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (i % 2 ? 1 : -1) * 11, targetId: null, mode: 'home', infected: false });
   }
   s.message = '';
   return true;
@@ -171,6 +209,7 @@ export function pulseCheck(s: State): { ok: boolean; reason: string } {
   if (s.paused) return { ok: false, reason: 'Paused.' };
   if (s.pulsesLeft <= 0) return { ok: false, reason: 'Immune pulse already used this wave.' };
   if (!aliveCells(s).length) return { ok: false, reason: 'No white cells left to pulse.' };
+  if (!outCells(s).length) return { ok: false, reason: 'Open a vessel to send your white cells out first.' };
   return { ok: true, reason: '' };
 }
 
@@ -178,7 +217,7 @@ export function pulseCheck(s: State): { ok: boolean; reason: string } {
 export function pulseTargets(s: State): Pathogen[] {
   const R = CONFIG.immunePulse.radius;
   const hit = new Set<Pathogen>();
-  for (const c of aliveCells(s)) {
+  for (const c of outCells(s)) {
     const cp = cellPos(c);
     for (const p of s.pathogens) if (p.hp > 0 && p.vessel === c.vessel && dist(pathogenPos(p), cp) <= R) hit.add(p);
   }
@@ -190,7 +229,7 @@ export function firePulse(s: State): number {
   if (!pulseCheck(s).ok) return -1;
   s.pulsesLeft -= 1;
   const targets = pulseTargets(s);
-  for (const c of aliveCells(s)) { const p = cellPos(c); s.rings.push({ x: p.x, y: p.y, r: CONFIG.immunePulse.radius, t: 0, dur: CONFIG.immunePulse.ringSeconds, kind: 'pulse' }); }
+  for (const c of outCells(s)) { const p = cellPos(c); s.rings.push({ x: p.x, y: p.y, r: CONFIG.immunePulse.radius, t: 0, dur: CONFIG.immunePulse.ringSeconds, kind: 'pulse' }); }
   for (const p of targets) hurt(s, p, CONFIG.immunePulse.damage);
   s.lastPulseHits = targets.length;
   return targets.length;
@@ -248,7 +287,7 @@ export function infect(s: State, c: WhiteCell, virus: Pathogen) {
 
 function easeWidths(s: State, dt: number) {
   for (const v of VESSEL_IDS) {
-    const open = s.dilated === v && (s.phase === 'prep' || s.phase === 'combat' || (s.phase === 'recall' && s.cells.some((c) => !c.home)));
+    const open = s.dilated === v && s.phase === 'combat';
     const target = open ? 1 : 0;
     const k = CONFIG.dilateRate * dt;
     s.width[v] = s.width[v] < target ? Math.min(target, s.width[v] + k) : Math.max(target, s.width[v] - k);
@@ -319,15 +358,23 @@ export function step(s: State, dtRaw: number) {
   }
   s.shots = s.shots.filter((sh) => sh.t < sh.dur);
 
-  // White cells: only ever on their own (dilated) vessel; they move against the flow to meet pathogens.
+  // NO: an open vessel drains it; when it runs dry the vessel closes. Closed, it slowly refills.
+  if (s.dilated) {
+    s.no -= CONFIG.no.drainPerSec * dt;
+    if (s.no <= 0) { s.no = 0; s.noOuts++; closeRoute(s); }
+  } else s.no = Math.min(CONFIG.no.max, s.no + CONFIG.no.regenPerSec * dt);
+
+  // White cells: returning ones head home (then out again along any open vessel); only cells out fight.
   const WC = CONFIG.whiteCell;
-  for (const c of aliveCells(s)) {
+  returnHome(s, dt);
+  deployHome(s);
+  for (const c of outCells(s)) {
     c.hit = Math.max(0, c.hit - dt);
     const L = VESSELS[c.vessel].length;
     const mine = s.pathogens.filter((p) => p.hp > 0 && p.vessel === c.vessel && p.s > 0);
     const target = mine.reduce<Pathogen | null>((b, p) => (!b || p.s > b.s ? p : b), null);
     c.targetId = target?.id ?? null;
-    const rank = aliveCells(s).indexOf(c);
+    const rank = outCells(s).indexOf(c);
     let goal = (target ? target.s : L * WC.guardAt) + rank * 22;
     goal = Math.max(L * WC.minReach, Math.min(L - 4, goal));
     const gap = goal - c.s;
@@ -360,23 +407,29 @@ export function step(s: State, dtRaw: number) {
 
   if (s.heartHp <= 0) { s.phase = 'defeat'; s.shots = []; return; }
   if (!s.spawns.length && !s.pathogens.length) {
+    closeRoute(s);
     s.phase = 'recall';
     s.recallTime = 0;
     s.shots = [];
-    for (const c of s.cells) c.home = c.hp <= 0;
+  }
+}
+
+/** Returning cells travel back to the organ, fast and without fighting. */
+function returnHome(s: State, dt: number) {
+  for (const c of aliveCells(s)) {
+    if (c.mode !== 'returning') continue;
+    const L = VESSELS[c.vessel].length;
+    c.s = Math.min(L, c.s + CONFIG.whiteCell.recallSpeed * dt);
+    if (c.s >= L - 1) c.mode = 'home';
   }
 }
 
 /** End of wave: surviving white cells return to the heart, then the vessel contracts. */
 function recall(s: State, dt: number) {
   s.recallTime += dt;
-  for (const c of s.cells) {
-    if (c.home) continue;
-    const L = VESSELS[c.vessel].length;
-    c.s = Math.min(L, c.s + CONFIG.whiteCell.recallSpeed * dt);
-    if (c.s >= L - 1 || s.recallTime > 6) c.home = true;
-  }
-  const allHome = s.cells.every((c) => c.home);
+  returnHome(s, dt);
+  if (s.recallTime > 6) for (const c of aliveCells(s)) c.mode = 'home';
+  const allHome = aliveCells(s).every((c) => c.mode === 'home');
   const contracted = VESSEL_IDS.every((v) => s.width[v] <= 0.001);
   if (allHome && contracted) {
     s.cells = [];
@@ -385,12 +438,13 @@ function recall(s: State, dt: number) {
     if (s.wave >= totalWaves(s)) { s.phase = 'victory'; return; }
     const bonus = CONFIG.waveClearEnergy(s.wave);
     s.energy += bonus;
+    s.no = Math.min(CONFIG.no.max, s.no + CONFIG.no.waveTopUp);
     const L = LEVELS[s.level];
     const regen = L.regenPerWave ? Math.min(L.regenPerWave, L.hp - s.heartHp) : 0;
     s.heartHp += regen;
     s.wave += 1;
     s.phase = 'prep';
-    s.message = `Wave cleared: +${bonus} energy${regen > 0 ? `, the ${L.organ.toLowerCase()} regrows +${regen} health` : ''}. The vessel has contracted; choose again for the next wave.`;
+    s.message = `Wave cleared: +${bonus} energy${regen > 0 ? `, the ${L.organ.toLowerCase()} regrows +${regen} health` : ''}. Every vessel is resting again; dilate during the next wave.`;
   }
 }
 

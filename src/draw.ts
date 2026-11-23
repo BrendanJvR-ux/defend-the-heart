@@ -73,7 +73,7 @@ export function vesselWidth(s: State, v: VesselId) {
 function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: View, t: number, flowT: number) {
   const ves = VESSELS[v], w = vesselWidth(s, v), open = s.width[v];
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (view.hoverVessel === v && s.phase === 'prep') { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; smooth(ctx, ves.pts); ctx.stroke(); }
+  if (view.hoverVessel === v && s.phase === 'combat') { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; smooth(ctx, ves.pts); ctx.stroke(); }
   ctx.strokeStyle = C.ink; ctx.lineWidth = w + 14; smooth(ctx, ves.pts); ctx.stroke();
   ctx.strokeStyle = C.wall; ctx.lineWidth = w + 11; smooth(ctx, ves.pts); ctx.stroke();
   ctx.strokeStyle = C.wallLight; ctx.lineWidth = w + 3; smooth(ctx, ves.pts); ctx.stroke();
@@ -162,6 +162,22 @@ function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
     else drawKidney(ctx, m.center, m.rx, m.ry, swell, kick);
   }
   drawHealthBeads(ctx, s);
+  drawNoGauge(ctx, s, t);
+}
+
+/** The NO gauge: a small bar under the organ, flashing when too low to open a vessel. */
+function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
+  if (s.phase !== 'combat') return;
+  const heart = LEVEL.id === 'heart', y = HEART.y + (heart ? 159 : LEVEL.map.ry + 50) + 30, w = 150;
+  const low = s.no < CONFIG.no.openCost && !s.dilated, k = s.no / CONFIG.no.max;
+  ctx.save();
+  ctx.globalAlpha = low ? 0.55 + 0.45 * Math.abs(Math.sin(t * 5)) : 1;
+  ctx.fillStyle = 'rgba(244,234,216,0.92)'; ctx.beginPath(); ctx.roundRect(HEART.x - w / 2 - 44, y - 13, w + 96, 26, 13); ctx.fill();
+  ctx.fillStyle = '#1e6a8a'; ctx.font = '700 16px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('NO', HEART.x - w / 2 - 34, y + 6);
+  ctx.fillStyle = 'rgba(30,20,20,0.25)'; ctx.fillRect(HEART.x - w / 2, y - 5, w, 10);
+  ctx.fillStyle = low ? '#c8402a' : '#4ab8d8'; ctx.fillRect(HEART.x - w / 2, y - 5, w * Math.max(0, k), 10);
+  ctx.fillStyle = '#2a1e18'; ctx.fillText(String(Math.floor(s.no)), HEART.x + w / 2 + 8, y + 6);
+  ctx.restore();
 }
 
 /** A lymph node in its type colour, with a letter badge (M / G / A). */
@@ -364,7 +380,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   }
 
   for (const c of s.cells) {
-    if (c.hp <= 0 || c.infected || (s.phase === 'recall' && c.home)) continue;
+    if (c.hp <= 0 || c.infected || c.mode === 'home') continue;
     const q = cellPos(c);
     if (view.showPulseRadius && s.phase === 'combat' && s.pulsesLeft > 0) {
       ctx.fillStyle = 'rgba(74,184,216,0.12)'; ctx.strokeStyle = C.pulse; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
