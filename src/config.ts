@@ -120,6 +120,9 @@ export const CONFIG = {
 export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney';
 type P = { x: number; y: number };
 
+export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
+export interface VesselDef { id: VesselId; name: string; label: string; pts: P[]; fork?: { branches: [BranchDef, BranchDef] } }
+
 export interface LevelDef {
   id: OrganKind;
   /** Shown in the level list: "Level 2 · The Lungs". */
@@ -145,8 +148,9 @@ export interface LevelDef {
     rx: number; ry: number;
     /** Where on each vessel (fractions of its length) lymph nodes may stand. */
     siteFractions: number[];
-    /** Blood flows from the first point (off the map edge) to the last (the organ). Order = keys 1-4. */
-    vessels: { id: VesselId; name: string; label: string; pts: P[] }[];
+    /** Blood flows from the first point (off the map edge) to the last (the organ). A vessel with a `fork`
+     *  ends its points at the fork, and each branch's points carry on from there to the organ. */
+    vessels: VesselDef[];
   };
   waves: WaveDef[];
 }

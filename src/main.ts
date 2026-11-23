@@ -46,13 +46,14 @@ function toMap(e: PointerEvent) {
   return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
 }
 function vesselAt(p: { x: number; y: number }): VesselId | null {
-  let best: VesselId | null = null, bd = Infinity;
+  let best: VesselId | null = null, bd = Infinity, onStem = false;
   for (const v of map.VESSEL_IDS) {
     const n = nearestOnVessel(map.VESSELS[v], p);
     const reach = vesselWidth(s, v) / 2 + (view.touch ? 40 : 24);
-    if (n.d <= reach && n.d < bd) { bd = n.d; best = v; }
+    if (n.d <= reach && n.d < bd) { bd = n.d; best = v; onStem = n.s < map.forkAt(v); }
   }
-  return best;
+  // the shared stem of a fork belongs to both branches: act on the open one, else the first
+  return best && onStem ? map.routeAtStem(map.entryOf(best), s.dilated) : best;
 }
 function siteAt(p: { x: number; y: number }): string | null {
   let best: string | null = null, bd = view.touch ? 52 : 40;
@@ -211,15 +212,16 @@ function signature() {
 
 function previewHtml(): string {
   const def = wave(s);
-  return map.VESSEL_IDS.map((v) => {
+  return map.ENTRY_IDS.map((v) => {
     const groups = def.groups.filter((g) => g.vessel === v).sort((a, b) => a.start - b.start);
+    const forks = map.routesOf(v).length > 1;
     if (!groups.length) return '';
     const rows = groups.map((g) => {
       const st = CONFIG.pathogens[g.type];
       const traits = st.boss ? `<b class="bossTag">BOSS</b> ${esc(st.blurb ?? '')}` : g.type === 'bacterium' ? 'slow, armoured' : g.type === 'virus' ? 'fast, grouped' : 'infects white cells';
       return `<li>${icon(g.type, st.boss ? 40 : 28)}<span><b>${g.count} ${(g.count > 1 ? st.plural : st.name).toLowerCase()}</b> <small>${whenLabel(g.start)}, ${traits}</small></span></li>`;
     }).join('');
-    return `<div class="lane ${s.dilated === v ? 'on' : ''}"><h4>${vesselName(v)}</h4><ul>${rows}</ul></div>`;
+    return `<div class="lane"><h4>${esc(map.entryDef(v).name)}${forks ? ' <small>· forks</small>' : ''}</h4><ul>${rows}</ul></div>`;
   }).join('');
 }
 

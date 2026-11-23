@@ -1,11 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { CONFIG, LEVELS, type NodeType, type PathogenType, type VesselId } from '../src/config';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { CONFIG, LEVELS, type LevelDef, type NodeType, type PathogenType, type VesselId } from '../src/config';
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
-  newGame, toggleRoute, dilateCheck, outCells, pulseCheck, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
+  newGame, toggleRoute, dilateCheck, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
   waveSpawns, placeNode, buildCheck, nodeAt, hurt, effectiveArmour, type State, type Pathogen,
 } from '../src/sim';
 
@@ -13,7 +13,7 @@ function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t
 function finishWave(s: State, each?: (s: State) => void) { let n = 0; while ((s.phase === 'combat' || s.phase === 'recall') && n++ < 30 * 400) { step(s, 1 / 30); each?.(s); } }
 function mk(s: State, type: PathogenType, vessel: VesselId, at: number): Pathogen {
   const st = CONFIG.pathogens[type];
-  const p: Pathogen = { id: s.nextId++, type, vessel, s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: 0, wob: 0, shred: 0, shredT: 0, slow: 1, slowT: 0 };
+  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= M.forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: 0, wob: 0, shred: 0, shredT: 0, slow: 1, slowT: 0 };
   s.pathogens.push(p); return p;
 }
 /** Start the wave and open route v at once (home cells set out along it). */
@@ -481,5 +481,114 @@ describe('Defend the Heart: the IgE boss-hunter node', () => {
     const ev = setup('ige'); ev.s.pathogens = [ev.virus]; ev.virus.hp = ev.virus.maxHp = 1000; tick(ev.s, 10); ev.restore();
     const mv = setup('igm'); mv.s.pathogens = [mv.virus]; mv.virus.hp = mv.virus.maxHp = 1000; tick(mv.s, 10); mv.restore();
     expect(1000 - mv.virus.hp).toBeGreaterThan(2 * (1000 - ev.virus.hp));
+  });
+});
+
+describe('Defend the Heart: forking vessels', () => {
+  // The heart, with its left vessel forking into an upper (A) and lower (B) branch on the way in.
+  const ORIG = LEVELS[0];
+  const FIXTURE: LevelDef = {
+    ...ORIG, startingNodes: [],
+    map: {
+      ...ORIG.map,
+      vessels: [
+        { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 500 }, { x: 170, y: 500 }, { x: 330, y: 460 }],
+          fork: { branches: [
+            { id: 'leftA', name: 'Left upper branch', label: 'Left upper', pts: [{ x: 460, y: 360 }, { x: 600, y: 380 }, { x: 700, y: 430 }] },
+            { id: 'leftB', name: 'Left lower branch', label: 'Left lower', pts: [{ x: 470, y: 600 }, { x: 610, y: 590 }, { x: 710, y: 530 }] },
+          ] } },
+        ...ORIG.map.vessels.slice(1),
+      ],
+    },
+  };
+  const fixtureGame = () => newGame(0);
+  beforeEach(() => { LEVELS[0] = FIXTURE; map.loadLevel(0); });
+  afterEach(() => { LEVELS[0] = ORIG; map.loadLevel(0); });
+  const undecided = (p: Pathogen) => Object.assign(p, { committed: false });
+  const decided = (p: Pathogen) => Object.assign(p, { committed: true });
+
+  it('a forked vessel becomes two routes sharing an identical stem', () => {
+    expect(M.VESSEL_IDS).toEqual(['leftA', 'leftB', 'right', 'lower', 'upper']);
+    expect(M.ENTRY_IDS).toEqual(['left', 'right', 'lower', 'upper']);
+    expect(M.entryOf('leftB')).toBe('left'); expect(M.siblingOf('leftA')).toBe('leftB'); expect(M.siblingOf('right')).toBeNull();
+    expect(M.routesOf('left')).toEqual(['leftA', 'leftB']);
+    const f = M.forkAt('leftA'); expect(f).toBe(M.forkAt('leftB')); expect(f).toBeGreaterThan(300);
+    for (const d of [0, f / 2, f - 1]) expect(dist(M.pointAt(M.VESSELS.leftA, d), M.pointAt(M.VESSELS.leftB, d))).toBeLessThan(0.01);
+    expect(M.forkAt('right')).toBe(Infinity);
+  });
+
+  it('waves name the entry vessel; its pathogens spawn undecided on the stem', () => {
+    const s = fixtureGame(); startWave(s); tick(s, 1.5);
+    const p = s.pathogens.find((x) => M.entryOf(x.vessel) === 'left')!;
+    expect(p).toBeTruthy(); expect(p.committed).toBe(false); expect(p.vessel).toBe('leftA');
+  });
+
+  it('pathogens take the branch that is not dilated', () => {
+    const s = fixtureGame(); startWave(s); quiet(s); toggleRoute(s, 'leftA');
+    const p = undecided(mk(s, 'bacterium', 'leftA', M.forkAt('leftA') - 1)); tick(s, 0.5);
+    expect(p.vessel).toBe('leftB'); expect(p.committed).toBe(true);
+    const t = fixtureGame(); startWave(t); quiet(t); toggleRoute(t, 'leftB');
+    const q = undecided(mk(t, 'bacterium', 'leftA', M.forkAt('leftA') - 1)); tick(t, 0.5);
+    expect(q.vessel).toBe('leftA');
+  });
+
+  it('with neither branch open they alternate, starting with A', () => {
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); const f = M.forkAt('leftA');
+    const ps = [0, 1, 2].map((i) => undecided(mk(s, 'virus', 'leftA', f - 1 - i * 0.5))); tick(s, 0.3);
+    expect(ps.map((p) => p.vessel)).toEqual(['leftA', 'leftB', 'leftA']);
+  });
+
+  it('a committed pathogen keeps its branch when dilation changes', () => {
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0);
+    const p = decided(mk(s, 'virus', 'leftA', M.forkAt('leftA') + 20)); toggleRoute(s, 'leftA'); tick(s, 0.2);
+    expect(p.vessel).toBe('leftA');
+  });
+
+  it('a stem site guards both branches; a branch site only its own', () => {
+    const s = fixtureGame();
+    const stem = M.SITES.find((x) => x.stem && M.entryOf(x.vessel) === 'left')!;
+    const branchB = M.SITES.find((x) => !x.stem && x.vessel === 'leftB')!;
+    expect(stem).toBeTruthy(); expect(branchB).toBeTruthy();
+    const onA = decided(mk(s, 'virus', 'leftA', M.forkAt('leftA') + 30));
+    const onStem = undecided(mk(s, 'virus', 'leftA', M.forkAt('leftA') - 30));
+    expect(covers(stem.vessel, onA, true)).toBe(true);
+    expect(covers(branchB.vessel, onA)).toBe(false);
+    expect(covers(branchB.vessel, onStem)).toBe(true);
+    expect(covers('right', onStem)).toBe(false);
+  });
+
+  it('stem sites are not duplicated across the two routes, and only the forked vessel has stem sites', () => {
+    const stems = M.SITES.filter((x) => x.stem);
+    expect(stems.length).toBeGreaterThan(0);
+    expect(stems.every((x) => M.entryOf(x.vessel) === 'left' && x.vessel === 'leftA')).toBe(true);
+    expect(new Set(M.SITES.map((x) => x.id)).size).toBe(M.SITES.length);
+  });
+
+  it('cells on a branch engage undecided pathogens up the stem', () => {
+    const s = fixtureGame(); startWave(s); quiet(s); toggleRoute(s, 'leftB'); endlessNo(s);
+    const p = undecided(mk(s, 'bacterium', 'leftA', M.forkAt('leftA') - 15)); const hp = p.hp;
+    const speed = CONFIG.pathogens.bacterium.speed; CONFIG.pathogens.bacterium.speed = 0;
+    tick(s, 12); CONFIG.pathogens.bacterium.speed = speed;
+    expect(p.hp).toBeLessThan(hp);
+  });
+
+  it('an infected cell made on the stem is undecided and chooses at the fork', () => {
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); toggleRoute(s, 'leftB');
+    const c = outCells(s)[0]; c.s = M.forkAt('leftB') - 30;
+    infect(s, c, mk(s, 'hijacker', 'leftB', c.s));
+    const e = s.pathogens.find((x) => x.type === 'infected')!;
+    expect(e.committed).toBe(false); expect(M.entryOf(e.vessel)).toBe('left');
+    tick(s, 2); expect(e.vessel).toBe('leftA');
+  });
+
+  it('a split pathogen made on a branch stays on that branch', () => {
+    const s = fixtureGame(); startWave(s); quiet(s);
+    const b = decided(mk(s, 'colony', 'leftB', M.forkAt('leftB') + 60)); hurt(s, b, 9999);
+    const kids = s.pathogens.filter((p) => p.type === 'bacterium' && p.hp > 0);
+    expect(kids.length).toBe(3); expect(kids.every((k) => k.vessel === 'leftB' && k.committed)).toBe(true);
+  });
+
+  it('clicking the shared stem picks the open route, else branch A', () => {
+    expect(M.routeAtStem('left', 'leftB')).toBe('leftB'); expect(M.routeAtStem('left', 'right')).toBe('leftA'); expect(M.routeAtStem('left', null)).toBe('leftA');
   });
 });

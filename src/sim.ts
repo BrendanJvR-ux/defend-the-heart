@@ -1,11 +1,13 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
 import { CONFIG, LEVELS, NODE_TYPES, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
-import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, type Vec } from './level';
+import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
 
 export interface Pathogen {
-  id: number; type: PathogenType; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; wob: number;
+  /** `vessel` is the route it travels. On a forked vessel it is the first branch until it reaches the fork
+   *  (`committed` false); there it picks a branch for good. */
+  id: number; type: PathogenType; vessel: VesselId; committed: boolean; s: number; hp: number; maxHp: number; hit: number; side: number; wob: number;
   /** IgG: armour stripped, and for how long. */
   shred: number; shredT: number;
   /** IgA: speed multiplier and how long it lasts. */
@@ -37,6 +39,8 @@ export interface State {
   /** Times NO has run dry (the UI toasts when it changes). */
   noOuts: number;
   width: Record<VesselId, number>;
+  /** Per forked entry vessel: how many undecided pathogens have alternated at its fork. */
+  forkFlip: Record<VesselId, number>;
   nodes: LymphNode[];
   pathogens: Pathogen[];
   cells: WhiteCell[];
@@ -65,7 +69,7 @@ export function newGame(level = LEVEL_INDEX): State {
   const L = LEVELS[level];
   const s: State = {
     level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: CONFIG.no.max, noOuts: 0,
-    width: zeroWidths(), nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
+    width: zeroWidths(), forkFlip: {}, nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
   for (const n of L.startingNodes) {
@@ -102,6 +106,13 @@ export const aliveCells = (s: State) => s.cells.filter((c) => c.hp > 0 && !c.inf
 /** Living cells out on the open vessel: the only ones that fight, pulse or can be infected. */
 export const outCells = (s: State) => aliveCells(s).filter((c) => c.mode === 'out');
 export const nodeAt = (s: State, site: string) => s.nodes.find((n) => n.site === site);
+
+/** Does something on `route` (a cell, a node's site) share the stretch of vessel `p` is on?
+ *  Same route; or p is still undecided on the shared stem; or a stem site, which guards the whole fork. */
+export function covers(route: VesselId, p: Pathogen, stemSite = false): boolean {
+  if (entryOf(p.vessel) !== entryOf(route)) return false;
+  return p.vessel === route || !p.committed || stemSite;
+}
 
 export function effectiveArmour(p: Pathogen): number { return Math.max(0, CONFIG.pathogens[p.type].armour - p.shred); }
 
@@ -179,7 +190,7 @@ function deployHome(s: State) {
 
 export function waveSpawns(n: number, level = LEVEL_INDEX): Spawn[] {
   const out: Spawn[] = [];
-  for (const g of LEVELS[level].waves[n - 1].groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: g.vessel, at: g.start + i * g.interval });
+  for (const g of LEVELS[level].waves[n - 1].groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval });
   return out.sort((a, b) => a.at - b.at);
 }
 
@@ -219,7 +230,7 @@ export function pulseTargets(s: State): Pathogen[] {
   const hit = new Set<Pathogen>();
   for (const c of outCells(s)) {
     const cp = cellPos(c);
-    for (const p of s.pathogens) if (p.hp > 0 && p.vessel === c.vessel && dist(pathogenPos(p), cp) <= R) hit.add(p);
+    for (const p of s.pathogens) if (p.hp > 0 && covers(c.vessel, p) && dist(pathogenPos(p), cp) <= R) hit.add(p);
   }
   return [...hit];
 }
@@ -262,7 +273,7 @@ export function hurt(s: State, p: Pathogen, dmg: number, armoured = false) {
 
 function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pathogen {
   const st = CONFIG.pathogens[type];
-  const p: Pathogen = { id: s.nextId++, type, vessel, s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (Math.random() * 2 - 1) * 7, wob: Math.random() * 6, shred: 0, shredT: 0, slow: 1, slowT: 0, shedT: st.sheds?.every };
+  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (Math.random() * 2 - 1) * 7, wob: Math.random() * 6, shred: 0, shredT: 0, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
   if (st.boss) {
     const m = pointAt(VESSELS[vessel], 90);
@@ -326,6 +337,7 @@ export function step(s: State, dtRaw: number) {
     }
   }
   for (const [type, v, at] of shed) newPathogen(s, type, v, at);
+  for (const p of s.pathogens) if (!p.committed && p.s >= forkAt(p.vessel)) chooseBranch(s, p);
 
   // Lymph nodes: each fires its immunoglobulin at the most advanced pathogen on its own vessel within reach.
   for (const n of s.nodes) {
@@ -336,7 +348,7 @@ export function step(s: State, dtRaw: number) {
     // most advanced pathogen in reach; an IgE node takes any boss in reach first
     const rank = (p: Pathogen) => p.s + (st.bossDamage && CONFIG.pathogens[p.type].boss ? 1e6 : 0);
     let best: Pathogen | null = null;
-    for (const p of s.pathogens) if (p.hp > 0 && p.vessel === n.vessel && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || rank(p) > rank(best))) best = p;
+    for (const p of s.pathogens) if (p.hp > 0 && covers(n.vessel, p, site.stem) && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || rank(p) > rank(best))) best = p;
     if (!best) continue;
     n.cd = st.cooldown;
     n.flash = 0.4;
@@ -371,7 +383,7 @@ export function step(s: State, dtRaw: number) {
   for (const c of outCells(s)) {
     c.hit = Math.max(0, c.hit - dt);
     const L = VESSELS[c.vessel].length;
-    const mine = s.pathogens.filter((p) => p.hp > 0 && p.vessel === c.vessel && p.s > 0);
+    const mine = s.pathogens.filter((p) => p.hp > 0 && covers(c.vessel, p) && p.s > 0);
     const target = mine.reduce<Pathogen | null>((b, p) => (!b || p.s > b.s ? p : b), null);
     c.targetId = target?.id ?? null;
     const rank = outCells(s).indexOf(c);
@@ -412,6 +424,16 @@ export function step(s: State, dtRaw: number) {
     s.recallTime = 0;
     s.shots = [];
   }
+}
+
+/** An undecided pathogen reaches its vessel's fork: it takes the branch that is not dilated;
+ *  with neither open, the vessel's pathogens alternate, first branch first. */
+function chooseBranch(s: State, p: Pathogen) {
+  const entry = entryOf(p.vessel), [a, b] = routesOf(entry);
+  if (s.dilated === a) p.vessel = b;
+  else if (s.dilated === b) p.vessel = a;
+  else { const n = s.forkFlip[entry] ?? 0; p.vessel = n % 2 ? b : a; s.forkFlip[entry] = n + 1; }
+  p.committed = true;
 }
 
 /** Returning cells travel back to the organ, fast and without fighting. */
