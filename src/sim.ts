@@ -1,6 +1,6 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
-import { CONFIG, LEVELS, NODE_TYPES, BACTERIA, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
-import type { RunSave } from './career';
+import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
+import { NO_PERKS, type Perks, type RunSave } from './career';
 import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
@@ -44,6 +44,10 @@ export interface State {
   forkFlip: Record<VesselId, number>;
   /** IgE nodes that burnt out at the end of the last wave (their sites are free again). Cleared when a wave starts. */
   spent: { site: string; at: Vec }[];
+  /** What the career's upgrades do in this game. */
+  perks: Perks;
+  /** The cheaper-first-node discount has been used this build phase. */
+  discountUsed: boolean;
   nodes: LymphNode[];
   pathogens: Pathogen[];
   cells: WhiteCell[];
@@ -67,11 +71,12 @@ export interface State {
 const zeroWidths = () => Object.fromEntries(VESSEL_IDS.map((v) => [v, 0])) as Record<VesselId, number>;
 
 /** A fresh game on the given organ (default: the one already loaded). Loads that organ's map. */
-export function newGame(level = LEVEL_INDEX): State {
+export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS): State {
   loadLevel(level);
   const L = LEVELS[level];
   const s: State = {
-    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: CONFIG.no.max, noOuts: 0,
+    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: perks.noMax, noOuts: 0,
+    perks, discountUsed: false,
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
@@ -79,19 +84,28 @@ export function newGame(level = LEVEL_INDEX): State {
     const site = SITES.find((x) => x.vessel === n.vessel && x.index === n.site);
     if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets: n.type === 'igg' ? ['saureus'] : [], wavesFought: 0 });
   }
+  if (perks.extraNode) {
+    // one more IgM, on the first free site guarding the vessel bringing the most into wave 1
+    const hp = new Map<VesselId, number>();
+    for (const sp of waveSpawns(1, level)) hp.set(sp.vessel, (hp.get(sp.vessel) ?? 0) + CONFIG.pathogens[sp.type].hp);
+    const busiest = [...hp].sort((a, b) => b[1] - a[1])[0]?.[0] ?? VESSEL_IDS[0];
+    const site = SITES.find((x) => (x.vessel === busiest || (x.stem && entryOf(x.vessel) === entryOf(busiest))) && !s.nodes.some((n) => n.site === x.id))
+      ?? SITES.find((x) => !s.nodes.some((n) => n.site === x.id));
+    if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: 'igm', cd: 0, flash: 0, targets: [], wavesFought: 0 });
+  }
   return s;
 }
 
 /** Put a saved build phase back: the organ, wave, health, energy, NO and nodes. Nodes on sites this
  *  organ no longer has are dropped; an organ that does not exist starts a fresh heart. */
-export function resumeGame(run: RunSave): State {
-  if (!(run.level >= 0 && run.level < LEVELS.length)) return newGame(0);
-  const s = newGame(run.level);
+export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
+  if (!(run.level >= 0 && run.level < LEVELS.length)) return newGame(0, perks);
+  const s = newGame(run.level, perks);
   const L = LEVELS[run.level];
   s.wave = Math.max(1, Math.min(L.waves.length, Math.floor(run.wave)));
   s.heartHp = Math.max(1, Math.min(L.hp, run.heartHp));
   s.energy = Math.max(0, Math.floor(run.energy));
-  s.no = Math.max(0, Math.min(CONFIG.no.max, run.no));
+  s.no = Math.max(0, Math.min(perks.noMax, run.no));
   s.nodes = [];
   for (const n of run.nodes) {
     const site = SITES.find((x) => x.id === n.site);
@@ -153,7 +167,7 @@ export function iggMultiplier(targets: BacteriumType[], type: PathogenType): num
 export function antibodyDamage(type: NodeType, targets: BacteriumType[], ptype: PathogenType): number {
   return CONFIG.nodes[type].damage * (type === 'igg' ? iggMultiplier(targets, ptype) : 1);
 }
-export function nodeDamage(_s: State, n: LymphNode, ptype: PathogenType): number { return antibodyDamage(n.type, n.targets, ptype); }
+export function nodeDamage(s: State, n: LymphNode, ptype: PathogenType): number { return antibodyDamage(n.type, n.targets, ptype) * s.perks.dmg[n.type]; }
 
 export function pathogenPos(p: Pathogen): Vec & { angle: number } {
   const q = pointAt(VESSELS[p.vessel], p.s);
@@ -173,38 +187,60 @@ export function buildCheck(s: State, siteId: string, type: NodeType, targets?: B
   if (!SITES.some((x) => x.id === siteId)) return { ok: false, reason: 'Not a site for a lymph node.' };
   if (nodeAt(s, siteId)) return { ok: false, reason: 'A lymph node is already there.' };
   if (type === 'igg') {
-    if (!targets?.length) return { ok: false, reason: 'Choose what this IgG targets.' };
-    if (targets.length > 1) return { ok: false, reason: 'One target per IgG node.' };
+    const t = targetsCheck(s, targets ?? []);
+    if (t) return { ok: false, reason: t };
   }
-  const cost = CONFIG.nodes[type].cost;
+  const cost = nodeCost(s, type, targets);
   if (s.energy < cost) return { ok: false, reason: `Needs ${cost} energy (you have ${s.energy}).` };
   return { ok: true, reason: '' };
+}
+
+/** Why these IgG targets can't be used ('' if they can). */
+function targetsCheck(s: State, targets: BacteriumType[]): string {
+  if (!targets.length) return 'Choose what this IgG targets.';
+  if (targets.length > 2 || new Set(targets).size !== targets.length) return 'Choose one target, or two different ones.';
+  if (targets.length === 2 && !s.perks.dual) return 'Dual-target IgG is an upgrade.';
+  if (targets.some((b) => !s.perks.targets.includes(b))) return 'Unlock this target in Upgrades.';
+  return '';
+}
+
+/** Energy to place a node: a dual-target IgG costs more; the first node of a build phase may be half price. */
+export function nodeCost(s: State, type: NodeType, targets?: BacteriumType[]): number {
+  const base = type === 'igg' && (targets?.length ?? 0) > 1 ? CONFIG.dualIggCost : CONFIG.nodes[type].cost;
+  return s.perks.cheapFirst && !s.discountUsed ? Math.floor(base / 2) : base;
 }
 
 export function placeNode(s: State, siteId: string, type: NodeType, targets?: BacteriumType[]): boolean {
   if (!buildCheck(s, siteId, type, targets).ok) return false;
   const site = siteById(siteId);
-  s.energy -= CONFIG.nodes[type].cost;
+  s.energy -= nodeCost(s, type, targets);
+  s.discountUsed = true;
   s.nodes.push({ id: s.nextId++, site: siteId, vessel: site.vessel, type, cd: 0.3, flash: 1, targets: type === 'igg' ? [...targets!] : [], wavesFought: 0 });
   s.rings.push({ x: site.x, y: site.y, r: 40, t: 0, dur: 0.5, kind: 'build' });
   return true;
 }
 
 /** The IgG targets this player can choose (Stage 3 limits them to the career's unlocks). */
-export const selectableTargets = (_s: State): BacteriumType[] => [...BACTERIA];
+export const selectableTargets = (s: State): BacteriumType[] => [...s.perks.targets];
 
 /** Re-aim a placed IgG node between waves. */
 export function retargetCheck(s: State, siteId: string, targets: BacteriumType[]): { ok: boolean; reason: string } {
   const n = nodeAt(s, siteId);
   if (s.phase !== 'prep') return { ok: false, reason: 'Lymph nodes can only be changed between waves.' };
   if (!n || n.type !== 'igg') return { ok: false, reason: 'Only an IgG node can be re-aimed.' };
-  if (targets.length !== 1) return { ok: false, reason: 'One target per IgG node.' };
-  if (s.energy < CONFIG.iggRetarget) return { ok: false, reason: `Needs ${CONFIG.iggRetarget} energy (you have ${s.energy}).` };
+  const t = targetsCheck(s, targets);
+  if (t) return { ok: false, reason: t };
+  const cost = retargetCost(n, targets);
+  if (s.energy < cost) return { ok: false, reason: `Needs ${cost} energy (you have ${s.energy}).` };
   return { ok: true, reason: '' };
+}
+/** Re-aiming costs 20; giving a single-target node a second target costs the 30 difference to a dual node. */
+export function retargetCost(n: LymphNode, targets: BacteriumType[]): number {
+  return n.targets.length === 1 && targets.length === 2 ? CONFIG.dualIggCost - CONFIG.nodes.igg.cost : CONFIG.iggRetarget;
 }
 export function retargetNode(s: State, siteId: string, targets: BacteriumType[]): boolean {
   if (!retargetCheck(s, siteId, targets).ok) return false;
-  s.energy -= CONFIG.iggRetarget;
+  s.energy -= retargetCost(nodeAt(s, siteId)!, targets);
   nodeAt(s, siteId)!.targets = [...targets];
   return true;
 }
@@ -430,7 +466,7 @@ export function step(s: State, dtRaw: number) {
     if (p) { const q = pathogenPos(p); sh.x = sh.sx + (q.x - sh.sx) * k; sh.y = sh.sy + (q.y - sh.sy) * k; }
     if (k >= 1 && p) {
       const st = CONFIG.nodes[sh.type];
-      const dmg = antibodyDamage(sh.type, sh.targets, p.type);
+      const dmg = antibodyDamage(sh.type, sh.targets, p.type) * s.perks.dmg[sh.type];
       if (sh.type === 'igg') {
         // show how well the IgG matched: big and bright for a good match, small and grey for a poor one
         const m = iggMultiplier(sh.targets, p.type), q = pathogenPos(p);
@@ -447,7 +483,7 @@ export function step(s: State, dtRaw: number) {
   if (s.dilated) {
     s.no -= CONFIG.no.drainPerSec * dt;
     if (s.no <= 0) { s.no = 0; s.noOuts++; closeRoute(s); }
-  } else s.no = Math.min(CONFIG.no.max, s.no + CONFIG.no.regenPerSec * dt);
+  } else s.no = Math.min(s.perks.noMax, s.no + CONFIG.no.regenPerSec * dt);
 
   // White cells: returning ones head home (then out again along any open vessel); only cells out fight.
   const WC = CONFIG.whiteCell;
@@ -542,7 +578,8 @@ function recall(s: State, dt: number) {
     if (s.wave >= totalWaves(s)) { s.phase = 'victory'; return; }
     const bonus = CONFIG.waveClearEnergy(s.wave);
     s.energy += bonus;
-    s.no = Math.min(CONFIG.no.max, s.no + CONFIG.no.waveTopUp);
+    s.no = Math.min(s.perks.noMax, s.no + CONFIG.no.waveTopUp);
+    s.discountUsed = false;
     const L = LEVELS[s.level];
     const regen = L.regenPerWave ? Math.min(L.regenPerWave, L.hp - s.heartHp) : 0;
     s.heartHp += regen;

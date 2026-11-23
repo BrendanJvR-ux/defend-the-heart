@@ -3,6 +3,7 @@ import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type LevelDef, type NodeT
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, type Box } from '../src/labels';
+import { NO_PERKS, perksOf, freshCareer, type Perks } from '../src/career';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
@@ -256,6 +257,9 @@ describe('Defend the Heart: placing lymph nodes', () => {
   });
 });
 
+/** Every IgG target unlocked, nothing else (for tests of the rules themselves). */
+const ALL_TARGETS: Perks = { ...NO_PERKS, targets: [...BACTERIA] };
+
 describe('Defend the Heart: the IgG match', () => {
   it('species ×3, shape ×2.5, Gram ×2, unrelated bacterium ×0.5, not a bacterium ×0.25', () => {
     expect(iggMultiplier(['spneumo'], 'spneumo')).toBe(3);
@@ -282,7 +286,7 @@ describe('Defend the Heart: the IgG match', () => {
 
 describe('Defend the Heart: lymph nodes', () => {
   function oneShot(type: NodeType, target: PathogenType, targets?: BacteriumType[]) {
-    const s = newGame(0); s.nodes = []; s.energy = 999;
+    const s = newGame(0, ALL_TARGETS); s.nodes = []; s.energy = 999;
     const site = M.SITES.find((x) => x.vessel === 'left' && x.index === 1)!;
     placeNode(s, site.id, type, targets ?? (type === 'igg' ? ['saureus'] : undefined));
     go(s, 'right'); quiet(s); mk(s, 'saureus', 'upper', 0);
@@ -324,7 +328,7 @@ describe('Defend the Heart: lymph nodes', () => {
     expect(nodeAt(s, site.id)!.targets).toEqual(['saureus']);
   });
   it('an IgG node can be re-aimed between waves for 20 energy, not during a wave', () => {
-    const s = newGame(0); s.energy = 200; const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
+    const s = newGame(0, ALL_TARGETS); s.energy = 200; const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
     placeNode(s, site.id, 'igg', ['saureus']); const e = s.energy;
     expect(retargetNode(s, site.id, ['ecoli'])).toBe(true);
     expect(s.energy).toBe(e - CONFIG.iggRetarget); expect(nodeAt(s, site.id)!.targets).toEqual(['ecoli']);
@@ -762,4 +766,63 @@ describe('Defend the Heart: map labels', () => {
       }
     });
   }
+});
+
+describe('Defend the Heart: upgrades in play', () => {
+  const perks = (over: Partial<Perks>): Perks => ({ ...NO_PERKS, ...over, dmg: { ...NO_PERKS.dmg, ...(over.dmg ?? {}) } });
+  function hitOnce(s: State, type: NodeType, target: PathogenType, targets?: BacteriumType[]) {
+    s.nodes = []; s.energy = 999;
+    const site = M.SITES.find((x) => x.vessel === 'left' && x.index === 1)!;
+    expect(placeNode(s, site.id, type, targets)).toBe(true);
+    go(s, 'right'); quiet(s); mk(s, 'saureus', 'upper', 0);
+    const p = mk(s, target, 'left', 0);
+    let sNear = 0, dmin = Infinity;
+    for (let d = 0; d < M.VESSELS.left.length; d += 4) { p.s = d; const dd = dist(pathogenPos(p), site); if (dd < dmin) { dmin = dd; sNear = d; } }
+    p.s = sNear; p.hp = p.maxHp = 1000;
+    const speed = CONFIG.pathogens[target].speed; CONFIG.pathogens[target].speed = 0;
+    let n = 0; while (p.hp === 1000 && n++ < 300) step(s, 1 / 30);
+    CONFIG.pathogens[target].speed = speed;
+    return 1000 - p.hp;
+  }
+
+  it('a new game has no upgrades: S. aureus is the only IgG target', () => {
+    const s = newGame(0); const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
+    expect(s.perks).toEqual(NO_PERKS);
+    expect(buildCheck(s, site.id, 'igg', ['ecoli']).reason).toBe('Unlock this target in Upgrades.');
+    expect(buildCheck(s, site.id, 'igg', ['saureus']).ok).toBe(true);
+  });
+  it('a damage upgrade raises that node type\'s hits by 15% a level', () => {
+    expect(hitOnce(newGame(0, perks({ dmg: { igm: 1.3 } as Perks['dmg'] })), 'igm', 'ecoli')).toBeCloseTo(13);
+    expect(hitOnce(newGame(0, perks({ dmg: { igm: 1.3 } as Perks['dmg'] })), 'iga', 'ecoli')).toBeCloseTo(7.5);
+  });
+  it('dual-target IgG costs 80, takes two unlocked targets and hits with the better match', () => {
+    const s = newGame(0, perks({ dual: true, targets: ['saureus', 'ecoli'] }));
+    const site = M.SITES.find((x) => !nodeAt(s, x.id))!; s.energy = 100;
+    expect(placeNode(s, site.id, 'igg', ['saureus', 'ecoli'])).toBe(true); expect(s.energy).toBe(100 - CONFIG.dualIggCost);
+    expect(hitOnce(newGame(0, perks({ dual: true, targets: ['saureus', 'ecoli'] })), 'igg', 'kpneumo', ['saureus', 'ecoli'])).toBe(25);
+    const n = newGame(0); expect(buildCheck(n, site.id, 'igg', ['saureus', 'ecoli']).reason).toBe('Dual-target IgG is an upgrade.');
+  });
+  it('an IgG node gains a second target for 30 once dual-target is bought', () => {
+    const s = newGame(0, perks({ dual: true, targets: ['saureus', 'ecoli'] })); s.energy = 200;
+    const site = M.SITES.find((x) => !nodeAt(s, x.id))!; placeNode(s, site.id, 'igg', ['saureus']);
+    const e = s.energy; expect(retargetNode(s, site.id, ['saureus', 'ecoli'])).toBe(true);
+    expect(s.energy).toBe(e - 30); expect(nodeAt(s, site.id)!.targets).toEqual(['saureus', 'ecoli']);
+  });
+  it('cheaper first node halves only the first node each build phase', () => {
+    const s = newGame(0, perks({ cheapFirst: true })); s.energy = 500;
+    const free = M.SITES.filter((x) => !nodeAt(s, x.id));
+    placeNode(s, free[0].id, 'igm'); expect(s.energy).toBe(500 - 30);
+    placeNode(s, free[1].id, 'igm'); expect(s.energy).toBe(500 - 30 - 60);
+    startWave(s); quiet(s); finishWave(s); const e = s.energy;
+    placeNode(s, free[2].id, 'iga'); expect(s.energy).toBe(e - 25);
+  });
+  it('extra starting node places one more IgM', () => {
+    const a = newGame(0), b = newGame(0, perks({ extraNode: true }));
+    expect(b.nodes.length).toBe(a.nodes.length + 1); expect(b.nodes[b.nodes.length - 1].type).toBe('igm');
+  });
+  it('NO capacity perk raises the gauge and its refill cap', () => {
+    const s = newGame(0, perks({ noMax: 140 })); expect(s.no).toBe(140);
+    startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0); s.no = 139; tick(s, 2); expect(s.no).toBe(140);
+  });
+  it('perksOf(freshCareer()) is NO_PERKS', () => { expect(perksOf(freshCareer())).toEqual(NO_PERKS); });
 });

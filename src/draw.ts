@@ -12,7 +12,9 @@ export interface View {
   hoverSite: string | null;
   selectedSite: string | null;
   /** Which page of the build popover is open. */
-  popMode: 'main' | 'aim' | 'reaim';
+  popMode: 'main' | 'aim' | 'reaim' | 'dualA' | 'dualB' | 'addSecond';
+  /** Dual-target IgG: the first target chosen. */
+  dualFirst: BacteriumType | null;
   showPulseRadius: boolean;
   touch: boolean;
 }
@@ -186,7 +188,7 @@ function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
 function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
   if (s.phase !== 'combat') return;
   const heart = LEVEL.id === 'heart', y = HEART.y + (heart ? 159 : LEVEL.map.ry + 50) + 30, w = 150;
-  const low = s.no < openNeed() && !s.dilated, k = s.no / CONFIG.no.max;
+  const low = s.no < openNeed() && !s.dilated, k = s.no / s.perks.noMax;
   ctx.save();
   ctx.globalAlpha = low ? 0.55 + 0.45 * Math.abs(Math.sin(t * 5)) : 1;
   ctx.fillStyle = 'rgba(244,234,216,0.92)'; ctx.beginPath(); ctx.roundRect(HEART.x - w / 2 - 44, y - 13, w + 96, 26, 13); ctx.fill();

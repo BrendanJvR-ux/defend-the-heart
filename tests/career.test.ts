@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { LEVELS } from '../src/config';
 import * as M from '../src/level';
 import { newGame, placeNode, nodeAt, startWave, step, resumeGame, type State } from '../src/sim';
-import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, type KV } from '../src/career';
+import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, type KV } from '../src/career';
 
 /** An in-memory store standing in for localStorage. */
 function memory(init: Record<string, string> = {}): KV & { data: Record<string, string> } {
@@ -116,5 +116,45 @@ describe('Career: continuing a game', () => {
     const c = freshCareer();
     for (let i = 0; i < LEVELS.length; i++) { const s = newGame(i); s.phase = 'victory'; onOrganEnd(c, s); }
     expect(unlockedCount(c)).toBe(5);
+  });
+});
+
+describe('Career: gold and the shop', () => {
+  it('gold: 100 × level + 5 × health left on a first clear, a quarter on a replay', () => {
+    expect(goldFor(0, 12, true)).toBe(160); expect(goldFor(4, 10, true)).toBe(550); expect(goldFor(4, 10, false)).toBe(137);
+  });
+
+  it('winning pays gold: full on the first clear, a quarter on a replay', () => {
+    const c = freshCareer(); const s = newGame(0); s.phase = 'victory'; s.heartHp = 12;
+    expect(onOrganEnd(c, s)).toBe(160); expect(c.gold).toBe(160);
+    expect(onOrganEnd(c, s)).toBe(40); expect(c.gold).toBe(200);
+    const l = newGame(1); l.phase = 'defeat'; expect(onOrganEnd(c, l)).toBe(0);
+  });
+
+  it('buying spends exact gold, climbs a level, refuses when poor or maxed without spending', () => {
+    const c = freshCareer(); c.gold = 80;
+    expect(buy(c, 'dmg-igm')).toEqual({ ok: true, reason: '' }); expect(c.gold).toBe(0); expect(c.bought['dmg-igm']).toBe(1);
+    expect(buy(c, 'dmg-igm')).toEqual({ ok: false, reason: 'Not enough gold.' }); expect(c.bought['dmg-igm']).toBe(1);
+    c.gold = 1000; buy(c, 'dmg-igm'); buy(c, 'dmg-igm');
+    expect([c.bought['dmg-igm'], c.gold]).toEqual([3, 1000 - 160 - 240]);
+    expect(buy(c, 'dmg-igm')).toEqual({ ok: false, reason: 'Already at the top level.' }); expect(c.gold).toBe(600);
+  });
+
+  it('prices match the design', () => {
+    expect(UPGRADES['dmg-igg'].prices).toEqual([80, 160, 240]);
+    expect(UPGRADES['target-ecoli'].prices).toEqual([120]);
+    expect(UPGRADES.dual.prices).toEqual([600]);
+    expect(UPGRADES.no.prices).toEqual([100, 200]);
+    expect([UPGRADES.extraNode.prices, UPGRADES.cheapFirst.prices]).toEqual([[150], [150]]);
+    expect('target-saureus' in UPGRADES).toBe(false);
+  });
+
+  it('perks: damage +15% per level, targets, dual, NO capacity', () => {
+    const c = freshCareer(); expect(perksOf(c)).toEqual(NO_PERKS);
+    c.bought = { 'dmg-iga': 2, 'target-ecoli': 1, dual: 1, no: 2, extraNode: 1, cheapFirst: 1 };
+    const p = perksOf(c);
+    expect(p.dmg.iga).toBeCloseTo(1.3); expect(p.dmg.igm).toBe(1);
+    expect(p.targets).toEqual(['saureus', 'ecoli']);
+    expect([p.dual, p.noMax, p.extraNode, p.cheapFirst]).toEqual([true, 140, true, true]);
   });
 });

@@ -1,6 +1,6 @@
 // The career: gold, purchases, organs cleared and the game in progress, saved in one versioned
 // localStorage entry. No DOM here, so it is tested directly; the store is passed in.
-import { LEVELS, BACTERIA, type BacteriumType, type NodeType } from './config';
+import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type NodeType } from './config';
 import type { State } from './sim';
 
 /** Things gold can buy (Stage 3 prices them). */
@@ -8,6 +8,66 @@ export type UpgradeId =
   | 'dmg-igm' | 'dmg-igg' | 'dmg-iga' | 'dmg-ige'
   | `target-${Exclude<BacteriumType, 'saureus'>}`
   | 'dual' | 'no' | 'extraNode' | 'cheapFirst';
+
+/** The shop: what each upgrade is called, does and costs per level. S. aureus is always unlocked. */
+export const UPGRADES: Record<UpgradeId, { name: string; blurb: string; prices: number[] }> = {
+  'dmg-igm': { name: 'IgM damage', blurb: '+15% damage for every IgM node, per level.', prices: [80, 160, 240] },
+  'dmg-igg': { name: 'IgG damage', blurb: '+15% damage for every IgG node, per level.', prices: [80, 160, 240] },
+  'dmg-iga': { name: 'IgA damage', blurb: '+15% damage for every IgA node, per level.', prices: [80, 160, 240] },
+  'dmg-ige': { name: 'IgE damage', blurb: '+15% damage for every IgE node, per level.', prices: [80, 160, 240] },
+  'target-spneumo': { name: 'IgG target: S. pneumoniae', blurb: 'Aim IgG at pneumococci (Gram+ cocci).', prices: [120] },
+  'target-listeria': { name: 'IgG target: Listeria', blurb: 'Aim IgG at Listeria (Gram+ rods).', prices: [120] },
+  'target-nmening': { name: 'IgG target: N. meningitidis', blurb: 'Aim IgG at meningococci (Gram− cocci).', prices: [120] },
+  'target-ecoli': { name: 'IgG target: E. coli', blurb: 'Aim IgG at E. coli (Gram− rods).', prices: [120] },
+  'target-kpneumo': { name: 'IgG target: Klebsiella', blurb: 'Aim IgG at Klebsiella (Gram− rods).', prices: [120] },
+  dual: { name: 'Dual-target IgG', blurb: 'An IgG node can be aimed at two unlocked targets; each hit uses the better match. A dual node costs 80 energy.', prices: [600] },
+  no: { name: 'More NO', blurb: '+20 NO capacity, per level.', prices: [100, 200] },
+  extraNode: { name: 'Extra starting node', blurb: 'Every organ starts with one more IgM node already placed.', prices: [150] },
+  cheapFirst: { name: 'Cheaper first node', blurb: 'The first node you place in each build phase costs half.', prices: [150] },
+};
+
+/** What the career's upgrades do in play. */
+export interface Perks {
+  /** Damage multiplier per node type. */
+  dmg: Record<NodeType, number>;
+  /** IgG targets that can be chosen. */
+  targets: BacteriumType[];
+  dual: boolean;
+  noMax: number;
+  extraNode: boolean;
+  cheapFirst: boolean;
+}
+export const NO_PERKS: Perks = { dmg: { igm: 1, igg: 1, iga: 1, ige: 1 }, targets: ['saureus'], dual: false, noMax: CONFIG.no.max, extraNode: false, cheapFirst: false };
+
+export function perksOf(c: Career): Perks {
+  const lvl = (id: UpgradeId) => c.bought[id] ?? 0;
+  const dmg = (t: NodeType) => Math.round((1 + 0.15 * lvl(`dmg-${t}` as UpgradeId)) * 100) / 100;
+  return {
+    dmg: { igm: dmg('igm'), igg: dmg('igg'), iga: dmg('iga'), ige: dmg('ige') },
+    targets: BACTERIA.filter((b) => b === 'saureus' || lvl(`target-${b}` as UpgradeId) > 0),
+    dual: lvl('dual') > 0, noMax: CONFIG.no.max + 20 * lvl('no'), extraNode: lvl('extraNode') > 0, cheapFirst: lvl('cheapFirst') > 0,
+  };
+}
+
+/** Gold for winning organ `level` (0-based) with `healthLeft`: full on the first clear, a quarter on a replay. */
+export function goldFor(level: number, healthLeft: number, firstClear: boolean): number {
+  const full = 100 * (level + 1) + 5 * healthLeft;
+  return firstClear ? full : Math.floor(full / 4);
+}
+
+export function buyCheck(c: Career, id: UpgradeId): { ok: boolean; reason: string; price: number } {
+  const prices = UPGRADES[id].prices, have = c.bought[id] ?? 0;
+  if (have >= prices.length) return { ok: false, reason: 'Already at the top level.', price: 0 };
+  if (c.gold < prices[have]) return { ok: false, reason: 'Not enough gold.', price: prices[have] };
+  return { ok: true, reason: '', price: prices[have] };
+}
+export function buy(c: Career, id: UpgradeId): { ok: boolean; reason: string } {
+  const chk = buyCheck(c, id);
+  if (!chk.ok) return { ok: false, reason: chk.reason };
+  c.gold -= chk.price;
+  c.bought[id] = (c.bought[id] ?? 0) + 1;
+  return { ok: true, reason: '' };
+}
 
 /** A build phase, enough to put the player back where they were. */
 export interface RunSave {
@@ -96,11 +156,15 @@ export function snapshot(s: State): RunSave {
   };
 }
 
-/** An organ was won or lost: record it and end the run. (Stage 3 also pays gold here.) */
-export function onOrganEnd(c: Career, s: State): void {
+/** An organ was won or lost: record it, pay gold for a win and end the run. Returns the gold paid. */
+export function onOrganEnd(c: Career, s: State): number {
+  let paid = 0;
   if (s.phase === 'victory') {
+    paid = goldFor(s.level, s.heartHp, !c.cleared[s.level]);
+    c.gold += paid;
     c.cleared[s.level] = true;
     c.best[s.level] = Math.max(c.best[s.level] ?? 0, s.heartHp);
   }
   c.run = null;
+  return paid;
 }
