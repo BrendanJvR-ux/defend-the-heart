@@ -8,7 +8,7 @@ import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type Upgra
 const M = map;
 import {
   newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
-  waveSpawns, placeNode, buildCheck, nodeAt, hurt, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
+  waveSpawns, placeNode, buildCheck, nodeAt, hurt, hidden, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
 } from '../src/sim';
 
 function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t = 0; t < seconds; t += 1 / 30) { step(s, 1 / 30); each?.(s); } }
@@ -483,7 +483,7 @@ function holdOpen(s: State) {
 
 describe('Defend the Heart: organ levels', () => {
   it('there are five organs, each with its own map, waves and a full set of build sites', () => {
-    expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney']);
+    expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney', 'spleen']);
     for (let i = 0; i < LEVELS.length; i++) {
       const s = newGame(i);
       expect(s.level).toBe(i);
@@ -510,7 +510,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('more build sites: at least five guarding each route (four on the kidney\'s short upper fork), two on the brain', () => {
-    const atLeast = [5, 5, 2, 5, 4];
+    const atLeast = [5, 5, 2, 5, 4, 4];
     LEVELS.forEach((_, i) => {
       newGame(i);
       for (const r of M.VESSEL_IDS) {
@@ -521,7 +521,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('S. aureus comes in every organ; each organ uses only its own species', () => {
-    const own: BacteriumType[][] = [['saureus'], ['saureus', 'spneumo', 'kpneumo'], ['saureus', 'spneumo', 'listeria', 'nmening'], ['saureus', 'ecoli', 'kpneumo'], ['saureus', 'ecoli']];
+    const own: BacteriumType[][] = [['saureus'], ['saureus', 'spneumo', 'kpneumo'], ['saureus', 'spneumo', 'listeria', 'nmening'], ['saureus', 'ecoli', 'kpneumo'], ['saureus', 'ecoli'], ['saureus', 'spneumo', 'nmening', 'kpneumo']];
     LEVELS.forEach((l, i) => {
       const kinds = new Set(l.waves.flatMap((w) => w.groups.map((g) => g.type)).filter((x) => CONFIG.pathogens[x].taxon && !CONFIG.pathogens[x].boss));
       expect([...kinds].sort()).toEqual([...own[i]].sort());
@@ -529,7 +529,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('each organ has one more route than the last; forks only from the brain on', () => {
-    const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3]]; // entries, routes, forks
+    const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3], [6, 9, 3]]; // entries, routes, forks
     LEVELS.forEach((_, i) => {
       newGame(i);
       const forks = M.ENTRY_IDS.filter((e) => M.routesOf(e).length === 2).length;
@@ -951,5 +951,62 @@ describe('Defend the Heart: what leaked', () => {
     s.leaks = { byVessel: { right: 5 }, byType: { virus: 5 } }; expect(leakSummary(s)!.advice).toMatch(/IgA/);
     s.leaks = { byVessel: { right: 5 }, byType: { infected: 5 } }; expect(leakSummary(s)!.advice).toMatch(/hijacker/i);
     s.leaks = { byVessel: {}, byType: {} }; expect(leakSummary(s)).toBeNull();
+  });
+});
+
+describe('Defend the Heart: the spleen', () => {
+  const SPLEEN = 5;
+  const outCell = (s: State) => { const v = M.VESSEL_IDS[0]; go(s, v); quiet(s); mk(s, 'saureus', M.VESSEL_IDS[1], 0); endlessNo(s); tick(s, 1); return outCells(s)[0]; };
+
+  it('a lost white cell comes back 8 s later, costing 1 spleen health', () => {
+    const s = newGame(SPLEEN); const c = outCell(s); const n = s.cells.filter((x) => x.hp > 0 && !x.infected).length, hp = s.heartHp;
+    c.hp = 0.01; mk(s, 'saureus', c.vessel, c.s); step(s, 1 / 30); // a bacterium finishes it off
+    expect(s.heartHp).toBe(hp - 1);
+    tick(s, 7.8); expect(s.cells.filter((x) => x.hp > 0 && !x.infected).length).toBe(n - 1);
+    tick(s, 0.4); expect(s.cells.filter((x) => x.hp > 0 && !x.infected).length).toBe(n);
+  });
+  it('an infected cell is remade too', () => {
+    const s = newGame(SPLEEN); const c = outCell(s); const n = aliveCells(s).length;
+    infect(s, c, mk(s, 'hijacker', c.vessel, c.s));
+    expect(aliveCells(s).length).toBe(n - 1); tick(s, 8.2); expect(aliveCells(s).length).toBe(n);
+  });
+  it('remaking a cell at 1 health loses the spleen, never below 0', () => {
+    const s = newGame(SPLEEN); const c = outCell(s); s.heartHp = 1;
+    infect(s, c, mk(s, 'hijacker', c.vessel, c.s)); step(s, 1 / 30);
+    expect(s.phase).toBe('defeat'); expect(s.heartHp).toBe(0);
+  });
+  it('other organs do not remake cells', () => {
+    const s = newGame(0); const c = outCell(s); const hp = s.heartHp, n = aliveCells(s).length;
+    infect(s, c, mk(s, 'hijacker', c.vessel, c.s)); s.pathogens = s.pathogens.filter((p) => p.type !== 'infected'); tick(s, 9);
+    expect(aliveCells(s).length).toBe(n - 1); expect(s.heartHp).toBe(hp);
+  });
+
+  it('plasmodium is not a bacterium: IgG hits it at ×0.25', () => { expect(iggMultiplier(['saureus'], 'plasmodium')).toBe(0.25); });
+
+  it('plasmodium hides for 2 s in every 6, and while hidden nothing hits it', () => {
+    const s = newGame(SPLEEN); const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
+    s.nodes = [{ id: 999, site: site.id, vessel: site.vessel, type: 'igm', cd: 0, flash: 0, targets: [], wavesFought: 0 }];
+    startWave(s); quiet(s); mk(s, 'saureus', site.vessel === M.VESSEL_IDS[0] ? M.VESSEL_IDS[1] : M.VESSEL_IDS[0], 0);
+    const b = mk(s, 'plasmodium', site.vessel, 0); let best = 0, bd = Infinity;
+    for (let d = 0; d < M.VESSELS[site.vessel].length; d += 4) { b.s = d; const dd = dist(pathogenPos(b), site); if (dd < bd) { bd = dd; best = d; } }
+    b.s = best; const sp = CONFIG.pathogens.plasmodium.speed; CONFIG.pathogens.plasmodium.speed = 0;
+    const { every, for: span } = CONFIG.pathogens.plasmodium.hides!;
+    s.waveTime = every - span + 0.01; expect(hidden(s, b)).toBe(true);
+    s.shots = []; const hp = b.hp; tick(s, span - 0.1); expect(b.hp).toBe(hp); expect(pulseTargets(s)).not.toContain(b);
+    tick(s, 1.5); CONFIG.pathogens.plasmodium.speed = sp;
+    expect(hidden(s, b)).toBe(false); expect(b.hp).toBeLessThan(hp);
+  });
+  it('a shot in flight when the boss hides misses', () => {
+    const s = newGame(SPLEEN); startWave(s); quiet(s); const v = M.VESSEL_IDS[0];
+    const b = mk(s, 'plasmodium', v, 100); const hp = b.hp;
+    s.shots = [{ type: 'igm', targets: [], vessel: v, x: 0, y: 0, sx: 0, sy: 0, targetId: b.id, t: 0, dur: 0.2 }];
+    const { every, for: span } = CONFIG.pathogens.plasmodium.hides!; s.waveTime = every - span + 0.01;
+    tick(s, 0.3); expect(b.hp).toBe(hp);
+  });
+  it('a hidden plasmodium that reaches the spleen still costs health', () => {
+    const s = newGame(SPLEEN); startWave(s); quiet(s); const v = M.VESSEL_IDS[0];
+    const { every, for: span } = CONFIG.pathogens.plasmodium.hides!; s.waveTime = every - span + 0.01;
+    const hp = s.heartHp; mk(s, 'plasmodium', v, M.VESSELS[v].length - 0.1); step(s, 1 / 30);
+    expect(s.heartHp).toBe(hp - CONFIG.pathogens.plasmodium.heartDamage);
   });
 });

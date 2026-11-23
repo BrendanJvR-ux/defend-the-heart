@@ -12,7 +12,7 @@ export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'infected' | B
 /** What an IgG antibody recognises: Gram stain, shape and species. */
 export interface Taxon { gram: '+' | '-'; shape: 'coccus' | 'rod'; species: BacteriumType }
 /** One boss per organ, met in that organ's last wave. */
-export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis';
+export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium';
 export type NodeType = 'igm' | 'igg' | 'iga' | 'ige';
 
 export interface PathogenStats {
@@ -47,6 +47,8 @@ export interface PathogenStats {
   slowImmune?: boolean;
   /** Infects every white cell it touches and keeps going. */
   infectsMany?: boolean;
+  /** Hides inside a red blood cell for `for` seconds in every `every`: nothing can target or hit it then. */
+  hides?: { every: number; for: number };
 }
 
 export interface NodeStats {
@@ -129,12 +131,14 @@ export const CONFIG = {
       regen: 9, blurb: 'Heals itself as it travels. Damage must outpace its regrowth: IgM and IgE, not IgG.' },
     sepsis: { name: 'Sepsis hijacker', plural: 'Sepsis hijackers', hp: 340, speed: 19, heartDamage: 8, contactDps: 0, bounty: 60, boss: true,
       infects: true, infectsMany: true, blurb: 'A giant hijacker: it infects every white cell it touches and keeps going.' },
+    plasmodium: { name: 'Plasmodium', plural: 'Plasmodia', hp: 560, speed: 16, heartDamage: 8, contactDps: 5, bounty: 60, boss: true,
+      hides: { every: 6, for: 2 }, blurb: 'The malaria parasite. Every few seconds it hides inside a red blood cell, where nothing can touch it. Not a bacterium: IgM and IgE, not IgG.' },
   } as Record<PathogenType, PathogenStats>,
 };
 
 // ── Levels ──────────────────────────────────────────────────────────────────
 
-export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney';
+export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen';
 type P = { x: number; y: number };
 
 export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
@@ -159,6 +163,8 @@ export interface LevelDef {
   regenPerWave?: number;
   /** Kidney: on the last `fraction` of every vessel, pathogens are filtered to ×`factor` speed. */
   filtration?: { fraction: number; factor: number };
+  /** Spleen: a lost white cell is remade `after` seconds later, costing `cost` organ health. */
+  respawn?: { after: number; cost: number };
   map: {
     center: P;
     /** Rough organ size, for drawing and keeping build sites off the organ. */
@@ -381,6 +387,48 @@ export const LEVELS: LevelDef[] = [
         groups: [g('ecoli', 'left', 7, 1, 3), g('saureus', 'right', 7, 2, 3), g('virus', 'upper', 13, 6, 0.3), g('hijacker', 'left', 5, 10, 1), g('hijacker', 'right', 5, 14, 1), g('virus', 'lower', 10, 18, 0.3), g('hijacker', 'upper', 5, 22, 1), g('virus', 'topLeft', 10, 8, 0.3)] },
       { title: 'Boss: sepsis', hint: 'A giant hijacker infects every white cell it touches. Do not dilate its vessel unless your nodes can kill it first.',
         groups: [g('sepsis', 'upper', 1, 2, 1), g('ecoli', 'left', 7, 4, 3), g('virus', 'right', 10, 12, 0.3), g('saureus', 'topLeft', 5, 8, 3)] },
+    ],
+  },
+  {
+    id: 'spleen', title: 'The Spleen', organ: 'Spleen', tagline: 'The body\'s own immune organ.',
+    twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
+    hp: 22, startEnergy: 255, cells: 2,
+    respawn: { after: 8, cost: 1 },
+    startingNodes: [{ vessel: 'leftUpper', site: 1, type: 'igm' }, { vessel: 'rightUpper', site: 1, type: 'igm' }],
+    map: {
+      center: { x: 800, y: 480 }, rx: 150, ry: 210, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      vessels: [
+        { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 300 }, { x: 200, y: 280 }, { x: 380, y: 330 }],
+          fork: { branches: [
+            { id: 'leftUpper', name: 'Left upper branch', label: 'Left upper', pts: [{ x: 520, y: 330 }, { x: 665, y: 390 }] },
+            { id: 'leftLower', name: 'Left lower branch', label: 'Left lower', pts: [{ x: 500, y: 460 }, { x: 650, y: 480 }] },
+          ] } },
+        { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 300 }, { x: 1400, y: 280 }, { x: 1220, y: 330 }],
+          fork: { branches: [
+            { id: 'rightUpper', name: 'Right upper branch', label: 'Right upper', pts: [{ x: 1080, y: 330 }, { x: 935, y: 395 }] },
+            { id: 'rightLower', name: 'Right lower branch', label: 'Right lower', pts: [{ x: 1100, y: 460 }, { x: 950, y: 480 }] },
+          ] } },
+        { id: 'lowerLeft', name: 'Lower-left vessel', label: 'Lower left', pts: [{ x: 300, y: 1040 }, { x: 380, y: 880 }, { x: 520, y: 800 }],
+          fork: { branches: [
+            { id: 'lowerLeftInner', name: 'Lower-left inner branch', label: 'Inner', pts: [{ x: 640, y: 740 }, { x: 720, y: 660 }] },
+            { id: 'lowerLeftOuter', name: 'Lower-left outer branch', label: 'Outer', pts: [{ x: 540, y: 680 }, { x: 668, y: 585 }] },
+          ] } },
+        { id: 'lowerRight', name: 'Lower-right vessel', label: 'Lower right', pts: [{ x: 1300, y: 1040 }, { x: 1220, y: 880 }, { x: 1060, y: 780 }, { x: 890, y: 650 }] },
+        { id: 'upper', name: 'Upper vessel', label: 'Upper', pts: [{ x: 600, y: -40 }, { x: 660, y: 90 }, { x: 790, y: 170 }, { x: 800, y: 270 }] },
+        { id: 'lower', name: 'Lower vessel', label: 'Lower', pts: [{ x: 1000, y: 1040 }, { x: 960, y: 900 }, { x: 860, y: 800 }, { x: 800, y: 690 }] },
+      ],
+    },
+    waves: [
+      { title: 'Encapsulated', hint: 'The spleen clears bacteria in thick capsules: pneumococci, meningococci, Klebsiella. Aim IgG at them. Lose a white cell and the spleen remakes it, at a cost of 1 health.',
+        groups: [g('spneumo', 'left', 10, 1, 3.2), g('saureus', 'upper', 6, 4, 3.4), g('virus', 'right', 10, 8, 0.35)] },
+      { title: 'Two capsules', hint: 'Meningococci from below, Klebsiella from the right.',
+        groups: [g('nmening', 'lowerLeft', 8, 1, 3), g('kpneumo', 'right', 7, 3, 3.2), g('virus', 'upper', 12, 10, 0.3), g('saureus', 'lower', 6, 6, 3)] },
+      { title: 'Hijacked', hint: 'Hijackers come down from above. Each white cell they take, the spleen pays 1 health to remake.',
+        groups: [g('spneumo', 'left', 10, 1, 3), g('nmening', 'lowerRight', 8, 3, 3), g('hijacker', 'upper', 5, 8, 1), g('kpneumo', 'lower', 7, 5, 3), g('virus', 'right', 12, 14, 0.3)] },
+      { title: 'Sepsis of the blood', hint: 'Everything at once, from every side.',
+        groups: [g('spneumo', 'right', 10, 1, 2.8), g('nmening', 'left', 10, 3, 2.8), g('kpneumo', 'lowerLeft', 8, 5, 3), g('saureus', 'lowerRight', 7, 2, 3), g('hijacker', 'upper', 6, 10, 1), g('virus', 'lower', 14, 14, 0.3)] },
+      { title: 'Boss: malaria', hint: 'Plasmodium, the malaria parasite, climbs from below and hides in red blood cells: nothing can hit it then. IgM and IgE wear it down; IgG barely scratches it.',
+        groups: [g('plasmodium', 'lowerLeft', 1, 2, 1), g('spneumo', 'left', 7, 6, 3), g('virus', 'right', 12, 12, 0.3)] },
     ],
   },
 ];

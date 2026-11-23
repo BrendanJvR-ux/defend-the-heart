@@ -14,7 +14,18 @@ function aura(ctx: CanvasRenderingContext2D, r: number, t: number, col: string) 
 export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const flash = hit > 0;
-  if (type === 'colony') {
+  if (type === 'plasmodium') {
+    // malaria: a red blood cell with the parasite's ring form inside
+    aura(ctx, 32, t, 'rgba(160,40,90,0.35)');
+    const rbc = ctx.createRadialGradient(-6, -6, 4, 0, 0, 34);
+    rbc.addColorStop(0, '#f08a7a'); rbc.addColorStop(0.7, '#c8443a'); rbc.addColorStop(1, '#8a2420');
+    ctx.fillStyle = flash ? '#ffffff' : rbc; ctx.strokeStyle = INK; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,210,200,0.55)'; ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); // the cell's pale centre
+    ctx.strokeStyle = '#4a2a8a'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.arc(6, -4, 11, 0, Math.PI * 2); ctx.stroke(); // ring form
+    ctx.fillStyle = '#2a1a5a'; ctx.beginPath(); ctx.arc(14, -9, 4.2, 0, Math.PI * 2); ctx.fill(); // chromatin dot
+    for (const [dx, dy] of [[-16, 10], [-8, 18], [12, 16]]) { ctx.fillStyle = 'rgba(90,50,30,0.6)'; ctx.beginPath(); ctx.arc(dx, dy, 1.8, 0, Math.PI * 2); ctx.fill(); } // pigment
+  } else if (type === 'colony') {
     // Staphylococcus: a golden grape-bunch of cocci inside a thick capsule
     aura(ctx, 36, t, 'rgba(200,64,42,0.4)');
     ctx.rotate(angle);

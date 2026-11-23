@@ -50,6 +50,8 @@ export interface State {
   discountUsed: boolean;
   /** State of the game's own random source (seeded, so the same game always plays the same way). */
   rng: number;
+  /** Spleen: wave times at which lost white cells come back. */
+  respawns: number[];
   /** Organ health lost, by the vessel it came up (as it enters the map) and by pathogen. */
   leaks: { byVessel: Record<VesselId, number>; byType: Partial<Record<PathogenType, number>> };
   nodes: LymphNode[];
@@ -80,7 +82,7 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 +
   const L = LEVELS[level];
   const s: State = {
     level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: perks.noMax, noOuts: 0,
-    perks, discountUsed: false, rng: seed >>> 0, leaks: { byVessel: {}, byType: {} },
+    perks, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
@@ -312,6 +314,7 @@ export function startWave(s: State): boolean {
   s.dilated = null;
   s.waveTime = 0;
   s.spawns = waveSpawns(s.wave, s.level);
+  s.respawns = [];
   s.pulsesLeft = CONFIG.immunePulse.perWave;
   s.lastPulseHits = 0;
   s.spent = [];
@@ -342,7 +345,7 @@ export function pulseTargets(s: State): Pathogen[] {
   const hit = new Set<Pathogen>();
   for (const c of outCells(s)) {
     const cp = cellPos(c);
-    for (const p of s.pathogens) if (p.hp > 0 && covers(c.vessel, p) && dist(pathogenPos(p), cp) <= R) hit.add(p);
+    for (const p of s.pathogens) if (p.hp > 0 && !hidden(s, p) && covers(c.vessel, p) && dist(pathogenPos(p), cp) <= R) hit.add(p);
   }
   return [...hit];
 }
@@ -397,11 +400,27 @@ function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pa
 
 /** A hijacker virus enters a white cell: the cell is lost and rises again as an infected cell heading for the heart.
  *  An ordinary hijacker is used up; the sepsis boss keeps going. */
+/** A white cell has been lost (killed or infected). The spleen remakes it later, at a health cost. */
+function loseCell(s: State) {
+  const r = LEVELS[s.level].respawn;
+  if (!r) return;
+  s.heartHp = Math.max(0, s.heartHp - r.cost);
+  s.respawns.push(s.waveTime + r.after);
+  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `−${r.cost} to remake a white cell`, t: 0, color: '#8a1e24' });
+}
+
+/** A hiding boss inside a red blood cell: nothing can target or hit it. */
+export function hidden(s: State, p: Pathogen): boolean {
+  const h = CONFIG.pathogens[p.type].hides;
+  return !!h && s.phase === 'combat' && s.waveTime % h.every >= h.every - h.for;
+}
+
 export function infect(s: State, c: WhiteCell, virus: Pathogen) {
   if (!CONFIG.pathogens[virus.type].infectsMany) virus.hp = 0;
   c.hp = 0;
   c.infected = true;
   s.infections++;
+  loseCell(s);
   const q = cellPos(c);
   const enemy = newPathogen(s, 'infected', c.vessel, c.s);
   enemy.side = c.side;
@@ -494,7 +513,7 @@ export function step(s: State, dtRaw: number) {
     const site = siteById(n.site);
     // the most advanced pathogen in reach
     let best: Pathogen | null = null;
-    for (const p of s.pathogens) if (p.hp > 0 && covers(n.vessel, p, site.stem) && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || p.s > best.s)) best = p;
+    for (const p of s.pathogens) if (p.hp > 0 && !hidden(s, p) && covers(n.vessel, p, site.stem) && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || p.s > best.s)) best = p;
     if (!best) continue;
     n.cd = st.cooldown;
     n.flash = 0.4;
@@ -506,7 +525,8 @@ export function step(s: State, dtRaw: number) {
     const p = s.pathogens.find((x) => x.id === sh.targetId && x.hp > 0);
     const k = Math.min(1, sh.t / sh.dur);
     if (p) { const q = pathogenPos(p); sh.x = sh.sx + (q.x - sh.sx) * k; sh.y = sh.sy + (q.y - sh.sy) * k; }
-    if (k >= 1 && p) {
+    // a shot that arrives while its boss is hiding in a red cell misses
+    if (k >= 1 && p && !hidden(s, p)) {
       const st = CONFIG.nodes[sh.type];
       const dmg = antibodyDamage(sh.type, sh.targets, p.type) * s.perks.dmg[sh.type];
       if (sh.type === 'igg') {
@@ -530,11 +550,18 @@ export function step(s: State, dtRaw: number) {
   // White cells: returning ones head home (then out again along any open vessel); only cells out fight.
   const WC = CONFIG.whiteCell;
   returnHome(s, dt);
+  // the spleen remakes lost white cells: they appear at home, then set out along any open vessel
+  while (s.respawns.length && s.respawns[0] <= s.waveTime) {
+    s.respawns.shift();
+    const v = VESSEL_IDS[0];
+    s.cells.push({ id: s.nextId++, vessel: v, s: VESSELS[v].length, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (s.cells.length % 2 ? 1 : -1) * 11, targetId: null, mode: 'home', infected: false });
+    s.floaters.push({ x: HEART.x, y: HEART.y - 40, text: 'White cell remade', t: 0, color: '#1e6a8a' });
+  }
   deployHome(s);
   for (const c of outCells(s)) {
     c.hit = Math.max(0, c.hit - dt);
     const L = VESSELS[c.vessel].length;
-    const mine = s.pathogens.filter((p) => p.hp > 0 && covers(c.vessel, p) && p.s > 0);
+    const mine = s.pathogens.filter((p) => p.hp > 0 && !hidden(s, p) && covers(c.vessel, p) && p.s > 0);
     const target = mine.reduce<Pathogen | null>((b, p) => (!b || p.s > b.s ? p : b), null);
     c.targetId = target?.id ?? null;
     const rank = outCells(s).indexOf(c);
@@ -550,7 +577,7 @@ export function step(s: State, dtRaw: number) {
       const victim = near.reduce((b, p) => (p.s > b.s ? p : b));
       hurt(s, victim, WC.dps * dt);
       for (const p of near) { c.hp -= CONFIG.pathogens[p.type].contactDps * dt; c.hit = 0.12; }
-      if (c.hp <= 0) { const q = cellPos(c); s.rings.push({ x: q.x, y: q.y, r: 30, t: 0, dur: 0.6, kind: 'cellDown' }); s.floaters.push({ x: q.x, y: q.y - 24, text: 'White cell lost', t: 0, color: '#c8402a' }); }
+      if (c.hp <= 0) { const q = cellPos(c); s.rings.push({ x: q.x, y: q.y, r: 30, t: 0, dur: 0.6, kind: 'cellDown' }); s.floaters.push({ x: q.x, y: q.y - 24, text: 'White cell lost', t: 0, color: '#c8402a' }); loseCell(s); }
     }
   }
 

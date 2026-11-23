@@ -3,9 +3,10 @@ import { CONFIG, type BacteriumType, type BossType, type NodeType, type Pathogen
 import { drawBoss } from './bosses';
 import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec } from './level';
 import { drawBacterium } from './bacteria';
+import { hidden } from './sim';
 import { layoutLabels, previewTagBox, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
-import { drawLungs, drawBrain, drawLiver, drawKidney, drawGut } from './organs';
+import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut } from './organs';
 
 export interface View {
   hoverVessel: VesselId | null;
@@ -180,6 +181,7 @@ function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
     const swell = 1 + Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 0.5)), 6) * 0.012 + kick * 0.04;
     if (LEVEL.id === 'brain') drawBrain(ctx, m.center, m.rx, m.ry, swell, kick);
     else if (LEVEL.id === 'liver') drawLiver(ctx, m.center, m.rx, m.ry, swell, kick);
+    else if (LEVEL.id === 'spleen') drawSpleen(ctx, m.center, m.rx, m.ry, swell, kick);
     else drawKidney(ctx, m.center, m.rx, m.ry, swell, kick);
   }
   drawHealthBeads(ctx, s);
@@ -381,7 +383,14 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
       ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.pathogens[p.type].boss ? 62 : CONFIG.pathogens[p.type].taxon ? 30 : 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
     if (p.slowT > 0) { ctx.fillStyle = 'rgba(74,184,138,0.35)'; ctx.beginPath(); ctx.arc(q.x, q.y, 22, 0, Math.PI * 2); ctx.fill(); }
+    // a boss hiding in a red blood cell is shown faded, with a dashed ring: nothing can touch it now
+    const hide = hidden(s, p);
+    if (hide) ctx.globalAlpha = 0.45;
     drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, CONFIG.pathogens[p.type].boss ? 1.2 : p.type === 'infected' ? 1.35 : 1.4, t + p.id);
+    if (hide) {
+      ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(200,60,60,0.85)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.arc(q.x, q.y, 52, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    }
     if (CONFIG.pathogens[p.type].boss) bar(ctx, q.x, q.y - 66, 80, p.hp / p.maxHp, '#c8402a');
     else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, CONFIG.pathogens[p.type].taxon || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, '#c8402a');
   }

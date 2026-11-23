@@ -197,3 +197,40 @@ export function drawKidney(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry
   bean(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
   ctx.restore();
 }
+
+/** The spleen: a purple crescent with a notched upper border and the splenic vessels at its hilum. */
+export function drawSpleen(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell);
+  const shape = () => {
+    ctx.beginPath();
+    ctx.moveTo(-rx * 0.1, -ry);
+    // convex outer border, notched near the top
+    ctx.bezierCurveTo(rx * 0.55, -ry * 1.02, rx * 1.05, -ry * 0.55, rx * 0.98, -ry * 0.05);
+    ctx.bezierCurveTo(rx * 1.02, ry * 0.55, rx * 0.6, ry * 1.02, -rx * 0.05, ry);
+    // concave inner (hilar) border
+    ctx.bezierCurveTo(-rx * 0.75, ry * 0.95, -rx * 1.02, ry * 0.4, -rx * 0.55, ry * 0.1);
+    ctx.bezierCurveTo(-rx * 0.4, 0, -rx * 0.4, -ry * 0.1, -rx * 0.55, -ry * 0.2);
+    ctx.lineTo(-rx * 0.72, -ry * 0.3); ctx.lineTo(-rx * 0.58, -ry * 0.38); // a notch
+    ctx.bezierCurveTo(-rx * 1.0, -ry * 0.55, -rx * 0.85, -ry * 0.98, -rx * 0.1, -ry);
+    ctx.closePath();
+  };
+  const g = ctx.createRadialGradient(rx * 0.25, -ry * 0.3, 10, 0, 0, ry * 1.1);
+  g.addColorStop(0, '#b87aa8'); g.addColorStop(0.55, '#7e3a6e'); g.addColorStop(1, '#4a1e40');
+  shape(); ctx.fillStyle = g; ctx.fill();
+  if (kick > 0) { shape(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
+  ctx.save(); shape(); ctx.clip();
+  // red pulp: a soft speckle; white pulp: pale nodules along the arteries
+  ctx.fillStyle = 'rgba(200,90,120,0.35)';
+  for (let i = 0; i < 90; i++) { const a = i * 2.39996, r = Math.sqrt(i / 90); ctx.beginPath(); ctx.arc(Math.cos(a) * r * rx * 0.95, Math.sin(a) * r * ry * 0.95, 3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = 'rgba(245,232,220,0.75)';
+  for (let i = 0; i < 14; i++) { const a = -1.2 + i * 0.18, r = 0.35 + (i % 3) * 0.18; ctx.beginPath(); ctx.arc(-rx * 0.35 + Math.cos(a) * r * rx, Math.sin(a) * r * ry, 5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.ellipse(rx * 0.45, -ry * 0.45, 16, 46, 0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // splenic artery and vein at the hilum
+  for (const [col, dy] of [['#b8433a', -14], ['#4a6aa8', 14]] as const) {
+    ctx.strokeStyle = INK; ctx.lineWidth = 11; ctx.beginPath(); ctx.moveTo(-rx * 0.45, dy); ctx.quadraticCurveTo(-rx * 0.85, dy * 2, -rx * 1.05, dy * 3); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.stroke();
+  }
+  shape(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
+  ctx.restore();
+}
