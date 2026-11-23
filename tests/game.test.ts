@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CONFIG, LEVELS, type LevelDef, type NodeType, type PathogenType, type VesselId } from '../src/config';
+import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from '../src/config';
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, type Box } from '../src/labels';
@@ -7,14 +7,14 @@ import { layoutLabels, type Box } from '../src/labels';
 const M = map;
 import {
   newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
-  waveSpawns, placeNode, buildCheck, nodeAt, hurt, effectiveArmour, type State, type Pathogen,
+  waveSpawns, placeNode, buildCheck, nodeAt, hurt, iggMultiplier, retargetNode, type State, type Pathogen,
 } from '../src/sim';
 
 function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t = 0; t < seconds; t += 1 / 30) { step(s, 1 / 30); each?.(s); } }
 function finishWave(s: State, each?: (s: State) => void) { let n = 0; while ((s.phase === 'combat' || s.phase === 'recall') && n++ < 30 * 400) { step(s, 1 / 30); each?.(s); } }
 function mk(s: State, type: PathogenType, vessel: VesselId, at: number): Pathogen {
   const st = CONFIG.pathogens[type];
-  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= M.forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: 0, wob: 0, shred: 0, shredT: 0, slow: 1, slowT: 0 };
+  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= M.forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: 0, wob: 0, slow: 1, slowT: 0 };
   s.pathogens.push(p); return p;
 }
 /** Start the wave and open route v at once (home cells set out along it). */
@@ -43,12 +43,19 @@ function sensibleBuild(s: State) {
     let placed = false;
     for (const v of order) {
       const types = new Set(spawnsFor(n, v).map((x) => x.type));
-      const want: NodeType = [...types].some((t) => CONFIG.pathogens[t].boss) && !nodeOn(s, v, 'ige') ? 'ige' : [...types].some((t) => CONFIG.pathogens[t].armour >= 5) && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
+      const bug = topBacterium(n, v);
+      const want: NodeType = bug && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
       const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
-      if (site && placeNode(s, site.id, want)) placed = true;
+      if (site && placeNode(s, site.id, want, want === 'igg' ? [bug!] : undefined)) placed = true;
     }
     if (!placed) break;
   }
+}
+/** The bacterium (by species, bosses counted as their species) bringing the most health up route v this wave. */
+function topBacterium(n: number, v: VesselId): BacteriumType | null {
+  const hp = new Map<BacteriumType, number>();
+  for (const x of spawnsFor(n, v)) { const tx = CONFIG.pathogens[x.type].taxon; if (tx) hp.set(tx.species, (hp.get(tx.species) ?? 0) + CONFIG.pathogens[x.type].hp); }
+  return [...hp].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 }
 const nodeOn = (s: State, v: VesselId, t: NodeType) => s.nodes.some((x) => guarding(v).some((g) => g.id === x.site) && x.type === t);
 /** Summed health of the pathogens on a route that are past 65% of the way in (where the cells meet them). */
@@ -83,7 +90,7 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
     startWave(s); quiet(s); finishWaveUntil(s, 'recall'); expect(toggleRoute(s, 'left')).toBe(false);
   });
   it('opening costs NO, an open route drains it, a closed one regains it', () => {
-    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 10);
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 10);
     toggleRoute(s, 'left'); expect(s.no).toBe(CONFIG.no.max - CONFIG.no.openCost);
     const a = s.no; tick(s, 1); expect(a - s.no).toBeCloseTo(CONFIG.no.drainPerSec, 0);
     toggleRoute(s, 'left'); expect(s.dilated).toBeNull();
@@ -97,7 +104,7 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
     expect(dilateCheck(s, 'left').reason).toBe('Not enough NO to open the left vessel.');
   });
   it('opening needs enough NO to stay open for a moment, not just the opening cost', () => {
-    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0);
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0);
     const need = CONFIG.no.openCost + CONFIG.no.drainPerSec * CONFIG.no.minOpenSeconds;
     expect(openNeed()).toBe(need);
     s.no = need - 0.5;
@@ -108,7 +115,7 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
   });
 
   it('reopening the vessel you just closed turns its returning cells back out', () => {
-    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0);
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0);
     toggleRoute(s, 'left'); tick(s, 3); const at = outCells(s).map((c) => c.s);
     toggleRoute(s, 'left'); step(s, 1 / 30);
     expect(s.cells.every((c) => c.mode === 'returning')).toBe(true);
@@ -119,21 +126,21 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
   });
 
   it('dilation is refused while paused, like the pulse', () => {
-    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); s.paused = true;
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0); s.paused = true;
     expect(toggleRoute(s, 'left')).toBe(false);
     expect(dilateCheck(s, 'left').reason).toBe('Paused.');
     expect(s.no).toBe(CONFIG.no.max);
   });
 
   it('running dry closes the route once, never goes negative, and sends the cells home', () => {
-    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 10);
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 10);
     toggleRoute(s, 'left'); tick(s, 0.5); s.no = 0.1; step(s, 0.1);
     expect(s.no).toBe(0); expect(s.dilated).toBeNull(); expect(s.noOuts).toBe(1);
     expect(s.cells.every((c) => c.mode !== 'out')).toBe(true);
     step(s, 0.1); expect(s.noOuts).toBe(1);
   });
   it('cells go out along the opened route; reopening another waits for them to get home first', () => {
-    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 10);
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 10);
     toggleRoute(s, 'left'); tick(s, 3);
     expect(outCells(s).every((c) => c.vessel === 'left' && c.s < M.VESSELS.left.length - 20)).toBe(true);
     toggleRoute(s, 'right'); step(s, 1 / 30);
@@ -141,7 +148,7 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
     tick(s, 3); expect(outCells(s).length).toBe(2); expect(outCells(s).every((c) => c.vessel === 'right')).toBe(true);
   });
   it('cells at home or returning neither fight nor get infected', () => {
-    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0);
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0);
     const h = mk(s, 'hijacker', 'left', M.VESSELS.left.length - 30); const hp = h.hp; tick(s, 0.1);
     expect(s.infections).toBe(0); expect(h.hp).toBe(hp);
     s.pathogens = s.pathogens.filter((p) => p !== h);
@@ -217,7 +224,7 @@ describe('Defend the Heart: cells and the pulse', () => {
   it('defeat at zero heart health; restart restores everything', () => {
     const s = newGame(0); s.energy = 999; placeNode(s, 'lower-1', 'iga');
     go(s, 'left');
-    s.heartHp = 1; mk(s, 'bacterium', 'right', M.VESSELS.right.length - 1);
+    s.heartHp = 1; mk(s, 'saureus', 'right', M.VESSELS.right.length - 1);
     tick(s, 0.2);
     expect(s.phase).toBe('defeat');
     const r = newGame(0);
@@ -229,9 +236,9 @@ describe('Defend the Heart: placing lymph nodes', () => {
   it('nodes are placed only between waves, on free sites, and cost energy', () => {
     const s = newGame(0);
     const free = M.SITES.find((x) => !nodeAt(s, x.id))!;
-    expect(buildCheck(s, free.id, 'igg').ok).toBe(true);
+    expect(buildCheck(s, free.id, 'igg', ['saureus']).ok).toBe(true);
     const e = s.energy;
-    expect(placeNode(s, free.id, 'igg')).toBe(true);
+    expect(placeNode(s, free.id, 'igg', ['saureus'])).toBe(true);
     expect(s.energy).toBe(e - CONFIG.nodes.igg.cost);
     expect(placeNode(s, free.id, 'igm')).toBe(false); // occupied
     s.energy = 0;
@@ -247,46 +254,105 @@ describe('Defend the Heart: placing lymph nodes', () => {
   });
 });
 
-describe('Defend the Heart: immunoglobulins', () => {
-  function oneShot(type: NodeType, target: PathogenType) {
+describe('Defend the Heart: the IgG match', () => {
+  it('species ×3, shape ×2.5, Gram ×2, unrelated bacterium ×0.5, not a bacterium ×0.25', () => {
+    expect(iggMultiplier(['spneumo'], 'spneumo')).toBe(3);
+    expect(iggMultiplier(['spneumo'], 'saureus')).toBe(2.5);
+    expect(iggMultiplier(['spneumo'], 'listeria')).toBe(2);
+    expect(iggMultiplier(['spneumo'], 'ecoli')).toBe(0.5);
+    expect(iggMultiplier(['spneumo'], 'nmening')).toBe(2.5);
+    for (const x of ['virus', 'hijacker', 'infected', 'flu', 'hepatitis', 'sepsis'] as PathogenType[]) expect(iggMultiplier(['spneumo'], x)).toBe(0.25);
+    expect(iggMultiplier(['saureus'], 'colony')).toBe(3);
+    expect(iggMultiplier(['nmening'], 'meningo')).toBe(3);
+  });
+  it('a dual target uses the better match, never the product', () => {
+    expect(iggMultiplier(['ecoli', 'saureus'], 'spneumo')).toBe(2.5);
+    expect(iggMultiplier(['ecoli', 'saureus'], 'kpneumo')).toBe(2.5);
+    expect(iggMultiplier(['ecoli', 'listeria'], 'listeria')).toBe(3);
+  });
+  it('the six bacteria, with their Gram stain and shape', () => {
+    expect(BACTERIA).toEqual(['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo']);
+    const tx = (b: BacteriumType) => { const x = CONFIG.pathogens[b].taxon!; return `${x.gram}${x.shape}`; };
+    expect(BACTERIA.map(tx)).toEqual(['+coccus', '+coccus', '+rod', '-coccus', '-rod', '-rod']);
+    for (const b of BACTERIA) expect([CONFIG.pathogens[b].hp, CONFIG.pathogens[b].speed]).toEqual([70, 30]);
+  });
+});
+
+describe('Defend the Heart: lymph nodes', () => {
+  function oneShot(type: NodeType, target: PathogenType, targets?: BacteriumType[]) {
     const s = newGame(0); s.nodes = []; s.energy = 999;
     const site = M.SITES.find((x) => x.vessel === 'left' && x.index === 1)!;
-    placeNode(s, site.id, type);
-    go(s, 'right'); quiet(s);
+    placeNode(s, site.id, type, targets ?? (type === 'igg' ? ['saureus'] : undefined));
+    go(s, 'right'); quiet(s); mk(s, 'saureus', 'upper', 0);
     const p = mk(s, target, 'left', 0);
     // park it right beside the node and let exactly one antibody land
-    const best = [...Array(200).keys()].map((i) => i * M.VESSELS.left.length / 200).sort((a, b) => dist(M.VESSELS.left.pts[0], M.VESSELS.left.pts[0]) + Math.abs(a - b) * 0)[0];
-    void best;
     let sNear = 0, dmin = Infinity;
     for (let d = 0; d < M.VESSELS.left.length; d += 4) { p.s = d; const dd = dist(pathogenPos(p), site); if (dd < dmin) { dmin = dd; sNear = d; } }
-    p.s = sNear;
+    p.s = sNear; p.hp = p.maxHp = 1000;
     const speed = CONFIG.pathogens[target].speed; CONFIG.pathogens[target].speed = 0;
-    const hp0 = p.hp;
-    let n = 0; while (p.hp === hp0 && n++ < 300) step(s, 1 / 30);
+    let n = 0; while (p.hp === 1000 && n++ < 300) step(s, 1 / 30);
     CONFIG.pathogens[target].speed = speed;
-    return { s, p, dmg: hp0 - p.hp };
+    return { s, p, dmg: 1000 - p.hp };
   }
 
-  it('IgM hits hardest; IgG and IgA hit softer', () => {
-    const m = oneShot('igm', 'virus'), g = oneShot('igg', 'virus'), a = oneShot('iga', 'virus');
-    expect(m.dmg).toBeGreaterThan(g.dmg);
-    expect(m.dmg).toBeGreaterThan(a.dmg);
+  it('there is no armour: an IgM hit takes exactly its damage from a bacterium', () => {
+    expect(oneShot('igm', 'saureus').dmg).toBe(10);
+    for (const st of Object.values(CONFIG.pathogens)) expect('armour' in st).toBe(false);
   });
-
-  it('IgG strips armour so later hits land harder; IgM and IgA do not', () => {
-    const g = oneShot('igg', 'bacterium');
-    expect(effectiveArmour(g.p)).toBe(0);
-    const before = g.p.hp; hurt(g.s, g.p, 15, true); expect(before - g.p.hp).toBe(15);
-    const m = oneShot('igm', 'bacterium');
-    expect(effectiveArmour(m.p)).toBe(CONFIG.pathogens.bacterium.armour);
-    expect(m.dmg).toBe(CONFIG.nodes.igm.damage - CONFIG.pathogens.bacterium.armour);
-    expect(oneShot('iga', 'bacterium').p.shred).toBe(0);
-  });
-
-  it('IgA slows what it hits; IgM and IgG do not', () => {
+  it('IgM hits everything for 10; IgA for 7.5 and slows; IgE for 20', () => {
+    for (const x of ['ecoli', 'virus'] as PathogenType[]) {
+      expect(oneShot('igm', x).dmg).toBe(10);
+      expect(oneShot('iga', x).dmg).toBe(7.5);
+      expect(oneShot('ige', x).dmg).toBe(20);
+    }
     expect(oneShot('iga', 'virus').p.slow).toBeLessThan(1);
     expect(oneShot('igm', 'virus').p.slow).toBe(1);
-    expect(oneShot('igg', 'virus').p.slow).toBe(1);
+  });
+  it('IgG damage is 10 × its match', () => {
+    expect(oneShot('igg', 'spneumo', ['spneumo']).dmg).toBe(30);
+    expect(oneShot('igg', 'ecoli', ['spneumo']).dmg).toBe(5);
+    expect(oneShot('igg', 'virus', ['spneumo']).dmg).toBe(2.5);
+    expect(oneShot('igg', 'virus', ['spneumo']).p.slow).toBe(1);
+  });
+  it('IgG needs a target; a second target is refused without dual-target', () => {
+    const s = newGame(0); const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
+    expect(buildCheck(s, site.id, 'igg').reason).toBe('Choose what this IgG targets.');
+    expect(placeNode(s, site.id, 'igg', ['saureus', 'ecoli'])).toBe(false);
+    expect(placeNode(s, site.id, 'igg', ['saureus'])).toBe(true);
+    expect(nodeAt(s, site.id)!.targets).toEqual(['saureus']);
+  });
+  it('an IgG node can be re-aimed between waves for 20 energy, not during a wave', () => {
+    const s = newGame(0); s.energy = 200; const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
+    placeNode(s, site.id, 'igg', ['saureus']); const e = s.energy;
+    expect(retargetNode(s, site.id, ['ecoli'])).toBe(true);
+    expect(s.energy).toBe(e - CONFIG.iggRetarget); expect(nodeAt(s, site.id)!.targets).toEqual(['ecoli']);
+    startWave(s); expect(retargetNode(s, site.id, ['saureus'])).toBe(false);
+  });
+  it('IgE removed after its third cleared wave; its site is free for the next build', () => {
+    const s = newGame(0); s.energy = 999; const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
+    placeNode(s, site.id, 'ige');
+    for (let w = 1; w <= 3; w++) {
+      startWave(s); quiet(s); finishWave(s);
+      expect(s.phase).toBe('prep');
+      if (w < 3) { expect(nodeAt(s, site.id)!.wavesFought).toBe(w); expect(s.spent).toEqual([]); }
+    }
+    expect(nodeAt(s, site.id)).toBeUndefined();
+    expect(s.spent.map((x) => x.site)).toEqual([site.id]);
+    expect(buildCheck(s, site.id, 'igm').ok).toBe(true);
+    startWave(s); quiet(s); finishWave(s); expect(s.spent).toEqual([]);
+  });
+  it('IgE has no boss priority: it shoots the most advanced pathogen in reach, boss or not', () => {
+    const s = newGame(0); s.wave = 6; go(s, 'right'); quiet(s); s.cells = [];
+    const site = M.SITES.find((x) => x.vessel === 'left' && x.index === 1)!;
+    s.nodes = [{ id: 999, site: site.id, vessel: 'left', type: 'ige', cd: 0, flash: 0, targets: [], wavesFought: 0 }];
+    const probe = mk(s, 'virus', 'left', 0); let best = 0, bd = Infinity;
+    for (let d = 0; d < M.VESSELS.left.length; d += 2) { probe.s = d; const dd = dist(pathogenPos(probe), site); if (dd < bd) { bd = dd; best = d; } }
+    s.pathogens = [];
+    const boss = mk(s, 'colony', 'left', best - 30), virus = mk(s, 'virus', 'left', best + 30); virus.hp = virus.maxHp = 1000;
+    const saved = [CONFIG.pathogens.colony.speed, CONFIG.pathogens.virus.speed];
+    CONFIG.pathogens.colony.speed = 0; CONFIG.pathogens.virus.speed = 0;
+    tick(s, 0.5); [CONFIG.pathogens.colony.speed, CONFIG.pathogens.virus.speed] = saved;
+    expect(virus.hp).toBeLessThan(1000); expect(boss.hp).toBe(boss.maxHp);
   });
 });
 
@@ -397,7 +463,7 @@ describe('Defend the Heart: organ levels', () => {
   it('lungs: on each inhale the blood surges and pathogens move faster', () => {
     const s = newGame(1); go(s, 'left'); quiet(s); s.cells = [];
     const sg = LEVELS[1].surge!;
-    const p = mk(s, 'bacterium', 'left', 50);
+    const p = mk(s, 'saureus', 'left', 50);
     s.waveTime = 0.5; const a = p.s; step(s, 0.1); const calm = p.s - a;
     expect(surging(s)).toBe(false);
     s.waveTime = sg.every - sg.length + 0.2; const b = p.s; step(s, 0.1); const surge = p.s - b;
@@ -481,7 +547,7 @@ describe('Defend the Heart: bosses', () => {
   it('heart: the staph colony bursts into bacteria', () => {
     const { s, b } = bossOn(0);
     hurt(s, b, 9999);
-    expect(s.pathogens.filter((p) => p.type === 'bacterium' && p.hp > 0).length).toBe(CONFIG.pathogens.colony.splitInto!.count);
+    expect(s.pathogens.filter((p) => p.type === 'saureus' && p.hp > 0).length).toBe(CONFIG.pathogens.colony.splitInto!.count);
   });
 
   it('lungs: the mother virus sheds new viruses as it travels', () => {
@@ -493,7 +559,7 @@ describe('Defend the Heart: bosses', () => {
   it('brain: meningococcus cannot be slowed by IgA', () => {
     const { s, b } = bossOn(2);
     const site = M.SITES.find((x) => x.vessel === b.vessel)!;
-    s.nodes = [{ id: 999, site: site.id, vessel: b.vessel, type: 'iga', cd: 0, flash: 0 }];
+    s.nodes = [{ id: 999, site: site.id, vessel: b.vessel, type: 'iga', cd: 0, flash: 0, targets: [], wavesFought: 0 }];
     s.pathogens = [b]; b.s = 0;
     let best = 0, bd = Infinity;
     for (let d = 0; d < M.VESSELS[b.vessel].length; d += 4) { b.s = d; const dd = dist(pathogenPos(b), site); if (dd < bd) { bd = dd; best = d; } }
@@ -518,51 +584,6 @@ describe('Defend the Heart: bosses', () => {
     expect(s.cells.every((c) => c.infected)).toBe(true);
     expect(b.hp).toBeGreaterThan(0);
     expect(s.pathogens.filter((p) => p.type === 'infected').length).toBe(2);
-  });
-});
-
-describe('Defend the Heart: the IgE boss-hunter node', () => {
-  /** Heart level, a single node of `type` at left-1, a still boss and a still virus both within its reach. */
-  function setup(type: NodeType) {
-    const s = newGame(0); s.wave = 6; go(s, 'right'); quiet(s); s.cells = [];
-    const site = M.SITES.find((x) => x.vessel === 'left' && x.index === 1)!;
-    s.nodes = [{ id: 999, site: site.id, vessel: 'left', type, cd: 0, flash: 0 }];
-    // the two points on the vessel nearest the site
-    const near: number[] = [];
-    const probe = mk(s, 'virus', 'left', 0);
-    let best = 0, bd = Infinity;
-    for (let d = 0; d < M.VESSELS.left.length; d += 2) { probe.s = d; const dd = dist(pathogenPos(probe), site); if (dd < bd) { bd = dd; best = d; } }
-    near.push(best - 30, best + 30);
-    s.pathogens = [];
-    const boss = mk(s, 'colony', 'left', near[0]);
-    const virus = mk(s, 'virus', 'left', near[1]); // further along, so ordinary nodes would aim at it
-    const saved = [CONFIG.pathogens.colony.speed, CONFIG.pathogens.virus.speed];
-    CONFIG.pathogens.colony.speed = 0; CONFIG.pathogens.virus.speed = 0;
-    return { s, boss, virus, restore: () => { [CONFIG.pathogens.colony.speed, CONFIG.pathogens.virus.speed] = saved; } };
-  }
-
-  it('locks onto a boss before a more advanced ordinary pathogen, and hits it through armour', () => {
-    const { s, boss, virus, restore } = setup('ige');
-    tick(s, 0.8); restore();
-    expect(virus.hp).toBe(CONFIG.pathogens.virus.hp);
-    expect(boss.maxHp - boss.hp).toBe(CONFIG.nodes.ige.bossDamage);
-  });
-
-  it('is weak against ordinary pathogens', () => {
-    const { s, boss, virus, restore } = setup('ige');
-    s.pathogens = [virus]; void boss;
-    tick(s, 0.8); restore();
-    expect(CONFIG.pathogens.virus.hp - virus.hp).toBe(CONFIG.nodes.ige.damage - CONFIG.pathogens.virus.armour);
-    expect(CONFIG.nodes.ige.damage).toBeLessThan(CONFIG.nodes.iga.damage);
-  });
-
-  it('out-damages an IgM node on a boss, while IgM is better on ordinary pathogens', () => {
-    const e = setup('ige'); e.s.pathogens = [e.boss]; tick(e.s, 10); e.restore();
-    const m = setup('igm'); m.s.pathogens = [m.boss]; tick(m.s, 10); m.restore();
-    expect(e.boss.maxHp - e.boss.hp).toBeGreaterThan(2 * (m.boss.maxHp - m.boss.hp));
-    const ev = setup('ige'); ev.s.pathogens = [ev.virus]; ev.virus.hp = ev.virus.maxHp = 1000; tick(ev.s, 10); ev.restore();
-    const mv = setup('igm'); mv.s.pathogens = [mv.virus]; mv.virus.hp = mv.virus.maxHp = 1000; tick(mv.s, 10); mv.restore();
-    expect(1000 - mv.virus.hp).toBeGreaterThan(2 * (1000 - ev.virus.hp));
   });
 });
 
@@ -607,21 +628,21 @@ describe('Defend the Heart: forking vessels', () => {
 
   it('pathogens take the branch that is not dilated', () => {
     const s = fixtureGame(); startWave(s); quiet(s); toggleRoute(s, 'leftA');
-    const p = undecided(mk(s, 'bacterium', 'leftA', M.forkAt('leftA') - 1)); tick(s, 0.5);
+    const p = undecided(mk(s, 'saureus', 'leftA', M.forkAt('leftA') - 1)); tick(s, 0.5);
     expect(p.vessel).toBe('leftB'); expect(p.committed).toBe(true);
     const t = fixtureGame(); startWave(t); quiet(t); toggleRoute(t, 'leftB');
-    const q = undecided(mk(t, 'bacterium', 'leftA', M.forkAt('leftA') - 1)); tick(t, 0.5);
+    const q = undecided(mk(t, 'saureus', 'leftA', M.forkAt('leftA') - 1)); tick(t, 0.5);
     expect(q.vessel).toBe('leftA');
   });
 
   it('with neither branch open they alternate, starting with A', () => {
-    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); const f = M.forkAt('leftA');
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0); const f = M.forkAt('leftA');
     const ps = [0, 1, 2].map((i) => undecided(mk(s, 'virus', 'leftA', f - 1 - i * 0.5))); tick(s, 0.3);
     expect(ps.map((p) => p.vessel)).toEqual(['leftA', 'leftB', 'leftA']);
   });
 
   it('a committed pathogen keeps its branch when dilation changes', () => {
-    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0);
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0);
     const p = decided(mk(s, 'virus', 'leftA', M.forkAt('leftA') + 20)); toggleRoute(s, 'leftA'); tick(s, 0.2);
     expect(p.vessel).toBe('leftA');
   });
@@ -648,14 +669,14 @@ describe('Defend the Heart: forking vessels', () => {
 
   it('cells on a branch engage undecided pathogens up the stem', () => {
     const s = fixtureGame(); startWave(s); quiet(s); toggleRoute(s, 'leftB'); endlessNo(s);
-    const p = undecided(mk(s, 'bacterium', 'leftA', M.forkAt('leftA') - 15)); const hp = p.hp;
-    const speed = CONFIG.pathogens.bacterium.speed; CONFIG.pathogens.bacterium.speed = 0;
-    tick(s, 12); CONFIG.pathogens.bacterium.speed = speed;
+    const p = undecided(mk(s, 'saureus', 'leftA', M.forkAt('leftA') - 15)); const hp = p.hp;
+    const speed = CONFIG.pathogens.saureus.speed; CONFIG.pathogens.saureus.speed = 0;
+    tick(s, 12); CONFIG.pathogens.saureus.speed = speed;
     expect(p.hp).toBeLessThan(hp);
   });
 
   it('an infected cell made on the stem is undecided and chooses at the fork', () => {
-    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); toggleRoute(s, 'leftB');
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0); toggleRoute(s, 'leftB');
     const c = outCells(s)[0]; c.s = M.forkAt('leftB') - 30;
     infect(s, c, mk(s, 'hijacker', 'leftB', c.s));
     const e = s.pathogens.find((x) => x.type === 'infected')!;
@@ -666,9 +687,9 @@ describe('Defend the Heart: forking vessels', () => {
   it('a split or shed pathogen from a parent just past the fork stays on its branch', () => {
     const s = fixtureGame(); startWave(s); quiet(s);
     const b = decided(mk(s, 'colony', 'leftB', M.forkAt('leftB') + 4)); hurt(s, b, 9999);
-    const kids = s.pathogens.filter((p) => p.type === 'bacterium' && p.hp > 0);
+    const kids = s.pathogens.filter((p) => p.type === 'saureus' && p.hp > 0);
     expect(kids.length).toBe(3); expect(kids.every((k) => k.vessel === 'leftB' && k.committed)).toBe(true);
-    const t2 = fixtureGame(); startWave(t2); quiet(t2); mk(t2, 'bacterium', 'upper', 0);
+    const t2 = fixtureGame(); startWave(t2); quiet(t2); mk(t2, 'saureus', 'upper', 0);
     const f = decided(mk(t2, 'flu', 'leftB', M.forkAt('leftB') + 3)); f.shedT = 0.01;
     const speed = CONFIG.pathogens.flu.speed; CONFIG.pathogens.flu.speed = 0; step(t2, 1 / 30); CONFIG.pathogens.flu.speed = speed;
     const v = t2.pathogens.find((p) => p.type === 'virus')!;
@@ -676,9 +697,9 @@ describe('Defend the Heart: forking vessels', () => {
   });
 
   it('a split or shed pathogen on the stem is undecided and chooses at the fork', () => {
-    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); toggleRoute(s, 'leftA');
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0); toggleRoute(s, 'leftA');
     const b = undecided(mk(s, 'colony', 'leftA', M.forkAt('leftA') - 60)); hurt(s, b, 9999);
-    const kids = s.pathogens.filter((p) => p.type === 'bacterium' && p.vessel !== 'upper' && p.hp > 0);
+    const kids = s.pathogens.filter((p) => p.type === 'saureus' && p.vessel !== 'upper' && p.hp > 0);
     expect(kids.every((k) => !k.committed)).toBe(true);
     const f = undecided(mk(s, 'flu', 'leftA', M.forkAt('leftA') - 40)); f.shedT = 0.01; step(s, 1 / 30);
     const v = s.pathogens.find((p) => p.type === 'virus')!;
@@ -689,7 +710,7 @@ describe('Defend the Heart: forking vessels', () => {
   it('a split pathogen made on a branch stays on that branch', () => {
     const s = fixtureGame(); startWave(s); quiet(s);
     const b = decided(mk(s, 'colony', 'leftB', M.forkAt('leftB') + 60)); hurt(s, b, 9999);
-    const kids = s.pathogens.filter((p) => p.type === 'bacterium' && p.hp > 0);
+    const kids = s.pathogens.filter((p) => p.type === 'saureus' && p.hp > 0);
     expect(kids.length).toBe(3); expect(kids.every((k) => k.vessel === 'leftB' && k.committed)).toBe(true);
   });
 

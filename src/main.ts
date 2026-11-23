@@ -78,7 +78,7 @@ function openSite(id: string) {
   const node = nodeAt(s, id);
   if (node) {
     const st = CONFIG.nodes[node.type];
-    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${st.damage} damage every ${st.cooldown}s${st.shred ? `, strips ${st.shred} armour for ${st.shredSeconds}s` : ''}${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}${st.bossDamage ? `; ${st.bossDamage} to a boss, through its armour, and bosses first` : ''}.</p>`;
+    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${st.damage} damage every ${st.cooldown}s${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}.</p>`;
   } else {
     popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>Place a lymph node</h3><p class="sub">Beside the ${esc(vesselName(site.vessel).toLowerCase())}. You have <b>${s.energy}</b> energy.</p>
       <div class="types">${NODE_TYPES.map((t) => { const st = CONFIG.nodes[t]; const c = buildCheck(s, id, t); return `<button data-act="build" data-type="${t}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason)}"><img alt="" src="${nodeIcon(t)}" width="44" height="34"><span><b>${esc(st.short)}</b> · ${st.cost} energy<small>${esc(st.blurb)}</small></span></button>`; }).join('')}</div>`;
@@ -190,7 +190,7 @@ function icon(kind: PathogenType | 'cell', size = 36): string {
     const c = document.createElement('canvas'); const dpr = 2; c.width = size * dpr; c.height = size * dpr;
     const x = c.getContext('2d')!; x.scale(dpr, dpr);
     if (kind === 'cell') drawWhiteCell(x, size / 2, size / 2, 0, 0, size / 60);
-    else drawPathogen(x, kind, size / 2, size / 2, 0, 0, CONFIG.pathogens[kind].boss ? size / 100 : kind === 'bacterium' ? size / 44 : size / 36);
+    else drawPathogen(x, kind, size / 2, size / 2, 0, 0, CONFIG.pathogens[kind].boss ? size / 100 : CONFIG.pathogens[kind].taxon ? size / 44 : size / 36);
     icons.set(key, c.toDataURL());
   }
   return `<img class="ico" alt="" width="${size}" height="${size}" src="${icons.get(key)}">`;
@@ -218,7 +218,7 @@ function previewHtml(): string {
     if (!groups.length) return '';
     const rows = groups.map((g) => {
       const st = CONFIG.pathogens[g.type];
-      const traits = st.boss ? `<b class="bossTag">BOSS</b> ${esc(st.blurb ?? '')}` : g.type === 'bacterium' ? 'slow, armoured' : g.type === 'virus' ? 'fast, grouped' : 'infects white cells';
+      const traits = st.boss ? `<b class="bossTag">BOSS</b> ${esc(st.blurb ?? '')}` : st.taxon ? esc(st.short ?? '') : g.type === 'virus' ? 'fast, grouped' : 'infects white cells';
       return `<li>${icon(g.type, st.boss ? 40 : 28)}<span><b>${g.count} ${(g.count > 1 ? st.plural : st.name).toLowerCase()}</b> <small>${whenLabel(g.start)}, ${traits}</small></span></li>`;
     }).join('');
     return `<div class="lane"><h4>${esc(map.entryDef(v).name)}${forks ? ' <small>· forks</small>' : ''}</h4><ul>${rows}</ul></div>`;

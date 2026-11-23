@@ -246,7 +246,7 @@ function drawSites(ctx: CanvasRenderingContext2D, s: State, view: View, t: numbe
 export function drawPathogen(ctx: CanvasRenderingContext2D, type: PathogenType, x: number, y: number, angle: number, hit: number, scale = 1, t = 0) {
   if (CONFIG.pathogens[type].boss) { drawBoss(ctx, type as BossType, x, y, angle, hit, scale, t); return; }
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
-  if (type === 'bacterium') {
+  if (CONFIG.pathogens[type].taxon) {
     ctx.rotate(angle);
     ctx.strokeStyle = C.bacteriumDark; ctx.lineWidth = 1.2;
     for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-16, -3 + i * 2); ctx.bezierCurveTo(-22, -8 + i * 4, -26, 4 + i * 2, -32, -2 + i * 3); ctx.stroke(); }
@@ -338,7 +338,7 @@ function drawPreview(ctx: CanvasRenderingContext2D, s: State) {
     ctx.fillStyle = '#c8402a'; ctx.font = '900 22px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('IN', bx + 12, by + 32);
     let x = bx + 70;
     for (const [type, n] of counts) {
-      drawPathogen(ctx, type, x, by + 24, 0, 0, CONFIG.pathogens[type].boss ? 0.42 : type === 'bacterium' ? 1 : 1.2);
+      drawPathogen(ctx, type, x, by + 24, 0, 0, CONFIG.pathogens[type].boss ? 0.42 : CONFIG.pathogens[type].taxon ? 1 : 1.2);
       ctx.fillStyle = C.ink; ctx.font = '700 20px Palatino, Georgia, serif'; ctx.fillText(`×${n}`, x + 24, by + 31);
       x += 86;
     }
@@ -379,17 +379,12 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     const q = pathogenPos(p);
     if (eligible.has(p.id) && (view.touch || view.showPulseRadius)) {
       ctx.strokeStyle = 'rgba(74,184,216,0.95)'; ctx.lineWidth = 2.4; ctx.setLineDash([3, 3]);
-      ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.pathogens[p.type].boss ? 62 : p.type === 'bacterium' ? 30 : 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.pathogens[p.type].boss ? 62 : CONFIG.pathogens[p.type].taxon ? 30 : 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
     if (p.slowT > 0) { ctx.fillStyle = 'rgba(74,184,138,0.35)'; ctx.beginPath(); ctx.arc(q.x, q.y, 22, 0, Math.PI * 2); ctx.fill(); }
     drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, CONFIG.pathogens[p.type].boss ? 1.2 : p.type === 'infected' ? 1.35 : 1.4, t + p.id);
-    if (p.shredT > 0) {
-      // IgG has opened the capsule: blue cracks
-      ctx.strokeStyle = NODE_COLORS.igg.base; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(q.x - 10, q.y - 14); ctx.lineTo(q.x - 4, q.y - 8); ctx.lineTo(q.x - 8, q.y - 2); ctx.moveTo(q.x + 10, q.y - 14); ctx.lineTo(q.x + 5, q.y - 7); ctx.stroke();
-    }
     if (CONFIG.pathogens[p.type].boss) bar(ctx, q.x, q.y - 66, 80, p.hp / p.maxHp, '#c8402a');
-    else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, p.type === 'bacterium' || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, '#c8402a');
+    else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, CONFIG.pathogens[p.type].taxon || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, '#c8402a');
   }
 
   for (const c of s.cells) {
@@ -452,6 +447,5 @@ function drawBossBanner(ctx: CanvasRenderingContext2D, s: State) {
   ctx.fillStyle = 'rgba(30,20,20,0.6)'; ctx.fillRect(x + 18, y + 38, w - 36, 12);
   const gr = ctx.createLinearGradient(0, y + 38, 0, y + 50); gr.addColorStop(0, '#e0564e'); gr.addColorStop(1, '#7a1e24');
   ctx.fillStyle = gr; ctx.fillRect(x + 18, y + 38, (w - 36) * Math.max(0, b.hp / b.maxHp), 12);
-  if (b.shredT > 0) { ctx.fillStyle = NODE_COLORS.igg.base; ctx.font = '700 13px Palatino, Georgia, serif'; ctx.fillText('armour stripped', x + w - 18, y + 62); }
   ctx.restore();
 }

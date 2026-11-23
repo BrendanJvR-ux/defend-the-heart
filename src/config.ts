@@ -5,7 +5,12 @@
 
 /** Vessel ids are per level ('left', 'portal', 'lowerLeft' …). */
 export type VesselId = string;
-export type PathogenType = 'bacterium' | 'virus' | 'hijacker' | 'infected' | BossType;
+/** The six named bacteria. */
+export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo';
+export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo'];
+export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'infected' | BossType;
+/** What an IgG antibody recognises: Gram stain, shape and species. */
+export interface Taxon { gram: '+' | '-'; shape: 'coccus' | 'rod'; species: BacteriumType }
 /** One boss per organ, met in that organ's last wave. */
 export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis';
 export type NodeType = 'igm' | 'igg' | 'iga' | 'ige';
@@ -16,8 +21,10 @@ export interface PathogenStats {
   hp: number;
   /** Map units per second, carried with the blood flow towards the heart. */
   speed: number;
-  /** Flat damage removed from every antibody hit (IgG strips it). White cells and the pulse ignore armour. */
-  armour: number;
+  /** Bacteria (and bacterial bosses): what an IgG antibody can match. Absent for viruses and infected cells. */
+  taxon?: Taxon;
+  /** Short line for the panel, e.g. "Gram+ coccus". */
+  short?: string;
   /** Heart health lost when it reaches the heart. */
   heartDamage: number;
   /** Damage per second dealt to a white cell in contact. */
@@ -46,19 +53,16 @@ export interface NodeStats {
   name: string;
   short: string;
   cost: number;
-  /** Damage per antibody before armour. */
+  /** Damage per antibody (IgG: before its match multiplier). */
   damage: number;
   cooldown: number;
   range: number;
   shotSpeed: number;
-  /** IgG: armour removed from the target for a while. */
-  shred?: number;
-  shredSeconds?: number;
   /** IgA: target speed multiplied by this for a while. */
   slow?: number;
   slowSeconds?: number;
-  /** IgE: locks onto a boss in reach before anything else, and hits bosses for this much, through their armour. */
-  bossDamage?: number;
+  /** IgE: the node bursts after this many cleared waves, freeing its site. */
+  burnsOutAfter?: number;
   blurb: string;
 }
 
@@ -74,11 +78,12 @@ export const CONFIG = {
   dilateRate: 1.8,
 
   nodes: {
-    igm: { name: 'IgM lymph node', short: 'IgM', cost: 60, damage: 15, cooldown: 0.9, range: 175, shotSpeed: 520, blurb: 'High damage. No slow, no armour reduction.' },
-    igg: { name: 'IgG lymph node', short: 'IgG', cost: 50, damage: 7, cooldown: 0.8, range: 175, shotSpeed: 560, shred: 5, shredSeconds: 4, blurb: 'Lower damage, but strips armour so every other hit lands harder.' },
-    iga: { name: 'IgA lymph node', short: 'IgA', cost: 50, damage: 6, cooldown: 0.7, range: 175, shotSpeed: 560, slow: 0.5, slowSeconds: 2.2, blurb: 'Lower damage, no armour reduction, but slows what it hits.' },
-    ige: { name: 'IgE lymph node', short: 'IgE', cost: 80, damage: 5, cooldown: 1.8, range: 230, shotSpeed: 440, bossDamage: 38,
-      blurb: 'Boss hunter. Locks onto a boss in reach and hits it hard, straight through armour. Weak against anything else.' },
+    igm: { name: 'IgM lymph node', short: 'IgM', cost: 60, damage: 10, cooldown: 0.9, range: 175, shotSpeed: 520, blurb: 'Hits every pathogen the same.' },
+    igg: { name: 'IgG lymph node', short: 'IgG', cost: 50, damage: 10, cooldown: 0.8, range: 175, shotSpeed: 560,
+      blurb: 'Aimed at one bacterium: ×3 on it, ×2.5 on the same shape, ×2 on the same Gram stain, ×0.5 on other bacteria, ×0.25 on viruses.' },
+    iga: { name: 'IgA lymph node', short: 'IgA', cost: 50, damage: 7.5, cooldown: 0.7, range: 175, shotSpeed: 560, slow: 0.5, slowSeconds: 2.2, blurb: 'Softer hits, but slows what it hits.' },
+    ige: { name: 'IgE lymph node', short: 'IgE', cost: 80, damage: 20, cooldown: 0.9, range: 230, shotSpeed: 440, burnsOutAfter: 3,
+      blurb: 'Double damage and a long reach, but it burns out after three waves.' },
   } as Record<NodeType, NodeStats>,
 
   whiteCell: {
@@ -95,22 +100,34 @@ export const CONFIG = {
   immunePulse: { perWave: 1, radius: 85, damage: 42, ringSeconds: 0.45 },
 
   /** Nitric oxide: the fuel that holds a vessel open during a wave. */
+  /** IgG damage multipliers: the single best match applies. */
+  iggMatch: { species: 3, shape: 2.5, gram: 2, unrelated: 0.5, nonBacterium: 0.25 },
+  /** Energy to re-aim a placed IgG node between waves. */
+  iggRetarget: 20,
+  /** Energy for an IgG node aimed at two targets (career upgrade). */
+  dualIggCost: 80,
+
   no: { max: 100, openCost: 15, drainPerSec: 8, regenPerSec: 3, waveTopUp: 35, minOpenSeconds: 1 },
 
   pathogens: {
-    bacterium: { name: 'Bacterium', plural: 'Bacteria', hp: 70, speed: 30, armour: 5, heartDamage: 3, contactDps: 3, bounty: 7 },
-    virus: { name: 'Virus', plural: 'Viruses', hp: 14, speed: 74, armour: 1, heartDamage: 1, contactDps: 2, bounty: 2 },
-    hijacker: { name: 'Hijacker virus', plural: 'Hijacker viruses', hp: 22, speed: 58, armour: 1, heartDamage: 1, contactDps: 0, bounty: 4, infects: true },
-    infected: { name: 'Infected white cell', plural: 'Infected white cells', hp: 55, speed: 46, armour: 2, heartDamage: 3, contactDps: 4, bounty: 6 },
-    colony: { name: 'Staph colony', plural: 'Staph colonies', hp: 380, speed: 15, armour: 7, heartDamage: 6, contactDps: 3, bounty: 60, boss: true,
-      splitInto: { type: 'bacterium', count: 3, hpFactor: 0.5 }, blurb: 'A grape-bunch of bacteria under one thick capsule. Burst it and three weakened bacteria spill out.' },
-    flu: { name: 'Mother virus', plural: 'Mother viruses', hp: 420, speed: 20, armour: 3, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
-      sheds: { type: 'virus', every: 2.4 }, blurb: 'Releases a new virus every few seconds as it travels. Kill it fast.' },
-    meningo: { name: 'Meningococcus', plural: 'Meningococci', hp: 290, speed: 20, armour: 8, heartDamage: 6, contactDps: 7, bounty: 60, boss: true,
-      slowImmune: true, blurb: 'Paired cocci in a heavy capsule. IgA cannot slow it; strip its armour with IgG.' },
-    hepatitis: { name: 'Hepatitis giant', plural: 'Hepatitis giants', hp: 520, speed: 17, armour: 4, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
-      regen: 9, blurb: 'Heals itself as it travels. Damage must outpace its regrowth.' },
-    sepsis: { name: 'Sepsis hijacker', plural: 'Sepsis hijackers', hp: 340, speed: 19, armour: 5, heartDamage: 8, contactDps: 0, bounty: 60, boss: true,
+    saureus: { name: 'Staphylococcus aureus', plural: 'S. aureus', short: 'Gram+ coccus, in clusters', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '+', shape: 'coccus', species: 'saureus' } },
+    spneumo: { name: 'Streptococcus pneumoniae', plural: 'S. pneumoniae', short: 'Gram+ coccus, in pairs', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '+', shape: 'coccus', species: 'spneumo' } },
+    listeria: { name: 'Listeria monocytogenes', plural: 'Listeria', short: 'Gram+ rod', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '+', shape: 'rod', species: 'listeria' } },
+    nmening: { name: 'Neisseria meningitidis', plural: 'N. meningitidis', short: 'Gram− coccus, in pairs', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'coccus', species: 'nmening' } },
+    ecoli: { name: 'Escherichia coli', plural: 'E. coli', short: 'Gram− rod', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'rod', species: 'ecoli' } },
+    kpneumo: { name: 'Klebsiella pneumoniae', plural: 'Klebsiella', short: 'Gram− rod, capsulated', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'rod', species: 'kpneumo' } },
+    virus: { name: 'Virus', plural: 'Viruses', hp: 10, speed: 74, heartDamage: 1, contactDps: 2, bounty: 2 },
+    hijacker: { name: 'Hijacker virus', plural: 'Hijacker viruses', hp: 16, speed: 58, heartDamage: 1, contactDps: 0, bounty: 4, infects: true },
+    infected: { name: 'Infected white cell', plural: 'Infected white cells', hp: 55, speed: 46, heartDamage: 3, contactDps: 4, bounty: 6 },
+    colony: { name: 'Staph colony', plural: 'Staph colonies', hp: 380, speed: 15, heartDamage: 6, contactDps: 3, bounty: 60, boss: true, taxon: { gram: '+', shape: 'coccus', species: 'saureus' },
+      splitInto: { type: 'saureus', count: 3, hpFactor: 0.5 }, blurb: 'A grape-bunch of S. aureus. Burst it and three weakened staph spill out. IgG aimed at S. aureus hits it three times as hard.' },
+    flu: { name: 'Mother virus', plural: 'Mother viruses', hp: 420, speed: 20, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
+      sheds: { type: 'virus', every: 2.4 }, blurb: 'Releases a new virus every few seconds as it travels. Kill it fast: IgM and IgE do it best.' },
+    meningo: { name: 'Meningococcus', plural: 'Meningococci', hp: 290, speed: 20, heartDamage: 6, contactDps: 7, bounty: 60, boss: true, taxon: { gram: '-', shape: 'coccus', species: 'nmening' },
+      slowImmune: true, blurb: 'A giant N. meningitidis. IgA cannot slow it; IgG aimed at N. meningitidis hits it three times as hard.' },
+    hepatitis: { name: 'Hepatitis giant', plural: 'Hepatitis giants', hp: 520, speed: 17, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
+      regen: 9, blurb: 'Heals itself as it travels. Damage must outpace its regrowth: IgM and IgE, not IgG.' },
+    sepsis: { name: 'Sepsis hijacker', plural: 'Sepsis hijackers', hp: 340, speed: 19, heartDamage: 8, contactDps: 0, bounty: 60, boss: true,
       infects: true, infectsMany: true, blurb: 'A giant hijacker: it infects every white cell it touches and keeps going.' },
   } as Record<PathogenType, PathogenStats>,
 };
@@ -176,23 +193,23 @@ export const LEVELS: LevelDef[] = [
       {
         title: 'First infection',
         hint: 'Bacteria come up the left vessel. Once they are well on their way, open it so your white cells can meet them: opening and holding it open costs NO.',
-        groups: [{ type: 'bacterium', vessel: 'left', count: 5, start: 1, interval: 3.4 }],
+        groups: [{ type: 'saureus', vessel: 'left', count: 5, start: 1, interval: 3.4 }],
       },
       {
         title: 'Two fronts',
         hint: 'A fast viral cluster on the right, a few bacteria from below. Place a lymph node where you will not send your white cells.',
         groups: [
           { type: 'virus', vessel: 'right', count: 6, start: 4, interval: 0.35 },
-          { type: 'bacterium', vessel: 'lower', count: 3, start: 1, interval: 4 },
+          { type: 'saureus', vessel: 'lower', count: 3, start: 1, interval: 4 },
           { type: 'virus', vessel: 'right', count: 5, start: 16, interval: 0.35 },
         ],
       },
       {
         title: 'Armoured bacteria',
-        hint: 'Bacterial capsules blunt IgM. An IgG node strips their armour.',
+        hint: 'Staph comes in clusters. An IgG node aimed at S. aureus hits it three times as hard.',
         groups: [
-          { type: 'bacterium', vessel: 'upper', count: 4, start: 1, interval: 3.4 },
-          { type: 'bacterium', vessel: 'left', count: 3, start: 8, interval: 3.5 },
+          { type: 'saureus', vessel: 'upper', count: 4, start: 1, interval: 3.4 },
+          { type: 'saureus', vessel: 'left', count: 3, start: 8, interval: 3.5 },
           { type: 'virus', vessel: 'lower', count: 5, start: 12, interval: 0.4 },
         ],
       },
@@ -202,7 +219,7 @@ export const LEVELS: LevelDef[] = [
         groups: [
           { type: 'virus', vessel: 'upper', count: 6, start: 2, interval: 0.35 },
           { type: 'virus', vessel: 'right', count: 7, start: 8, interval: 0.3 },
-          { type: 'bacterium', vessel: 'lower', count: 4, start: 4, interval: 3 },
+          { type: 'saureus', vessel: 'lower', count: 4, start: 4, interval: 3 },
           { type: 'virus', vessel: 'left', count: 6, start: 16, interval: 0.3 },
           { type: 'virus', vessel: 'upper', count: 5, start: 22, interval: 0.35 },
         ],
@@ -214,10 +231,10 @@ export const LEVELS: LevelDef[] = [
           { type: 'hijacker', vessel: 'left', count: 4, start: 3, interval: 1 },
           { type: 'hijacker', vessel: 'lower', count: 4, start: 10, interval: 1 },
           { type: 'hijacker', vessel: 'right', count: 3, start: 18, interval: 1 },
-          { type: 'bacterium', vessel: 'right', count: 5, start: 1, interval: 2.6 },
+          { type: 'saureus', vessel: 'right', count: 5, start: 1, interval: 2.6 },
           { type: 'virus', vessel: 'upper', count: 8, start: 6, interval: 0.3 },
-          { type: 'bacterium', vessel: 'lower', count: 3, start: 4, interval: 3 },
-          { type: 'bacterium', vessel: 'left', count: 3, start: 14, interval: 3 },
+          { type: 'saureus', vessel: 'lower', count: 3, start: 4, interval: 3 },
+          { type: 'saureus', vessel: 'left', count: 3, start: 14, interval: 3 },
           { type: 'hijacker', vessel: 'upper', count: 3, start: 20, interval: 1.2 },
         ],
       },
@@ -246,15 +263,15 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'First breath', hint: 'Watch the blue breathing gauge: on every inhale, pathogens surge forward. Nodes further out buy time.',
-        groups: [g('bacterium', 'left', 5, 1, 3.4), g('virus', 'right', 6, 6, 0.35), g('virus', 'upperRight', 5, 12, 0.35)] },
+        groups: [g('saureus', 'left', 5, 1, 3.4), g('virus', 'right', 6, 6, 0.35), g('virus', 'upperRight', 5, 12, 0.35)] },
       { title: 'Deep breaths', hint: 'Viral clusters on both sides, bacteria from below.',
-        groups: [g('virus', 'left', 6, 2, 0.3), g('bacterium', 'lower', 4, 1, 3.2), g('virus', 'right', 6, 14, 0.3), g('bacterium', 'upperLeft', 3, 8, 3.2)] },
+        groups: [g('virus', 'left', 6, 2, 0.3), g('saureus', 'lower', 4, 1, 3.2), g('virus', 'right', 6, 14, 0.3), g('saureus', 'upperLeft', 3, 8, 3.2)] },
       { title: 'Pneumonia', hint: 'Bacteria on every vessel. IgG strips their capsules.',
-        groups: [g('bacterium', 'left', 4, 1, 3.2), g('bacterium', 'right', 4, 4, 3.2), g('bacterium', 'lower', 3, 10, 3.2), g('virus', 'lower', 6, 20, 0.3), g('bacterium', 'upperRight', 3, 6, 3.2), g('virus', 'upperLeft', 6, 14, 0.3)] },
+        groups: [g('saureus', 'left', 4, 1, 3.2), g('saureus', 'right', 4, 4, 3.2), g('saureus', 'lower', 3, 10, 3.2), g('virus', 'lower', 6, 20, 0.3), g('saureus', 'upperRight', 3, 6, 3.2), g('virus', 'upperLeft', 6, 14, 0.3)] },
       { title: 'Coughing fit', hint: 'Hijackers ride the surges. Keep your white cells away from them, or kill them first.',
-        groups: [g('bacterium', 'lower', 5, 1, 2.6), g('virus', 'right', 8, 2, 0.3), g('hijacker', 'left', 4, 4, 1), g('hijacker', 'right', 3, 16, 1), g('virus', 'left', 6, 20, 0.3), g('virus', 'upperRight', 6, 10, 0.3)] },
+        groups: [g('saureus', 'lower', 5, 1, 2.6), g('virus', 'right', 8, 2, 0.3), g('hijacker', 'left', 4, 4, 1), g('hijacker', 'right', 3, 16, 1), g('virus', 'left', 6, 20, 0.3), g('virus', 'upperRight', 6, 10, 0.3)] },
       { title: 'Boss: the mother virus', hint: 'A mother virus comes up from below, shedding new viruses as it goes. Every breath carries the brood faster.',
-        groups: [g('flu', 'lower', 1, 2, 1), g('bacterium', 'left', 3, 6, 3), g('virus', 'upperLeft', 5, 14, 0.3)] },
+        groups: [g('flu', 'lower', 1, 2, 1), g('saureus', 'left', 3, 6, 3), g('virus', 'upperLeft', 5, 14, 0.3)] },
     ],
   },
   {
@@ -278,22 +295,22 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'The barrier', hint: 'Few sites: pick them well. Three white cells patrol whichever vessel you dilate.',
-        groups: [g('bacterium', 'lowerLeft', 4, 1, 3.4), g('virus', 'left', 6, 4, 0.35), g('virus', 'midLeft', 5, 10, 0.35)] },
+        groups: [g('saureus', 'lowerLeft', 4, 1, 3.4), g('virus', 'left', 6, 4, 0.35), g('virus', 'midLeft', 5, 10, 0.35)] },
       { title: 'Crossing over', hint: 'Viruses come up the lower-right vessel, which forks: at the fork they take the branch you have not opened. Nodes on the shared stem guard both.',
-        groups: [g('bacterium', 'right', 4, 1, 3.2), g('virus', 'lowerRight', 6, 6, 0.3), g('virus', 'left', 5, 14, 0.3), g('bacterium', 'midLeft', 3, 4, 3.2)] },
+        groups: [g('saureus', 'right', 4, 1, 3.2), g('virus', 'lowerRight', 6, 6, 0.3), g('virus', 'left', 5, 14, 0.3), g('saureus', 'midLeft', 3, 4, 3.2)] },
       { title: 'Meningitis', hint: 'Armoured bacteria on two vessels, and the first hijackers.',
-        groups: [g('bacterium', 'left', 4, 1, 3), g('bacterium', 'lowerRight', 4, 3, 3), g('virus', 'right', 7, 10, 0.3), g('hijacker', 'lowerLeft', 3, 16, 1), g('virus', 'midLeft', 6, 8, 0.3)] },
+        groups: [g('saureus', 'left', 4, 1, 3), g('saureus', 'lowerRight', 4, 3, 3), g('virus', 'right', 7, 10, 0.3), g('hijacker', 'lowerLeft', 3, 16, 1), g('virus', 'midLeft', 6, 8, 0.3)] },
       { title: 'Fever', hint: 'Everything at once. The brain cannot take many hits.',
-        groups: [g('bacterium', 'lowerLeft', 5, 1, 2.6), g('hijacker', 'left', 2, 3, 1), g('virus', 'lowerRight', 7, 6, 0.3), g('hijacker', 'right', 3, 9, 1), g('virus', 'left', 5, 20, 0.3), g('bacterium', 'midLeft', 3, 12, 3)] },
-      { title: 'Boss: meningococcus', hint: 'Heavy armour, and IgA cannot slow it. IgG opens the capsule for everything else.',
-        groups: [g('meningo', 'lowerLeft', 1, 2, 1), g('virus', 'right', 6, 10, 0.3), g('bacterium', 'midLeft', 3, 6, 3)] },
+        groups: [g('saureus', 'lowerLeft', 5, 1, 2.6), g('hijacker', 'left', 2, 3, 1), g('virus', 'lowerRight', 7, 6, 0.3), g('hijacker', 'right', 3, 9, 1), g('virus', 'left', 5, 20, 0.3), g('saureus', 'midLeft', 3, 12, 3)] },
+      { title: 'Boss: meningococcus', hint: 'A giant N. meningitidis that IgA cannot slow. IgG aimed at N. meningitidis hits it three times as hard.',
+        groups: [g('meningo', 'lowerLeft', 1, 2, 1), g('virus', 'right', 6, 10, 0.3), g('saureus', 'midLeft', 3, 6, 3)] },
     ],
   },
   {
     id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave.',
     hp: 24, startEnergy: 320, cells: 2, regenPerWave: 3,
-    startingNodes: [{ vessel: 'portalLeft', site: 0, type: 'igg' }, { vessel: 'arteryLower', site: 1, type: 'igm' }],
+    startingNodes: [{ vessel: 'portalLeft', site: 0, type: 'igm' }, { vessel: 'arteryLower', site: 1, type: 'igm' }],
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.22, 0.45, 0.68, 0.86],
       vessels: [
@@ -314,13 +331,13 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'From the gut', hint: 'Bacteria come up the long portal vein. Line it with nodes.',
-        groups: [g('bacterium', 'portal', 6, 1, 3), g('virus', 'upperRight', 5, 10, 0.35)] },
+        groups: [g('saureus', 'portal', 6, 1, 3), g('virus', 'upperRight', 5, 10, 0.35)] },
       { title: 'Two supplies', hint: 'The gut keeps sending bacteria; viruses arrive by the artery and from above.',
-        groups: [g('bacterium', 'portal', 6, 1, 2.6), g('virus', 'artery', 7, 6, 0.3), g('virus', 'upper', 5, 14, 0.3), g('bacterium', 'upperRight', 3, 4, 3)] },
+        groups: [g('saureus', 'portal', 6, 1, 2.6), g('virus', 'artery', 7, 6, 0.3), g('virus', 'upper', 5, 14, 0.3), g('saureus', 'upperRight', 3, 4, 3)] },
       { title: 'Abscess', hint: 'A heavy bacterial load on the portal vein and below.',
-        groups: [g('bacterium', 'portal', 8, 1, 2.4), g('bacterium', 'lower', 4, 4, 3), g('virus', 'artery', 8, 12, 0.3), g('virus', 'upperRight', 6, 16, 0.3)] },
+        groups: [g('saureus', 'portal', 8, 1, 2.4), g('saureus', 'lower', 4, 4, 3), g('virus', 'artery', 8, 12, 0.3), g('virus', 'upperRight', 6, 16, 0.3)] },
       { title: 'Hepatitis', hint: 'Hijackers from the artery and above while the gut keeps up the pressure.',
-        groups: [g('bacterium', 'portal', 8, 1, 2.2), g('hijacker', 'artery', 4, 5, 1), g('virus', 'lower', 8, 8, 0.3), g('hijacker', 'upper', 3, 14, 1), g('bacterium', 'upperRight', 4, 6, 3)] },
+        groups: [g('saureus', 'portal', 8, 1, 2.2), g('hijacker', 'artery', 4, 5, 1), g('virus', 'lower', 8, 8, 0.3), g('hijacker', 'upper', 3, 14, 1), g('saureus', 'upperRight', 4, 6, 3)] },
       { title: 'Boss: the hepatitis giant', hint: 'It regrows as it climbs the portal vein. Stack enough damage along the vein to outpace it.',
         groups: [g('hepatitis', 'portal', 1, 2, 1), g('virus', 'artery', 6, 10, 0.3), g('virus', 'upperRight', 5, 16, 0.3)] },
     ],
@@ -355,15 +372,15 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'Filtration', hint: 'Pathogens slow down near the kidney (the shaded stretch). Nodes there fire for longer.',
-        groups: [g('bacterium', 'left', 5, 1, 3.2), g('virus', 'upper', 7, 6, 0.3), g('virus', 'topLeft', 5, 12, 0.3)] },
+        groups: [g('saureus', 'left', 5, 1, 3.2), g('virus', 'upper', 7, 6, 0.3), g('virus', 'topLeft', 5, 12, 0.3)] },
       { title: 'Stones and swarms', hint: 'Viruses on the right, bacteria below, hijackers behind them on the left.',
-        groups: [g('virus', 'right', 8, 2, 0.3), g('bacterium', 'lower', 4, 1, 3), g('hijacker', 'left', 3, 12, 1), g('bacterium', 'topLeft', 3, 4, 3)] },
+        groups: [g('virus', 'right', 8, 2, 0.3), g('saureus', 'lower', 4, 1, 3), g('hijacker', 'left', 3, 12, 1), g('saureus', 'topLeft', 3, 4, 3)] },
       { title: 'Infection spreads', hint: 'Hijackers on two vessels. Only dilate where you can keep your cells safe.',
-        groups: [g('bacterium', 'right', 5, 1, 2.6), g('hijacker', 'upper', 4, 3, 1), g('virus', 'left', 8, 6, 0.3), g('hijacker', 'lower', 4, 10, 1), g('virus', 'topLeft', 6, 14, 0.3)] },
+        groups: [g('saureus', 'right', 5, 1, 2.6), g('hijacker', 'upper', 4, 3, 1), g('virus', 'left', 8, 6, 0.3), g('hijacker', 'lower', 4, 10, 1), g('virus', 'topLeft', 6, 14, 0.3)] },
       { title: 'Sepsis', hint: 'The final wave: every vessel, every kind of pathogen.',
-        groups: [g('bacterium', 'left', 4, 1, 3), g('bacterium', 'right', 4, 2, 3), g('virus', 'upper', 8, 6, 0.3), g('hijacker', 'left', 3, 10, 1), g('hijacker', 'right', 3, 14, 1), g('virus', 'lower', 6, 18, 0.3), g('hijacker', 'upper', 3, 22, 1), g('virus', 'topLeft', 6, 8, 0.3)] },
+        groups: [g('saureus', 'left', 4, 1, 3), g('saureus', 'right', 4, 2, 3), g('virus', 'upper', 8, 6, 0.3), g('hijacker', 'left', 3, 10, 1), g('hijacker', 'right', 3, 14, 1), g('virus', 'lower', 6, 18, 0.3), g('hijacker', 'upper', 3, 22, 1), g('virus', 'topLeft', 6, 8, 0.3)] },
       { title: 'Boss: sepsis', hint: 'A giant hijacker infects every white cell it touches. Do not dilate its vessel unless your nodes can kill it first.',
-        groups: [g('sepsis', 'upper', 1, 2, 1), g('bacterium', 'left', 4, 4, 3), g('virus', 'right', 6, 12, 0.3), g('bacterium', 'topLeft', 3, 8, 3)] },
+        groups: [g('sepsis', 'upper', 1, 2, 1), g('saureus', 'left', 4, 4, 3), g('virus', 'right', 6, 12, 0.3), g('saureus', 'topLeft', 3, 8, 3)] },
     ],
   },
 ];

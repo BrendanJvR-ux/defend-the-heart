@@ -1,5 +1,5 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
-import { CONFIG, LEVELS, NODE_TYPES, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
+import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
 import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
@@ -8,8 +8,6 @@ export interface Pathogen {
   /** `vessel` is the route it travels. On a forked vessel it is the first branch until it reaches the fork
    *  (`committed` false); there it picks a branch for good. */
   id: number; type: PathogenType; vessel: VesselId; committed: boolean; s: number; hp: number; maxHp: number; hit: number; side: number; wob: number;
-  /** IgG: armour stripped, and for how long. */
-  shred: number; shredT: number;
   /** IgA: speed multiplier and how long it lasts. */
   slow: number; slowT: number;
   /** Bosses that shed: seconds until the next one. */
@@ -18,10 +16,12 @@ export interface Pathogen {
 /** home: waiting at the organ; out: travelling and fighting along the open vessel; returning: heading home, not fighting. */
 export type CellMode = 'home' | 'out' | 'returning';
 export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; targetId: number | null; mode: CellMode; infected: boolean }
-export interface LymphNode { id: number; site: string; vessel: VesselId; type: NodeType; cd: number; flash: number }
-export interface Shot { type: NodeType; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
+/** `targets`: what an IgG node is aimed at (one, or two with the dual-target upgrade); empty for other types.
+ *  `wavesFought`: cleared waves since it was placed (IgE burns out). */
+export interface LymphNode { id: number; site: string; vessel: VesselId; type: NodeType; cd: number; flash: number; targets: BacteriumType[]; wavesFought: number }
+export interface Shot { type: NodeType; targets: BacteriumType[]; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
 export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' }
-export interface Floater { x: number; y: number; text: string; t: number; color: string }
+export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number }
 export interface Spawn { type: PathogenType; vessel: VesselId; at: number }
 
 export interface State {
@@ -41,6 +41,8 @@ export interface State {
   width: Record<VesselId, number>;
   /** Per forked entry vessel: how many undecided pathogens have alternated at its fork. */
   forkFlip: Record<VesselId, number>;
+  /** IgE nodes that burnt out at the end of the last wave (their sites are free again). Cleared when a wave starts. */
+  spent: { site: string; at: Vec }[];
   nodes: LymphNode[];
   pathogens: Pathogen[];
   cells: WhiteCell[];
@@ -69,12 +71,12 @@ export function newGame(level = LEVEL_INDEX): State {
   const L = LEVELS[level];
   const s: State = {
     level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: CONFIG.no.max, noOuts: 0,
-    width: zeroWidths(), forkFlip: {}, nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
+    width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
   for (const n of L.startingNodes) {
     const site = SITES.find((x) => x.vessel === n.vessel && x.index === n.site);
-    if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0 });
+    if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets: n.type === 'igg' ? ['saureus'] : [], wavesFought: 0 });
   }
   return s;
 }
@@ -114,7 +116,24 @@ export function covers(route: VesselId, p: Pathogen, stemSite = false): boolean 
   return p.vessel === route || !p.committed || stemSite;
 }
 
-export function effectiveArmour(p: Pathogen): number { return Math.max(0, CONFIG.pathogens[p.type].armour - p.shred); }
+/** IgG match: the best single match between any of the node's targets and the pathogen (never multiplied together). */
+export function iggMultiplier(targets: BacteriumType[], type: PathogenType): number {
+  const M = CONFIG.iggMatch, tx = CONFIG.pathogens[type].taxon;
+  if (!tx) return M.nonBacterium;
+  let best = M.unrelated;
+  for (const g of targets) {
+    const gt = CONFIG.pathogens[g].taxon!;
+    const m = gt.species === tx.species ? M.species : gt.shape === tx.shape ? M.shape : gt.gram === tx.gram ? M.gram : M.unrelated;
+    best = Math.max(best, m);
+  }
+  return best;
+}
+
+/** One antibody's damage from a node of `type` (aimed at `targets`) against a pathogen of `ptype`. */
+export function antibodyDamage(type: NodeType, targets: BacteriumType[], ptype: PathogenType): number {
+  return CONFIG.nodes[type].damage * (type === 'igg' ? iggMultiplier(targets, ptype) : 1);
+}
+export function nodeDamage(_s: State, n: LymphNode, ptype: PathogenType): number { return antibodyDamage(n.type, n.targets, ptype); }
 
 export function pathogenPos(p: Pathogen): Vec & { angle: number } {
   const q = pointAt(VESSELS[p.vessel], p.s);
@@ -129,21 +148,41 @@ export function cellPos(c: WhiteCell): Vec & { angle: number } {
 // ── Preparation ─────────────────────────────────────────────────────────────
 
 
-export function buildCheck(s: State, siteId: string, type: NodeType): { ok: boolean; reason: string } {
+export function buildCheck(s: State, siteId: string, type: NodeType, targets?: BacteriumType[]): { ok: boolean; reason: string } {
   if (s.phase !== 'prep') return { ok: false, reason: 'Lymph nodes can only be placed between waves.' };
   if (!SITES.some((x) => x.id === siteId)) return { ok: false, reason: 'Not a site for a lymph node.' };
   if (nodeAt(s, siteId)) return { ok: false, reason: 'A lymph node is already there.' };
+  if (type === 'igg') {
+    if (!targets?.length) return { ok: false, reason: 'Choose what this IgG targets.' };
+    if (targets.length > 1) return { ok: false, reason: 'One target per IgG node.' };
+  }
   const cost = CONFIG.nodes[type].cost;
   if (s.energy < cost) return { ok: false, reason: `Needs ${cost} energy (you have ${s.energy}).` };
   return { ok: true, reason: '' };
 }
 
-export function placeNode(s: State, siteId: string, type: NodeType): boolean {
-  if (!buildCheck(s, siteId, type).ok) return false;
+export function placeNode(s: State, siteId: string, type: NodeType, targets?: BacteriumType[]): boolean {
+  if (!buildCheck(s, siteId, type, targets).ok) return false;
   const site = siteById(siteId);
   s.energy -= CONFIG.nodes[type].cost;
-  s.nodes.push({ id: s.nextId++, site: siteId, vessel: site.vessel, type, cd: 0.3, flash: 1 });
+  s.nodes.push({ id: s.nextId++, site: siteId, vessel: site.vessel, type, cd: 0.3, flash: 1, targets: type === 'igg' ? [...targets!] : [], wavesFought: 0 });
   s.rings.push({ x: site.x, y: site.y, r: 40, t: 0, dur: 0.5, kind: 'build' });
+  return true;
+}
+
+/** Re-aim a placed IgG node between waves. */
+export function retargetCheck(s: State, siteId: string, targets: BacteriumType[]): { ok: boolean; reason: string } {
+  const n = nodeAt(s, siteId);
+  if (s.phase !== 'prep') return { ok: false, reason: 'Lymph nodes can only be changed between waves.' };
+  if (!n || n.type !== 'igg') return { ok: false, reason: 'Only an IgG node can be re-aimed.' };
+  if (targets.length !== 1) return { ok: false, reason: 'One target per IgG node.' };
+  if (s.energy < CONFIG.iggRetarget) return { ok: false, reason: `Needs ${CONFIG.iggRetarget} energy (you have ${s.energy}).` };
+  return { ok: true, reason: '' };
+}
+export function retargetNode(s: State, siteId: string, targets: BacteriumType[]): boolean {
+  if (!retargetCheck(s, siteId, targets).ok) return false;
+  s.energy -= CONFIG.iggRetarget;
+  nodeAt(s, siteId)!.targets = [...targets];
   return true;
 }
 
@@ -209,6 +248,7 @@ export function startWave(s: State): boolean {
   s.spawns = waveSpawns(s.wave, s.level);
   s.pulsesLeft = CONFIG.immunePulse.perWave;
   s.lastPulseHits = 0;
+  s.spent = [];
   for (const n of s.nodes) n.cd = 0.3;
   const L = VESSELS[v].length;
   s.cells = [];
@@ -254,10 +294,10 @@ export function firePulse(s: State): number {
 
 // ── Simulation ──────────────────────────────────────────────────────────────
 
-/** Damage a pathogen. Antibodies are reduced by armour; white cells and the pulse are not. */
-export function hurt(s: State, p: Pathogen, dmg: number, armoured = false) {
+/** Damage a pathogen. */
+export function hurt(s: State, p: Pathogen, dmg: number) {
   if (p.hp <= 0) return;
-  p.hp -= armoured ? Math.max(1, dmg - effectiveArmour(p)) : dmg;
+  p.hp -= dmg;
   p.hit = 0.15;
   if (p.hp <= 0) {
     const st = CONFIG.pathogens[p.type];
@@ -280,7 +320,7 @@ export function hurt(s: State, p: Pathogen, dmg: number, armoured = false) {
 
 function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pathogen {
   const st = CONFIG.pathogens[type];
-  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (Math.random() * 2 - 1) * 7, wob: Math.random() * 6, shred: 0, shredT: 0, slow: 1, slowT: 0, shedT: st.sheds?.every };
+  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (Math.random() * 2 - 1) * 7, wob: Math.random() * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
   if (st.boss) {
     const m = pointAt(VESSELS[vessel], 90);
@@ -334,7 +374,6 @@ export function step(s: State, dtRaw: number) {
     p.hit = Math.max(0, p.hit - dt);
     p.wob += dt * 4;
     if (p.slowT > 0) { p.slowT -= dt; if (p.slowT <= 0) p.slow = 1; }
-    if (p.shredT > 0) { p.shredT -= dt; if (p.shredT <= 0) p.shred = 0; }
     p.s += CONFIG.pathogens[p.type].speed * p.slow * organFlow(s, p) * dt;
     const st = CONFIG.pathogens[p.type];
     if (st.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + st.regen * dt);
@@ -352,15 +391,14 @@ export function step(s: State, dtRaw: number) {
     if (n.cd > 0) continue;
     const st = CONFIG.nodes[n.type];
     const site = siteById(n.site);
-    // most advanced pathogen in reach; an IgE node takes any boss in reach first
-    const rank = (p: Pathogen) => p.s + (st.bossDamage && CONFIG.pathogens[p.type].boss ? 1e6 : 0);
+    // the most advanced pathogen in reach
     let best: Pathogen | null = null;
-    for (const p of s.pathogens) if (p.hp > 0 && covers(n.vessel, p, site.stem) && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || rank(p) > rank(best))) best = p;
+    for (const p of s.pathogens) if (p.hp > 0 && covers(n.vessel, p, site.stem) && p.s > 0 && dist(pathogenPos(p), site) <= st.range && (!best || p.s > best.s)) best = p;
     if (!best) continue;
     n.cd = st.cooldown;
     n.flash = 0.4;
     const tp = pathogenPos(best);
-    s.shots.push({ type: n.type, vessel: n.vessel, x: site.x, y: site.y, sx: site.x, sy: site.y, targetId: best.id, t: 0, dur: Math.max(0.08, dist(site, tp) / st.shotSpeed) });
+    s.shots.push({ type: n.type, targets: n.targets, vessel: n.vessel, x: site.x, y: site.y, sx: site.x, sy: site.y, targetId: best.id, t: 0, dur: Math.max(0.08, dist(site, tp) / st.shotSpeed) });
   }
   for (const sh of s.shots) {
     sh.t += dt;
@@ -369,9 +407,14 @@ export function step(s: State, dtRaw: number) {
     if (p) { const q = pathogenPos(p); sh.x = sh.sx + (q.x - sh.sx) * k; sh.y = sh.sy + (q.y - sh.sy) * k; }
     if (k >= 1 && p) {
       const st = CONFIG.nodes[sh.type];
-      if (st.bossDamage && CONFIG.pathogens[p.type].boss) hurt(s, p, st.bossDamage, false);
-      else hurt(s, p, st.damage, true);
-      if (st.shred) { p.shred = Math.min(CONFIG.pathogens[p.type].armour, st.shred); p.shredT = st.shredSeconds ?? 3; }
+      const dmg = antibodyDamage(sh.type, sh.targets, p.type);
+      if (sh.type === 'igg') {
+        // show how well the IgG matched: big and bright for a good match, small and grey for a poor one
+        const m = iggMultiplier(sh.targets, p.type), q = pathogenPos(p);
+        if (m >= 2.5) s.floaters.push({ x: q.x, y: q.y - 26, text: `${Math.round(dmg)}`, t: 0, color: '#1e5fa8', size: 22 });
+        else if (m <= 0.5) s.floaters.push({ x: q.x, y: q.y - 22, text: `${dmg}`, t: 0, color: 'rgba(90,80,75,0.8)', size: 14 });
+      }
+      hurt(s, p, dmg);
       if (st.slow && !CONFIG.pathogens[p.type].slowImmune) { p.slow = Math.min(p.slow, st.slow); p.slowT = st.slowSeconds ?? 2; }
     }
   }
@@ -464,6 +507,15 @@ function recall(s: State, dt: number) {
     s.cells = [];
     s.dilated = null;
     s.pulsesLeft = 0;
+    // every node has fought one more wave; IgE nodes burn out after their last
+    for (const n of s.nodes) n.wavesFought++;
+    for (const n of s.nodes.filter((x) => CONFIG.nodes[x.type].burnsOutAfter && x.wavesFought >= CONFIG.nodes[x.type].burnsOutAfter!)) {
+      const site = siteById(n.site);
+      s.spent.push({ site: n.site, at: { x: site.x, y: site.y } });
+      s.rings.push({ x: site.x, y: site.y, r: 46, t: 0, dur: 0.7, kind: 'pop' });
+      s.floaters.push({ x: site.x, y: site.y - 34, text: 'IgE spent', t: 0, color: '#6a1e4a' });
+    }
+    s.nodes = s.nodes.filter((x) => !s.spent.some((sp) => sp.site === x.site));
     if (s.wave >= totalWaves(s)) { s.phase = 'victory'; return; }
     const bonus = CONFIG.waveClearEnergy(s.wave);
     s.energy += bonus;
