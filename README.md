@@ -22,27 +22,42 @@ It began as a conversion of [The Last Ward: Siege of Goosebridge](https://github
 
 ## Bosses
 
-Every organ ends with a boss wave: one giant pathogen with its own trick, plus a small escort. Build an **IgE** node on the boss's vessel to counter it. While it lives, a **BOSS** banner across the top of the map shows its health; a leaked boss costs 6 to 8 organ health.
+Every organ ends with a boss wave: one giant pathogen with its own trick, plus an escort. While it lives, a **BOSS** banner across the top of the map shows its health; a leaked boss costs 6 to 8 organ health.
 
-| Organ | Boss | Trick |
-|---|---|---|
-| Heart | **Staph colony** | A golden grape-bunch under a thick capsule (armour 7). When it bursts, three weakened bacteria spill out. |
-| Lungs | **Mother virus** | Releases a new virus every 2.4 s as it travels, and rides the breathing surges. |
-| Brain | **Meningococcus** | A heavily armoured diplococcus (armour 8) that IgA cannot slow. Bring IgG. |
-| Liver | **Hepatitis giant** | Regrows 9 health per second as it climbs the long portal vein. |
-| Kidney | **Sepsis hijacker** | A giant hijacker that infects **every** white cell it touches and keeps going. |
+| Organ | Boss | Trick | What works |
+|---|---|---|---|
+| Heart | **Staph colony** | A grape-bunch of *S. aureus*. When it bursts, three weakened staph spill out. | IgG aimed at *S. aureus* (×3) |
+| Lungs | **Mother virus** | Releases a new virus every 2.4 s as it travels, and rides the breathing surges. | IgM, IgE |
+| Brain | **Meningococcus** | A giant *N. meningitidis* that IgA cannot slow. | IgG aimed at *N. meningitidis* (×3) |
+| Liver | **Hepatitis giant** | Regrows 9 health per second as it climbs the long portal vein. | IgM, IgE: damage must outpace it |
+| Kidney | **Sepsis hijacker** | A giant hijacker that infects **every** white cell it touches and keeps going. | Nodes, not white cells |
+
+## The bacteria
+
+There is no armour: every hit lands in full. Instead, each bacterium has a Gram stain, a shape and a species, and IgG antibodies are aimed at one of them.
+
+| Bacterium | Gram | Shape | Organs |
+|---|---|---|---|
+| *Staphylococcus aureus* | + | coccus (clusters) | every organ |
+| *Streptococcus pneumoniae* | + | coccus (pairs, chains) | lungs, brain |
+| *Listeria monocytogenes* | + | rod | brain |
+| *Neisseria meningitidis* | − | coccus (bean-shaped pairs) | brain |
+| *Escherichia coli* | − | rod | liver, kidney |
+| *Klebsiella pneumoniae* | − | rod (thick capsule) | lungs, liver |
+
+All six have 70 health and the same speed; viruses (10 health) are fast and come in groups.
 
 ## How it plays
 
 1. **Prepare.** The panel and the map show the next wave: which pathogens, how many, roughly when, and up which vessel (and whether it forks).
-2. **Place lymph nodes** (between waves only). Click a **+** site beside a vessel section and pick a type. Each node fires its immunoglobulin at pathogens on its own route; a node on a fork's shared stem guards both branches. Nodes cost energy; you start with 240–590 energy (more on the bigger organs) and two nodes already placed, and earn energy for every kill and every wave cleared.
+2. **Place lymph nodes** (between waves only). Click a **+** site beside a vessel section and pick a type. Each node fires its immunoglobulin at pathogens on its own route; a node on a fork's shared stem guards both branches. Nodes cost energy; you start with 120–295 energy and two nodes already placed, and earn energy for every kill and every wave cleared. Most routes have five sites (the liver's more, the brain's two).
 
-| Node | Cost | Effect |
-|---|---|---|
-| **IgM** | 60 | High damage. No slow, no armour reduction. |
-| **IgG** | 50 | Lower damage, but strips armour (opsonisation), so every other hit lands harder. |
-| **IgA** | 50 | Lower damage, no armour reduction, but slows what it hits. |
-| **IgE** | 80 | **Boss hunter.** Longer reach; always aims at a boss in reach first and hits it for 38 straight through armour (every 1.8 s). Only 5 damage to anything else. |
+| Node | Cost | Damage | Effect |
+|---|---|---|---|
+| **IgM** | 60 | 10 | Hits every pathogen the same. |
+| **IgG** | 50 | 10 × match | **Aimed at one bacterium** (you pick it when you place the node; re-aim between waves for 20 energy). The best single match applies: **×3** its species, **×2.5** the same shape, **×2** the same Gram stain, **×0.5** any other bacterium, **×0.25** anything that is not a bacterium (viruses, hijackers, infected cells, viral bosses). |
+| **IgA** | 50 | 7.5 | Slows what it hits to half speed for 2.2 s (not the meningococcus). |
+| **IgE** | 80 | 20 | Double damage and a longer reach, but it **burns out after its third wave**; its site is free again for the next build. |
 
 3. **Start the wave.** Every vessel starts at rest, and your white cells (two, or three in the brain) wait at the organ.
 4. **Dilate during the wave, with NO.** Click or tap a route (or press 1 to 8) to open it: its walls part and the white cells set out along it, against the flow, under their nodes' cover. Only one route is open at a time; opening another switches, and clicking the open one closes it. The **NO gauge** (100) pays for it: opening or switching costs **15** (and you need at least 23, enough to hold it open for a second), an open route drains **8 a second**, and while every route is closed NO refills **3 a second**; each cleared wave adds **35**. When NO runs out the route closes and the cells head home. Cells at home or heading home don't fight, so every second closed is a second the organ relies on its nodes alone.
@@ -50,7 +65,7 @@ Every organ ends with a boss wave: one giant pathogen with its own trick, plus a
 6. **Immune pulse.** Once per wave, a burst around each white cell out on a route hits pathogens on that route only. Fire it into a cluster.
 7. **Reset.** Cells return home, every route rests, you earn energy and build again. Organ damage persists until restart (the liver regrows a little).
 
-**Pathogens:** bacteria (slow, tough, armoured capsule), viruses (small, fast, in groups), and **hijacker viruses**: if one reaches a white cell it gets inside, the cell is lost, and it becomes an **infected white cell** heading for the organ. The heart's five waves introduce these one at a time; later organs mix them.
+**Pathogens:** the six bacteria above (slow, tough), viruses (small, fast, in groups), and **hijacker viruses**: if one reaches a white cell it gets inside, the cell is lost, and it becomes an **infected white cell** heading for the organ. The heart's five waves introduce these one at a time; later organs mix them.
 
 ### Controls
 
@@ -64,15 +79,13 @@ Every organ ends with a boss wave: one giant pathogen with its own trick, plus a
 
 ### Tuning
 
-Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy per wave, node types (cost, damage, rate, reach, armour strip, slow, boss damage), white cells, the pulse, the NO gauge (`no`: capacity, opening cost, drain, refill, top-up), pathogens (health, speed, armour, organ damage, contact damage, infection). Then `LEVELS`, one entry per organ: health, starting energy, white cell count, starting nodes, its twist (`surge`, `regenPerWave`, `filtration`), its map (organ centre and size, vessel paths with any `fork` and its two branches, where along each route the build sites go) and its waves. [`src/level.ts`](src/level.ts) turns the loaded organ's vessels into routes (a forked vessel becomes two routes sharing a stem) and places the sites.
+Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy per wave, node types (cost, damage, rate, reach, slow, burn-out), the IgG match multipliers (`iggMatch`) and re-aim cost, white cells, the pulse, the NO gauge (`no`: capacity, opening cost, drain, refill, top-up), pathogens (health, speed, Gram stain / shape / species for bacteria, organ damage, contact damage, infection). Then `LEVELS`, one entry per organ: health, starting energy, white cell count, starting nodes, its twist (`surge`, `regenPerWave`, `filtration`), its map (organ centre and size, vessel paths with any `fork` and its two branches, where along each route the build sites go) and its waves. [`src/level.ts`](src/level.ts) turns the loaded organ's vessels into routes (a forked vessel becomes two routes sharing a stem) and places the sites.
 
 ### Balance assumptions
 
-- A scripted sensible player (spend energy on nodes matched to each vessel's threat; during the wave open the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, close it when it is clear, switch only for twice the threat; pulse into clusters of three) wins every organ, bosses included: heart 7/20, lungs 12/20, brain 12/18, liver 16/24, kidney 8/20. Never building loses on every organ.
-- **Holding one route open is worse than dilating with care.** A scripted player who builds the same way but opens the busiest route as soon as it can and never closes it loses the heart and the brain, and finishes the lungs on 8/20, the liver on 10/24 and the kidney on 5/20 (the tests require it to lose, or end at least 2 health worse).
-- Virus health (14) is set so IgM kills one in a single hit and IgG/IgA need two or three; bacteria (70, armour 5) shrug off much of IgM until IgG opens them.
-- White cells alone (no nodes) leak 9 heart health in wave 1: they help, they do not carry.
-- Hijackers appear in wave 5 on three vessels, so they meet the white cells whichever vessel you dilate.
+- A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG at the bacterium bringing the most health up that vessel; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; pulses into clusters of three) wins every organ: heart 18/20, lungs 11/20, brain 15/18, liver 18/24, kidney 13/20. Never building loses on every organ, and white cells alone lose the heart in wave 1.
+- **Holding one route open is worse than dilating with care.** The same player opening the busiest route as soon as it can and never closing it loses the lungs, and finishes the heart on 15/20, the brain on 4/18, the liver on 1/24 and the kidney on 7/20 (the tests require it to lose, or end at least 2 health worse).
+- Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
 ### Files
 
@@ -82,8 +95,9 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 | `src/level.ts` | The loaded organ's routes (forks expanded into two routes sharing a stem) and the build sites beside them (`loadLevel`). Path maths in `src/geometry.ts`. |
 | `src/sim.ts` | State, rules and simulation (no DOM): placement, mid-wave dilation and the NO gauge, forks, waves, immunoglobulins, white cells, infection, the pulse, recall. |
 | `src/bosses.ts` | The five boss pathogens' drawings. |
+| `src/bacteria.ts` | The six bacteria's drawings. |
 | `src/organs.ts` | The lungs, brain, liver (with the gut) and kidney as anatomy-plate drawings. |
 | `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
 | `src/main.ts` | HUD, panel, level picker and saved progress, build popover, mouse / touch / keyboard input, overlays. |
-| `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the three immunoglobulins, infection), each organ's map and twist, each boss's trick, map labels that never cover a site or each other, plus balance on every organ (including the hold-open check). |
+| `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the four lymph nodes and the IgG match, IgE burn-out, infection), each organ's map and twist, each boss's trick, map labels that never cover a site or each other, plus balance on every organ (including the hold-open check). |

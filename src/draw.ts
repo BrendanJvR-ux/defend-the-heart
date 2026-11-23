@@ -210,7 +210,7 @@ export function drawNodeIcon(ctx: CanvasRenderingContext2D, type: NodeType, x: n
   ctx.fillStyle = col.dark; ctx.font = '900 16px Palatino, Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(type === 'igm' ? 'M' : type === 'igg' ? 'G' : type === 'iga' ? 'A' : 'E', 0, 3);
   if (type === 'ige') {
-    // a boss hunter: crosshair ticks around the badge
+    // a heavy hitter that burns out: spark ticks around the badge
     ctx.strokeStyle = col.dark; ctx.lineWidth = 2.4;
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 15, 2 + Math.sin(a) * 15); ctx.lineTo(Math.cos(a) * 21, 2 + Math.sin(a) * 21); ctx.stroke(); }
   }

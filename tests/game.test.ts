@@ -37,9 +37,10 @@ const pulseAtCluster = (min: number) => (s: State) => { if (s.phase === 'combat'
 function sensibleBuild(s: State) {
   const n = s.wave;
   const ranked = [...M.VESSEL_IDS].sort((a, b) => threat(n, b) - threat(n, a));
-  // spend energy round-robin on the threatened vessels, the undefended ones first
-  const order = [...ranked.slice(1), ranked[0]].filter((v) => threat(n, v) > 0);
-  for (let guard = 0; guard < 12; guard++) {
+  // spend energy round-robin on the threatened vessels: the least defended first, then the busiest
+  const guards = (v: VesselId) => s.nodes.filter((x) => guarding(v).some((g) => g.id === x.site)).length;
+  const order = ranked.filter((v) => threat(n, v) > 0).sort((a, b) => guards(a) - guards(b) || threat(n, b) - threat(n, a));
+  for (let guard = 0; guard < 3; guard++) { // at most three rounds: a sensible player keeps energy for later waves
     let placed = false;
     for (const v of order) {
       const types = new Set(spawnsFor(n, v).map((x) => x.type));
@@ -207,10 +208,11 @@ describe('Defend the Heart: cells and the pulse', () => {
   });
 
   it('between waves: cells home, vessel contracts, choice and pulse reset, energy awarded; heart damage persists', () => {
-    const s = newGame(0); go(s, 'right');
+    const s = newGame(0); go(s, 'right'); quiet(s);
+    mk(s, 'saureus', 'upper', M.VESSELS.upper.length - 20); // one bacterium, about to reach the heart
     const e0 = s.energy;
     finishWave(s);
-    expect(s.phase).toBe('prep'); expect(s.wave).toBe(2);
+    expect(s.phase).toBe('prep'); expect(s.wave).toBe(2); expect(s.heartHp).toBeLessThan(LEVELS[0].hp);
     expect(s.dilated).toBeNull(); expect(s.cells.length).toBe(0); expect(s.pulsesLeft).toBe(0);
     for (const v of M.VESSEL_IDS) expect(s.width[v]).toBe(0);
     expect(s.energy).toBeGreaterThan(e0);
@@ -439,6 +441,14 @@ describe('Defend the Heart: organ levels', () => {
         const n = guarding(r).length;
         if (i === 2) expect(n, `brain ${r}`).toBe(2); else expect(n, `${LEVELS[i].id} ${r}`).toBeGreaterThanOrEqual(atLeast[i]);
       }
+    });
+  });
+
+  it('S. aureus comes in every organ; each organ uses only its own species', () => {
+    const own: BacteriumType[][] = [['saureus'], ['saureus', 'spneumo', 'kpneumo'], ['saureus', 'spneumo', 'listeria', 'nmening'], ['saureus', 'ecoli', 'kpneumo'], ['saureus', 'ecoli']];
+    LEVELS.forEach((l, i) => {
+      const kinds = new Set(l.waves.flatMap((w) => w.groups.map((g) => g.type)).filter((x) => CONFIG.pathogens[x].taxon && !CONFIG.pathogens[x].boss));
+      expect([...kinds].sort()).toEqual([...own[i]].sort());
     });
   });
 
