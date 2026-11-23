@@ -1,5 +1,6 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
 import { CONFIG, LEVELS, NODE_TYPES, BACTERIA, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
+import type { RunSave } from './career';
 import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
@@ -77,6 +78,25 @@ export function newGame(level = LEVEL_INDEX): State {
   for (const n of L.startingNodes) {
     const site = SITES.find((x) => x.vessel === n.vessel && x.index === n.site);
     if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets: n.type === 'igg' ? ['saureus'] : [], wavesFought: 0 });
+  }
+  return s;
+}
+
+/** Put a saved build phase back: the organ, wave, health, energy, NO and nodes. Nodes on sites this
+ *  organ no longer has are dropped; an organ that does not exist starts a fresh heart. */
+export function resumeGame(run: RunSave): State {
+  if (!(run.level >= 0 && run.level < LEVELS.length)) return newGame(0);
+  const s = newGame(run.level);
+  const L = LEVELS[run.level];
+  s.wave = Math.max(1, Math.min(L.waves.length, Math.floor(run.wave)));
+  s.heartHp = Math.max(1, Math.min(L.hp, run.heartHp));
+  s.energy = Math.max(0, Math.floor(run.energy));
+  s.no = Math.max(0, Math.min(CONFIG.no.max, run.no));
+  s.nodes = [];
+  for (const n of run.nodes) {
+    const site = SITES.find((x) => x.id === n.site);
+    if (!site || !CONFIG.nodes[n.type] || s.nodes.some((x) => x.site === n.site)) continue;
+    s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets: n.type === 'igg' ? [...n.targets] : [], wavesFought: n.wavesFought | 0 });
   }
   return s;
 }

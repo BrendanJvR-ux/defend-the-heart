@@ -4,7 +4,13 @@ A fixed top-down 2D anatomy tower defence across five organs. Each organ is the 
 
 ## The organs
 
-Clear an organ to unlock the next. Your progress (and the organ you last played) is remembered in your browser; pick any unlocked organ from the **Level** card at the top of the panel between waves.
+Clear an organ to unlock the next. The game opens on a **menu**:
+
+- **Continue** picks up your game where you left it: the organ, the wave, your nodes (with their IgG targets and IgE waves left), energy, organ health and NO. It is saved in your browser at the start of every build phase, so leaving mid-wave brings you back to that wave's build phase. Losing an organ ends that run.
+- **New career** starts over at the heart (it asks first if you have progress).
+- **Organs** lists the five organs: cleared ones show your best health and can be replayed. Starting a different organ while a game is in progress asks first.
+
+The **Menu** button in the top bar opens it at any time (the game pauses). Between waves, the **Level** card at the top of the panel also switches organ.
 
 | Level | Organ | Routes in | Twist | Health | Waves |
 |---|---|---|---|---|---|
@@ -75,7 +81,7 @@ All six have 70 health and the same speed; viruses (10 health) are fast and come
 | Open / switch / close a route (during a wave) | Click / tap a vessel, or the route buttons | 1–8, in the order the panel lists the routes |
 | Start wave | **Start wave** | Enter |
 | Immune pulse | **Immune pulse** | Space |
-| Pause, speed, restart | buttons in the top bar | P to pause, Esc closes the build menu |
+| Menu, pause, speed, restart | buttons in the top bar | P to pause; Esc closes the build menu or steps back in the menu |
 
 ### Tuning
 
@@ -99,5 +105,7 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 | `src/organs.ts` | The lungs, brain, liver (with the gut) and kidney as anatomy-plate drawings. |
 | `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
-| `src/main.ts` | HUD, panel, level picker and saved progress, build popover, mouse / touch / keyboard input, overlays. |
+| `src/career.ts` | The career and its save (no DOM): organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |
+| `src/main.ts` | HUD, panel, the menu, autosave, build popover and IgG target picker, mouse / touch / keyboard input, overlays. |
+| `tests/career.test.ts` | The save: fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing. |
 | `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the four lymph nodes and the IgG match, IgE burn-out, infection), each organ's map and twist, each boss's trick, map labels that never cover a site or each other, plus balance on every organ (including the hold-open check). |

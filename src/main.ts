@@ -4,21 +4,23 @@ import * as map from './level';
 import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
   type State, newGame, step, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
-  aliveCells, wave, whenLabel, buildCheck, placeNode, retargetNode, retargetCheck, selectableTargets, nodeAt, levelDef, totalWaves, surging,
+  aliveCells, wave, whenLabel, resumeGame, buildCheck, placeNode, retargetNode, retargetCheck, selectableTargets, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
+import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, type Career, type KV } from './career';
 import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
 
-// ── Progress: which organs are unlocked, remembered in this browser ─────────
-const store = {
+// ── The career: organs cleared, the game in progress, saved in this browser ──
+const store: KV = {
   get(k: string): string | null { try { return localStorage.getItem(k); } catch { return null; } },
   set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* private mode: progress lasts this visit */ } },
 };
-let unlocked = Math.max(1, Math.min(LEVELS.length, Number(store.get('dth-unlocked')) || 1));
-const savedLevel = Math.min(unlocked - 1, Math.max(0, Number(store.get('dth-level')) || 0));
+let career: Career = loadCareer(store);
+let unlocked = unlockedCount(career);
+const saveNow = () => saveCareer(store, career);
 const vesselName = (v: VesselId) => map.VESSELS[v]?.name ?? v;
 const organTitle = (i: number) => LEVELS[i].title.replace(/^The /, '');
 
-let s: State = newGame(savedLevel);
+let s: State = career.run ? resumeGame(career.run) : newGame(0);
 const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, popMode: 'main', showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -28,6 +30,7 @@ const panel = $('panel');
 const overlay = $('overlay');
 const toastEl = $('toast');
 const popover = $('popover');
+const menuEl = $('menu');
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 let toastT = 0;
@@ -170,19 +173,75 @@ function pulse() {
   lastSig = '';
 }
 
-function restart() { const sp = s.speed; s = newGame(s.level); s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
-function playLevel(i: number) {
+function restart() { const sp = s.speed; s = newGame(s.level); lastPhase = ''; s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
+/** A run worth asking about before it is thrown away: past the first wave, or with nodes built. */
+const runInProgress = () => (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.phase !== 'prep' || s.energy !== levelDef(s).startEnergy);
+function playLevel(i: number, confirmed = false) {
   if (i >= unlocked) { toast('Clear the previous organ to unlock this one.'); return; }
-  const sp = s.speed; s = newGame(i); s.speed = sp; store.set('dth-level', String(i));
-  closeSite(); lastSig = ''; overlaySig = '';
+  if (!confirmed && i !== s.level && runInProgress()) { openMenu({ page: 'switch', level: i }); return; }
+  const sp = s.speed; s = newGame(i); s.speed = sp;
+  closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = '';
   toast(`Level ${i + 1}: defend the ${organTitle(i).toLowerCase()}.`);
 }
-function recordWin() {
-  if (s.level + 1 >= unlocked && s.level + 1 < LEVELS.length) { unlocked = s.level + 2; store.set('dth-unlocked', String(unlocked)); }
+
+// ── Saving: at the start of every build phase, and when an organ is won or lost ──
+let lastPhase = '';
+function autosave() {
+  const key = `${s.level}:${s.wave}:${s.phase}`;
+  if (!gameShown || key === lastPhase) return;
+  lastPhase = key;
+  if (s.phase === 'prep') { career.run = snapshot(s); saveNow(); }
+  else if (s.phase === 'victory' || s.phase === 'defeat') { onOrganEnd(career, s); unlocked = unlockedCount(career); saveNow(); lastSig = ''; }
 }
+
+// ── The menu ────────────────────────────────────────────────────────────────
+type MenuPage = { page: 'main' } | { page: 'organs' } | { page: 'confirmNew' } | { page: 'switch'; level: number };
+let menuPage: MenuPage | null = null;
+let pausedBeforeMenu = false;
+function openMenu(p: MenuPage = { page: 'main' }) {
+  if (!menuPage) { pausedBeforeMenu = s.paused; s.paused = true; }
+  menuPage = p; closeSite(); document.body.classList.add('menu-open'); renderMenu();
+}
+function closeMenu() {
+  if (!menuPage) return;
+  menuPage = null; s.paused = pausedBeforeMenu; document.body.classList.remove('menu-open'); menuEl.hidden = true; menuEl.innerHTML = ''; lastSig = ''; overlaySig = '';
+}
+const careerStarted = () => career.cleared.some(Boolean) || !!career.run || career.gold > 0;
+function renderMenu() {
+  if (!menuPage) return;
+  const run = career.run, cleared = career.cleared.filter(Boolean).length;
+  let h = '';
+  if (menuPage.page === 'main') {
+    h = `<h2>Defend the Heart</h2><p class="kicker">An anatomy tower defence</p>
+      <p class="sub">${cleared ? `${cleared} of ${LEVELS.length} organs cleared.` : 'Five organs to defend, from the heart to the kidney.'}</p>
+      <div class="menuButtons">
+        ${run ? `<button data-menu="continue" class="primary">Continue<small>${esc(organTitle(run.level))} · wave ${run.wave} of ${LEVELS[run.level].waves.length}</small></button>` : ''}
+        <button data-menu="new" ${run ? '' : 'class="primary"'}>New career</button>
+        <button data-menu="organs">Organs<small>${unlocked} unlocked</small></button>
+        ${gameShown ? '<button data-menu="close">Back to the game</button>' : ''}
+      </div>`;
+  } else if (menuPage.page === 'organs') {
+    h = `<h2>Organs</h2><p class="sub">Clear an organ to unlock the next. Cleared organs can be replayed.</p>
+      <div class="menuButtons">${LEVELS.map((l, i) => `<button data-menu="level" data-level="${i}" ${i < unlocked ? '' : 'disabled'}>${i + 1}. ${esc(organTitle(i))}<small>${i >= unlocked ? 'locked' : career.cleared[i] ? `cleared · best ${career.best[i]}/${l.hp}` : esc(l.tagline)}</small></button>`).join('')}</div>
+      <p><button data-menu="back">Back</button></p>`;
+  } else if (menuPage.page === 'confirmNew') {
+    h = `<h2>Start over?</h2><p>Your cleared organs${career.gold ? ', gold' : ''} and the game in progress will be lost.</p>
+      <div class="menuButtons"><button data-menu="newYes" class="primary danger">Start a new career</button><button data-menu="back">Keep my career</button></div>`;
+  } else {
+    const L = levelDef(s);
+    h = `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).</p>
+      <div class="menuButtons"><button data-menu="switchYes" data-level="${menuPage.level}" class="primary">Play ${esc(LEVELS[menuPage.level].title)}</button><button data-menu="close">Stay</button></div>`;
+  }
+  menuEl.innerHTML = `<div class="plate">${h}</div>`;
+  menuEl.hidden = false;
+  (menuEl.querySelector('button:not([disabled])') as HTMLButtonElement | null)?.focus({ preventScroll: true });
+}
+/** Has the player got a game in front of them (so "Back to the game" makes sense)? */
+let gameShown = false;
 function togglePause() { if (s.phase === 'combat' || s.phase === 'prep' || s.phase === 'recall') { s.paused = !s.paused; lastSig = ''; } }
 
 panel.addEventListener('click', (e) => {
+  if (menuPage) return; // the menu is on top of the game
   const el = (e.target as HTMLElement).closest('[data-act]') as HTMLButtonElement | null;
   if (!el || el.disabled) return;
   const a = el.dataset.act;
@@ -203,12 +262,35 @@ overlay.addEventListener('click', (e) => {
   if (a?.dataset.act === 'level') playLevel(Number(a.dataset.level));
   if (a?.dataset.act === 'resume') { s.paused = false; lastSig = ''; }
 });
+$('btnMenu').addEventListener('click', () => (menuPage ? closeMenu() : openMenu()));
+menuEl.addEventListener('click', (e) => {
+  const el = (e.target as HTMLElement).closest('[data-menu]') as HTMLButtonElement | null;
+  if (!el || el.disabled) return;
+  const a = el.dataset.menu;
+  if (a === 'continue' && career.run) {
+    const sp = s.speed; s = resumeGame(career.run); s.speed = sp; lastPhase = ''; gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false;
+    toast(`Welcome back: the ${organTitle(s.level).toLowerCase()}, wave ${s.wave}.`);
+  } else if (a === 'new') { if (careerStarted()) openMenu({ page: 'confirmNew' }); else startCareer(); }
+  else if (a === 'newYes') startCareer();
+  else if (a === 'organs') openMenu({ page: 'organs' });
+  else if (a === 'back') openMenu({ page: 'main' });
+  else if (a === 'close') closeMenu();
+  else if (a === 'level') { gameShown = true; playLevel(Number(el.dataset.level)); if (menuPage?.page !== 'switch') { s.paused = false; pausedBeforeMenu = false; } }
+  else if (a === 'switchYes') { gameShown = true; pausedBeforeMenu = false; playLevel(Number(el.dataset.level), true); s.paused = false; }
+});
+function startCareer() {
+  career = freshCareer(); unlocked = unlockedCount(career); saveNow();
+  const sp = s.speed; s = newGame(0); s.speed = sp; lastPhase = ''; gameShown = true;
+  closeMenu(); pausedBeforeMenu = false; s.paused = false;
+  toast('A new career: defend the heart.');
+}
 $('btnPause').addEventListener('click', togglePause);
 $('btnSpeed').addEventListener('click', () => { s.speed = s.speed === 1 ? 2 : 1; });
 $('btnRestart').addEventListener('click', restart);
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
   const keyed = /^[1-9]$/.test(e.key) ? map.VESSEL_IDS[Number(e.key) - 1] : undefined;
+  if (menuPage) { if (e.key === 'Escape' && gameShown && menuPage.page !== 'switch') { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); } return; }
   if (keyed) choose(keyed);
   // Esc steps back from the IgG target list, then closes
   else if (e.key === 'Escape') { if (view.selectedSite && view.popMode !== 'main') openSite(view.selectedSite, 'main'); else closeSite(); }
@@ -353,7 +435,6 @@ function renderOverlay() {
   overlaySig = sig;
   const L = levelDef(s), org = organTitle(s.level).toLowerCase(), plural = s.level === 1 ? 'are' : 'is';
   if (s.phase === 'victory') {
-    recordWin();
     lastSig = '';
     const next = s.level + 1 < LEVELS.length ? s.level + 1 : -1;
     overlay.hidden = false; overlay.className = 'victory';
@@ -383,17 +464,19 @@ function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (!s.paused) for (let i = 0; i < s.speed; i++) step(s, dt);
+  autosave();
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
   refresh(now);
   requestAnimationFrame(frame);
 }
 resize();
+openMenu();
 refresh(performance.now());
 requestAnimationFrame(frame);
 
 Object.assign(window, {
   __heart: () => s,
   __level: (i: number) => { unlocked = Math.max(unlocked, i + 1); playLevel(i); return levelDef(s).id; },
-  __advance: (sec: number) => { for (let t = 0; t < sec && !s.paused; t += 1 / 30) step(s, 1 / 30); refresh(performance.now()); return { phase: s.phase, wave: s.wave, hp: s.heartHp }; },
+  __advance: (sec: number) => { for (let t = 0; t < sec && !s.paused; t += 1 / 30) { step(s, 1 / 30); autosave(); } refresh(performance.now()); return { phase: s.phase, wave: s.wave, hp: s.heartHp }; },
   __refresh: () => refresh(performance.now()),
 });
