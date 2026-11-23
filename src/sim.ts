@@ -1,5 +1,5 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
-import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
+import { CONFIG, LEVELS, NODE_TYPES, BACTERIA, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
 import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
@@ -169,6 +169,9 @@ export function placeNode(s: State, siteId: string, type: NodeType, targets?: Ba
   s.rings.push({ x: site.x, y: site.y, r: 40, t: 0, dur: 0.5, kind: 'build' });
   return true;
 }
+
+/** The IgG targets this player can choose (Stage 3 limits them to the career's unlocks). */
+export const selectableTargets = (_s: State): BacteriumType[] => [...BACTERIA];
 
 /** Re-aim a placed IgG node between waves. */
 export function retargetCheck(s: State, siteId: string, targets: BacteriumType[]): { ok: boolean; reason: string } {

@@ -91,7 +91,7 @@ function makeSites(): Site[] {
           if (p.x < 50 || p.x > W - 50 || p.y < 50 || p.y > H - 50) continue;
           let clear = organClearance(p) - 70;
           for (const o of VESSEL_IDS) clear = Math.min(clear, nearestOnVessel(VESSELS[o], p).d - (entryOf(o) === entryOf(v) ? 50 : 70));
-          for (const s of out) clear = Math.min(clear, dist(p, s) - 80);
+          for (const s of out) clear = Math.min(clear, dist(p, s) - 64);
           const score = clear - Math.abs(extra) * 0.5;
           if (clear > 0 && score > bestScore) { bestScore = score; best = { id: `${v}-${index}`, vessel: v, index, x: p.x, y: p.y, anchor: { x: a.x, y: a.y }, stem }; }
         }

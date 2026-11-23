@@ -1,10 +1,10 @@
 import './style.css';
-import { CONFIG, LEVELS, NODE_TYPES, type NodeType, type PathogenType, type VesselId } from './config';
+import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type NodeType, type PathogenType, type VesselId } from './config';
 import * as map from './level';
 import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
   type State, newGame, step, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
-  aliveCells, wave, whenLabel, buildCheck, placeNode, nodeAt, levelDef, totalWaves, surging,
+  aliveCells, wave, whenLabel, buildCheck, placeNode, retargetNode, retargetCheck, selectableTargets, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
 import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
 
@@ -19,7 +19,7 @@ const vesselName = (v: VesselId) => map.VESSELS[v]?.name ?? v;
 const organTitle = (i: number) => LEVELS[i].title.replace(/^The /, '');
 
 let s: State = newGame(savedLevel);
-const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
+const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, popMode: 'main', showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('board');
@@ -71,17 +71,40 @@ function choose(v: VesselId) {
 }
 
 // ── Build popover ───────────────────────────────────────────────────────────
-function openSite(id: string) {
+/** The target list for an IgG node: each bacterium with its icon, name and Gram/shape. */
+function targetButtons(act: 'aim' | 'reaim', disabled: (b: BacteriumType) => string): string {
+  return `<div class="types targets">${selectableTargets(s).map((b) => {
+    const st = CONFIG.pathogens[b], why = disabled(b);
+    return `<button data-act="${act}" data-target="${b}" ${why ? 'disabled' : ''} title="${esc(why)}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>${esc(st.short ?? '')}</small></span></button>`;
+  }).join('')}</div>`;
+}
+const targetNames = (ts: BacteriumType[]) => ts.map((b) => `<i>${esc(CONFIG.pathogens[b].plural)}</i>`).join(' and ');
+
+function openSite(id: string, mode: 'main' | 'aim' | 'reaim' = 'main') {
   if (s.phase !== 'prep') { toast('Lymph nodes can only be placed between waves.'); return; }
-  view.selectedSite = id;
+  view.selectedSite = id; view.popMode = mode;
   const site = siteById(id);
   const node = nodeAt(s, id);
-  if (node) {
+  const x = `<button class="x" data-act="close" aria-label="Close">×</button>`;
+  if (mode === 'aim') {
+    popover.innerHTML = `${x}<h3>Aim the IgG node</h3><p class="sub">×3 on its target, ×2.5 on the same shape, ×2 on the same Gram stain, ×0.5 on other bacteria, ×0.25 on viruses.</p>
+      ${targetButtons('aim', (b) => buildCheck(s, id, 'igg', [b]).reason)}<p><button data-act="back">Back</button></p>`;
+  } else if (mode === 'reaim' && node) {
+    popover.innerHTML = `${x}<h3>Re-aim the IgG node</h3><p class="sub">Now aimed at ${targetNames(node.targets)}. Re-aiming costs ${CONFIG.iggRetarget} energy.</p>
+      ${targetButtons('reaim', (b) => node.targets.includes(b) ? 'Already aimed here.' : retargetCheck(s, id, [b]).reason)}<p><button data-act="back">Back</button></p>`;
+  } else if (node) {
     const st = CONFIG.nodes[node.type];
-    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${st.damage} damage every ${st.cooldown}s${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}.</p>`;
+    const life = st.burnsOutAfter ? `<p class="notice">Burns out after ${st.burnsOutAfter - node.wavesFought} more wave${st.burnsOutAfter - node.wavesFought === 1 ? '' : 's'}.</p>` : '';
+    const aim = node.type === 'igg' ? `<p class="sub">Aimed at ${targetNames(node.targets)}.</p><p><button data-act="toreaim">Re-aim (${CONFIG.iggRetarget} energy)</button></p>` : '';
+    popover.innerHTML = `${x}<h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${st.damage} damage every ${st.cooldown}s${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}.</p>${aim}${life}`;
   } else {
-    popover.innerHTML = `<button class="x" data-act="close" aria-label="Close">×</button><h3>Place a lymph node</h3><p class="sub">Beside the ${esc(vesselName(site.vessel).toLowerCase())}. You have <b>${s.energy}</b> energy.</p>
-      <div class="types">${NODE_TYPES.map((t) => { const st = CONFIG.nodes[t]; const c = buildCheck(s, id, t); return `<button data-act="build" data-type="${t}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason)}"><img alt="" src="${nodeIcon(t)}" width="44" height="34"><span><b>${esc(st.short)}</b> · ${st.cost} energy<small>${esc(st.blurb)}</small></span></button>`; }).join('')}</div>`;
+    popover.innerHTML = `${x}<h3>Place a lymph node</h3><p class="sub">Beside the ${esc(vesselName(site.vessel).toLowerCase())}. You have <b>${s.energy}</b> energy.</p>
+      <div class="types">${NODE_TYPES.map((t) => {
+        const st = CONFIG.nodes[t];
+        // IgG still needs a target: judge it with any target, the next step picks one
+        const c = buildCheck(s, id, t, t === 'igg' ? [selectableTargets(s)[0]] : undefined);
+        return `<button data-act="build" data-type="${t}" ${c.ok ? '' : 'disabled'} title="${esc(c.reason)}"><img alt="" src="${nodeIcon(t)}" width="44" height="34"><span><b>${esc(st.short)}</b> · ${st.cost} energy<small>${esc(st.blurb)}</small></span></button>`;
+      }).join('')}</div>`;
   }
   popover.hidden = false;
   // beside the site, on the side with more room, kept wholly inside the map
@@ -95,15 +118,26 @@ function openSite(id: string) {
 }
 function closeSite() {
   if (popover.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-  popover.hidden = true; view.selectedSite = null;
+  popover.hidden = true; view.selectedSite = null; view.popMode = 'main';
 }
 popover.addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest('[data-act]') as HTMLButtonElement | null;
-  if (!el || el.disabled) return;
-  if (el.dataset.act === 'close') closeSite();
-  if (el.dataset.act === 'build' && view.selectedSite) {
+  const id = view.selectedSite;
+  if (!el || el.disabled || !id) { if (el?.dataset.act === 'close') closeSite(); return; }
+  const act = el.dataset.act;
+  if (act === 'close') closeSite();
+  else if (act === 'back') openSite(id, 'main');
+  else if (act === 'toreaim') openSite(id, 'reaim');
+  else if (act === 'build') {
     const type = el.dataset.type as NodeType;
-    if (placeNode(s, view.selectedSite, type)) { toast(`${CONFIG.nodes[type].name} placed.`); closeSite(); lastSig = ''; }
+    if (type === 'igg') { openSite(id, 'aim'); return; }
+    if (placeNode(s, id, type)) { toast(`${CONFIG.nodes[type].name} placed.`); closeSite(); lastSig = ''; }
+  } else if (act === 'aim') {
+    const b = el.dataset.target as BacteriumType;
+    if (placeNode(s, id, 'igg', [b])) { toast(`IgG lymph node placed, aimed at ${CONFIG.pathogens[b].plural}.`); closeSite(); lastSig = ''; }
+  } else if (act === 'reaim') {
+    const b = el.dataset.target as BacteriumType;
+    if (retargetNode(s, id, [b])) { toast(`IgG re-aimed at ${CONFIG.pathogens[b].plural} (−${CONFIG.iggRetarget} energy).`); closeSite(); lastSig = ''; }
   }
 });
 
@@ -176,7 +210,8 @@ window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
   const keyed = /^[1-9]$/.test(e.key) ? map.VESSEL_IDS[Number(e.key) - 1] : undefined;
   if (keyed) choose(keyed);
-  else if (e.key === 'Escape') closeSite();
+  // Esc steps back from the IgG target list, then closes
+  else if (e.key === 'Escape') { if (view.selectedSite && view.popMode !== 'main') openSite(view.selectedSite, 'main'); else closeSite(); }
   else if (e.key === 'Enter' && tag !== 'BUTTON' && s.phase === 'prep') { if (startWave(s)) { closeSite(); lastSig = ''; } }
   else if (e.key === ' ' && tag !== 'BUTTON' && s.phase === 'combat') { e.preventDefault(); pulse(); }
   else if (e.key === 'p' || e.key === 'P') togglePause();
@@ -297,6 +332,12 @@ function renderHud() {
   const noText = String(Math.floor(s.no));
   for (const el of panel.querySelectorAll<HTMLElement>('[data-no]')) if (el.textContent !== noText) el.textContent = noText;
   const bar = panel.querySelector<HTMLElement>('[data-nobar]'); if (bar) bar.style.width = `${(s.no / CONFIG.no.max) * 100}%`;
+  // IgE nodes that burnt out: say so once, and close a popover left open on their site
+  if (s.phase === 'prep' && s.spent.length && spentToasted !== s.wave) {
+    spentToasted = s.wave;
+    if (view.selectedSite && s.spent.some((x) => x.site === view.selectedSite)) closeSite();
+    toast(s.spent.length === 1 ? `IgE spent: the site beside the ${vesselName(siteById(s.spent[0].site).vessel).toLowerCase()} is free again.` : `${s.spent.length} IgE nodes spent: their sites are free again.`);
+  }
   if (s.noOuts !== lastNoOuts) { if (s.noOuts > lastNoOuts) toast('NO ran out: the vessel contracts and your white cells return.'); lastNoOuts = s.noOuts; }
   $('pulseStat').textContent = s.phase === 'combat' ? (s.pulsesLeft > 0 ? 'Ready' : 'Used') : s.phase === 'prep' ? 'Next wave' : '—';
   $('btnPause').textContent = s.paused ? 'Resume' : 'Pause';
@@ -304,7 +345,7 @@ function renderHud() {
   document.body.dataset.phase = s.phase;
 }
 
-let lastNoOuts = 0;
+let lastNoOuts = 0, spentToasted = 0;
 let overlaySig = '';
 function renderOverlay() {
   const sig = `${s.phase}|${s.paused}`;

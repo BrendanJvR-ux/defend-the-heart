@@ -1,7 +1,8 @@
 // Drawing for Defend the Heart: a stylised anatomy plate, kept calm so the white cells stand out.
-import { CONFIG, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
+import { CONFIG, type BacteriumType, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
 import { drawBoss } from './bosses';
 import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec } from './level';
+import { drawBacterium } from './bacteria';
 import { layoutLabels, previewTagBox, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawGut } from './organs';
@@ -10,6 +11,8 @@ export interface View {
   hoverVessel: VesselId | null;
   hoverSite: string | null;
   selectedSite: string | null;
+  /** Which page of the build popover is open. */
+  popMode: 'main' | 'aim' | 'reaim';
   showPulseRadius: boolean;
   touch: boolean;
 }
@@ -247,15 +250,7 @@ export function drawPathogen(ctx: CanvasRenderingContext2D, type: PathogenType, 
   if (CONFIG.pathogens[type].boss) { drawBoss(ctx, type as BossType, x, y, angle, hit, scale, t); return; }
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   if (CONFIG.pathogens[type].taxon) {
-    ctx.rotate(angle);
-    ctx.strokeStyle = C.bacteriumDark; ctx.lineWidth = 1.2;
-    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-16, -3 + i * 2); ctx.bezierCurveTo(-22, -8 + i * 4, -26, 4 + i * 2, -32, -2 + i * 3); ctx.stroke(); }
-    // the capsule (armour) as a pale halo
-    ctx.strokeStyle = 'rgba(220,240,200,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(-19, -10, 38, 20, 10); ctx.stroke();
-    const g = ctx.createLinearGradient(0, -8, 0, 8); g.addColorStop(0, '#a8d888'); g.addColorStop(0.5, C.bacterium); g.addColorStop(1, C.bacteriumDark);
-    ctx.fillStyle = hit > 0 ? '#ffffff' : g; ctx.beginPath(); ctx.roundRect(-17, -8, 34, 16, 8); ctx.fill();
-    ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = 'rgba(30,60,20,0.45)'; for (const dx of [-8, 0, 8]) { ctx.beginPath(); ctx.arc(dx, 1, 1.8, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore(); drawBacterium(ctx, type as BacteriumType, x, y, angle, hit, scale, t); return;
   } else if (type === 'virus' || type === 'hijacker') {
     const hij = type === 'hijacker';
     ctx.rotate(hij ? t * 2 : 0);

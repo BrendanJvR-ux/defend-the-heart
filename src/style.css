@@ -109,3 +109,8 @@ details summary { cursor: pointer; font-size: 13px; color: var(--soft); margin-t
 .levels button.on { background: var(--red); color: #fff4ee; border-color: var(--red-dark); }
 .levels button.on small { color: #ffe0d8; }
 .bossTag { color: #fff4ee; background: var(--red-dark); border-radius: 4px; padding: 0 5px; font-size: 11px; letter-spacing: 0.06em; }
+
+.types.targets { display: grid; grid-template-columns: 1fr 1fr; }
+.types.targets button { align-items: center; padding: 4px 6px; min-height: 0; }
+.types.targets .ico { flex: none; }
+.types.targets small { display: block; color: var(--soft); font-size: 12px; }

@@ -431,6 +431,17 @@ describe('Defend the Heart: organ levels', () => {
     }
   });
 
+  it('more build sites: at least five guarding each route (four on the kidney\'s short upper fork), two on the brain', () => {
+    const atLeast = [5, 5, 2, 5, 4];
+    LEVELS.forEach((_, i) => {
+      newGame(i);
+      for (const r of M.VESSEL_IDS) {
+        const n = guarding(r).length;
+        if (i === 2) expect(n, `brain ${r}`).toBe(2); else expect(n, `${LEVELS[i].id} ${r}`).toBeGreaterThanOrEqual(atLeast[i]);
+      }
+    });
+  });
+
   it('each organ has one more route than the last; forks only from the brain on', () => {
     const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3]]; // entries, routes, forks
     LEVELS.forEach((_, i) => {

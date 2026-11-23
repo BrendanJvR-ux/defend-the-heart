@@ -181,7 +181,7 @@ export const LEVELS: LevelDef[] = [
     hp: 20, startEnergy: 240, cells: 2,
     startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
     map: {
-      center: { x: 800, y: 480 }, rx: 100, ry: 100, siteFractions: [0.3, 0.52, 0.74],
+      center: { x: 800, y: 480 }, rx: 100, ry: 100, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
         { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 500 }, { x: 170, y: 500 }, { x: 330, y: 420 }, { x: 520, y: 450 }, { x: 682, y: 485 }] },
         { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 600 }, { x: 1420, y: 600 }, { x: 1260, y: 520 }, { x: 1080, y: 520 }, { x: 918, y: 500 }] },
@@ -252,7 +252,7 @@ export const LEVELS: LevelDef[] = [
     startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'iga' }],
     surge: { every: 6, length: 1.4, factor: 1.5 },
     map: {
-      center: { x: 800, y: 450 }, rx: 225, ry: 175, siteFractions: [0.28, 0.5, 0.72],
+      center: { x: 800, y: 450 }, rx: 225, ry: 175, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
         { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 300 }, { x: 180, y: 300 }, { x: 320, y: 410 }, { x: 460, y: 480 }, { x: 592, y: 480 }] },
         { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 720 }, { x: 1400, y: 720 }, { x: 1250, y: 590 }, { x: 1120, y: 500 }, { x: 1008, y: 480 }] },
@@ -312,7 +312,7 @@ export const LEVELS: LevelDef[] = [
     hp: 24, startEnergy: 320, cells: 2, regenPerWave: 3,
     startingNodes: [{ vessel: 'portalLeft', site: 0, type: 'igm' }, { vessel: 'arteryLower', site: 1, type: 'igm' }],
     map: {
-      center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.22, 0.45, 0.68, 0.86],
+      center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
       vessels: [
         { id: 'portal', name: 'Portal vein', label: 'Portal vein (from the gut)', pts: [{ x: -40, y: 900 }, { x: 220, y: 900 }, { x: 400, y: 820 }, { x: 330, y: 690 }, { x: 470, y: 600 }],
           fork: { branches: [
@@ -349,7 +349,7 @@ export const LEVELS: LevelDef[] = [
     filtration: { fraction: 0.28, factor: 0.6 },
     startingNodes: [{ vessel: 'leftUpper', site: 2, type: 'igm' }, { vessel: 'rightUpper', site: 2, type: 'igm' }],
     map: {
-      center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.3, 0.52, 0.74],
+      center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
         { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 420 }, { x: 200, y: 380 }, { x: 380, y: 450 }],
           fork: { branches: [
