@@ -31,7 +31,7 @@ It began as a conversion of [The Last Ward: Siege of Goosebridge](https://github
 
 ## When an organ falls
 
-The defeat screen says where the damage came from (how much came up the worst vessel and which pathogen did the most harm, or, on the spleen, how much went on remaking lost white cells) and suggests the counter: an IgG aimed at that bacterium, IgA for fast viruses, IgM and IgE for viral bosses, or keeping white cells away from hijackers.
+The defeat screen says where the damage came from (how much came up the worst vessel and which pathogen did the most harm, or, on the spleen, how much went on remaking lost white cells) and suggests the counter: an IgG aimed at that bacterium (saying so, with an **Upgrades** button, when that target hasn't been bought yet), IgA for fast viruses, IgM and IgE for viral bosses, or keeping white cells away from hijackers.
 
 ## The tutorial
 

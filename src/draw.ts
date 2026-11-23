@@ -4,6 +4,7 @@ import { drawBoss } from './bosses';
 import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec } from './level';
 import { drawBacterium } from './bacteria';
 import { hidden } from './sim';
+import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, previewTagBox, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut } from './organs';
@@ -183,10 +184,10 @@ function drawHeartBody(ctx: CanvasRenderingContext2D) {
 }
 
 // ── Organ images: each organ's still drawing is made once and reused every frame ──
-const ORGAN_HALF = 420; // map units around the organ's centre that the image covers
+const ORGAN_HALF = ORGAN_SPAN / 2; // map units around the organ's centre that the image covers
 let organCache: { key: string; img: HTMLCanvasElement; red: HTMLCanvasElement } | null = null;
 function organImages(px: number) {
-  const m = LEVEL.map, key = `${LEVEL.id}:${m.rx}:${m.ry}:${px}`;
+  const m = LEVEL.map, key = organCacheKey(LEVEL.id, m.rx, m.ry, px);
   if (organCache?.key === key) return organCache;
   const size = Math.ceil(ORGAN_HALF * 2 * px);
   const img = document.createElement('canvas'); img.width = img.height = size;
@@ -209,7 +210,7 @@ function organImages(px: number) {
 function drawOrganImage(ctx: CanvasRenderingContext2D, scale: number, kick: number) {
   // the image is made at the on-screen scale (rounded to a half, so resizing only rebuilds it at each step),
   // and never more than 4096 pixels across
-  const m = ctx.getTransform(), px = Math.min(4096 / (ORGAN_HALF * 2), Math.max(0.5, Math.round(Math.hypot(m.a, m.b) * 2) / 2));
+  const m = ctx.getTransform(), px = organImageScale(Math.hypot(m.a, m.b));
   const { img, red } = organImages(px), c = LEVEL.map.center;
   ctx.save(); ctx.translate(c.x, c.y); ctx.scale(scale, scale);
   ctx.drawImage(img, -ORGAN_HALF, -ORGAN_HALF, ORGAN_HALF * 2, ORGAN_HALF * 2);

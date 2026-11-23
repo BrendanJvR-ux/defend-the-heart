@@ -371,7 +371,7 @@ menuEl.addEventListener('click', (e) => {
   if (!el || el.disabled) return;
   const a = el.dataset.menu;
   if (a === 'continue' && career.run) {
-    const sp = s.speed; s = resumeGame(career.run, perksOf(career)); s.speed = sp; lastPhase = ''; spentToasted = 0; gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false;
+    const sp = s.speed; s = resumeGame(career.run, perksOf(career)); s.speed = sp; lastPhase = ''; maybeTutorial(); spentToasted = 0; gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false;
     toast(`Welcome back: the ${organTitle(s.level).toLowerCase()}, wave ${s.wave}.`);
   } else if (a === 'new') { if (careerStarted()) openMenu({ page: 'confirmNew' }); else startCareer(); }
   else if (a === 'newYes') startCareer();
@@ -549,7 +549,7 @@ function defeatAdvice(): string {
   if (sum.kind === 'remake') return `<p>${Math.round(sum.share * 100)}% of the damage was the ${organ} remaking lost white cells.</p><p class="tip"><b>Next time:</b> ${esc(sum.advice)}</p>`;
   const st = CONFIG.pathogens[sum.type], who = st.boss ? `the ${esc(st.name.toLowerCase())}` : st.taxon ? `<i>${esc(st.plural)}</i>` : esc(st.plural.toLowerCase());
   const where = `${Math.round(sum.share * 100)}% of the damage came up the ${esc(map.entryDef(sum.vessel).name.toLowerCase())}`;
-  return `<p>${where}, and ${who} did the most harm.</p><p class="tip"><b>Next time:</b> ${esc(sum.advice)}</p>`;
+  return `<p>${where}, and ${who} did the most harm.</p><p class="tip"><b>Next time:</b> ${esc(sum.advice)}</p>${/Upgrades/.test(sum.advice) ? `<p><button data-act="shop">Upgrades (${career.gold} gold)</button></p>` : ''}`;
 }
 function renderOverlay() {
   const sig = `${s.phase}|${s.paused}`;

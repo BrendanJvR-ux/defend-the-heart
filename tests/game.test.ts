@@ -3,6 +3,7 @@ import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type LevelDef, type NodeT
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, type Box } from '../src/labels';
+import { organCacheKey, organImageScale } from '../src/organCache';
 import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type UpgradeId } from '../src/career';
 // live bindings: always the currently loaded organ
 const M = map;
@@ -942,6 +943,13 @@ describe('Defend the Heart: what leaked', () => {
     const r = M.routesOf('lowerRight')[1]; mk(s, 'listeria', r, M.VESSELS[r].length - 1); step(s, 1 / 30);
     expect(Object.keys(s.leaks.byVessel)).toEqual(['lowerRight']);
   });
+  it('the defeat tip says when its IgG target still has to be bought', () => {
+    const s = newGame(4); s.leaks = { byVessel: { lower: 12 }, byType: { ecoli: 12 } };
+    expect(leakSummary(s)!.advice).toMatch(/Unlock .*E\. coli.* in Upgrades/);
+    const t = newGame(4, { ...NO_PERKS, targets: ['saureus', 'ecoli'] }); t.leaks = s.leaks;
+    expect(leakSummary(t)!.advice).not.toMatch(/Unlock/);
+  });
+
   it('the defeat summary names the worst vessel and pathogen and how to counter it', () => {
     const s = newGame(0);
     s.leaks = { byVessel: { lower: 9, left: 3 }, byType: { saureus: 9, virus: 3 } };
@@ -1011,6 +1019,24 @@ describe('Defend the Heart: the spleen', () => {
     tick(s, 1.5); CONFIG.pathogens.plasmodium.speed = sp;
     expect(hidden(s, b)).toBe(false); expect(b.hp).toBeLessThan(hp);
   });
+  it('white cells do not touch a hidden plasmodium, and it does not hurt them', () => {
+    const s = newGame(SPLEEN); const c = outCell(s);
+    const b = mk(s, 'plasmodium', c.vessel, c.s); const sp = CONFIG.pathogens.plasmodium.speed; CONFIG.pathogens.plasmodium.speed = 0;
+    const { every, for: span } = CONFIG.pathogens.plasmodium.hides!; s.waveTime = every - span + 0.01;
+    const hp = b.hp, chp = c.hp; tick(s, span - 0.2);
+    expect(b.hp).toBe(hp); expect(c.hp).toBe(chp);
+    tick(s, 3); CONFIG.pathogens.plasmodium.speed = sp;
+    expect(b.hp).toBeLessThan(hp); // out of hiding, the cell walks back to it and fights
+  });
+  it('a remade white cell takes a side not already used by a living cell', () => {
+    const s = newGame(SPLEEN); const c = outCell(s);
+    const other = aliveCells(s).find((x) => x !== c)!;
+    infect(s, c, mk(s, 'hijacker', c.vessel, c.s)); s.pathogens = s.pathogens.filter((p) => p.type !== 'infected');
+    tick(s, 8.2);
+    const fresh = aliveCells(s).find((x) => x !== other)!;
+    expect(Math.sign(fresh.side)).not.toBe(Math.sign(other.side));
+  });
+
   it('a shot in flight when the boss hides misses', () => {
     const s = newGame(SPLEEN); startWave(s); quiet(s); const v = M.VESSEL_IDS[0];
     const b = mk(s, 'plasmodium', v, 100); const hp = b.hp;
@@ -1023,5 +1049,18 @@ describe('Defend the Heart: the spleen', () => {
     const { every, for: span } = CONFIG.pathogens.plasmodium.hides!; s.waveTime = every - span + 0.01;
     const hp = s.heartHp; mk(s, 'plasmodium', v, M.VESSELS[v].length - 0.1); step(s, 1 / 30);
     expect(s.heartHp).toBe(hp - CONFIG.pathogens.plasmodium.heartDamage);
+  });
+});
+
+describe('Defend the Heart: organ images', () => {
+  it('each organ, size and screen scale has its own image', () => {
+    const keys = new Set(['heart', 'lungs', 'spleen'].flatMap((id) => [1, 1.5].map((px) => organCacheKey(id, 150, 210, px))));
+    expect(keys.size).toBe(6);
+    expect(organCacheKey('kidney', 130, 190, 1)).not.toBe(organCacheKey('kidney', 140, 190, 1));
+  });
+  it('the image scale follows the screen in half steps, never below ½ and never over 4096 px across', () => {
+    expect(organImageScale(0.66)).toBe(0.5); expect(organImageScale(0.8)).toBe(1); expect(organImageScale(1.3)).toBe(1.5);
+    expect(organImageScale(1.32)).toBe(organImageScale(1.4)); // small resizes don't rebuild it
+    expect(organImageScale(40) * 840).toBeLessThanOrEqual(4096);
   });
 });

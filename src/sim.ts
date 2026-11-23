@@ -463,7 +463,8 @@ export function leakSummary(s: State): LeakSummary | null {
   const name = st.taxon ? CONFIG.pathogens[st.taxon.species].plural : st.name;
   let advice: string;
   if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
-  else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`;
+  else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`
+    + (s.perks.targets.includes(st.taxon.species) ? '' : ` Unlock the ${name} target in Upgrades first: you don't have it yet.`);
   else if (type === 'plasmodium') advice = 'Plasmodium is a parasite, not a bacterium: IgM and IgE wear it down, and time the pulse for when it comes out of its red blood cell.';
   else if (st.boss) advice = `${st.name}: IgM and IgE hit it hardest; IgG barely scratches a virus.`;
   else if (type === 'virus') advice = 'Viruses are fast and come in groups: an IgA node slows them so your other nodes can land their hits.';
@@ -567,7 +568,8 @@ export function step(s: State, dtRaw: number) {
     s.leaks.remade = (s.leaks.remade ?? 0) + cost;
     s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `−${cost} to remake a white cell`, t: 0, color: '#8a1e24' });
     const v = VESSEL_IDS[0];
-    s.cells.push({ id: s.nextId++, vessel: v, s: VESSELS[v].length, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (s.cells.length % 2 ? 1 : -1) * 11, targetId: null, mode: 'home', infected: false });
+    const lean = aliveCells(s).reduce((a, x) => a + Math.sign(x.side), 0); // take the side the living cells use less
+    s.cells.push({ id: s.nextId++, vessel: v, s: VESSELS[v].length, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (lean > 0 ? -1 : 1) * 11, targetId: null, mode: 'home', infected: false });
   }
   deployHome(s);
   for (const c of outCells(s)) {
