@@ -1,4 +1,4 @@
-// The five boss pathogens, one per organ. Drawn at about three times a normal pathogen's size,
+// The six boss pathogens, one per organ. Drawn at about three times a normal pathogen's size,
 // each with a pulsing aura so it reads as a boss at a glance.
 import type { BossType } from './config';
 
@@ -15,16 +15,32 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const flash = hit > 0;
   if (type === 'plasmodium') {
-    // malaria: a red blood cell with the parasite's ring form inside
+    // malaria: an infected red blood cell, its rim scalloped (crenated) and stippled with Maurer's dots,
+    // the parasite inside as a ring form with a chromatin dot, and a second, younger ring
     aura(ctx, 32, t, 'rgba(160,40,90,0.35)');
-    const rbc = ctx.createRadialGradient(-6, -6, 4, 0, 0, 34);
-    rbc.addColorStop(0, '#f08a7a'); rbc.addColorStop(0.7, '#c8443a'); rbc.addColorStop(1, '#8a2420');
-    ctx.fillStyle = flash ? '#ffffff' : rbc; ctx.strokeStyle = INK; ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,210,200,0.55)'; ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); // the cell's pale centre
-    ctx.strokeStyle = '#4a2a8a'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.arc(6, -4, 11, 0, Math.PI * 2); ctx.stroke(); // ring form
-    ctx.fillStyle = '#2a1a5a'; ctx.beginPath(); ctx.arc(14, -9, 4.2, 0, Math.PI * 2); ctx.fill(); // chromatin dot
-    for (const [dx, dy] of [[-16, 10], [-8, 18], [12, 16]]) { ctx.fillStyle = 'rgba(90,50,30,0.6)'; ctx.beginPath(); ctx.arc(dx, dy, 1.8, 0, Math.PI * 2); ctx.fill(); } // pigment
+    ctx.rotate(angle * 0.2);
+    const rim = () => { ctx.beginPath(); for (let i = 0; i <= 40; i++) { const a = (i / 40) * Math.PI * 2, r = 32 + Math.sin(a * 9) * 0.6; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); };
+    const rbc = ctx.createRadialGradient(-8, -8, 4, 0, 0, 34);
+    rbc.addColorStop(0, '#f6a090'); rbc.addColorStop(0.65, '#c8443a'); rbc.addColorStop(1, '#8a2420');
+    rim(); ctx.fillStyle = flash ? '#ffffff' : rbc; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.4; ctx.stroke();
+    if (!flash) {
+      // the pale biconcave centre
+      const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, 18); cg.addColorStop(0, 'rgba(255,220,210,0.75)'); cg.addColorStop(1, 'rgba(255,220,210,0)');
+      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
+      // Maurer's dots: fine stippling over the cell
+      ctx.fillStyle = 'rgba(120,30,40,0.55)';
+      for (let i = 0; i < 26; i++) { const a = i * 2.39996, r = 8 + Math.sqrt(i / 26) * 20; ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 0.9, 0, Math.PI * 2); ctx.fill(); }
+    }
+    // the main ring form: blue cytoplasm ring, thickest opposite its chromatin dot
+    ctx.strokeStyle = '#3a4aa8'; ctx.lineWidth = 3.6; ctx.beginPath(); ctx.arc(6, -4, 11, 0.6, 5.6); ctx.stroke();
+    ctx.lineWidth = 5.4; ctx.beginPath(); ctx.arc(6, -4, 11, 2.4, 3.8); ctx.stroke();
+    ctx.fillStyle = '#8a1e5a'; ctx.beginPath(); ctx.arc(15.5, -7.5, 4.2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.stroke();
+    // a younger ring
+    ctx.strokeStyle = '#3a4aa8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(-13, 12, 5, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#8a1e5a'; ctx.beginPath(); ctx.arc(-9, 9, 2, 0, Math.PI * 2); ctx.fill();
+    // haemozoin pigment
+    for (const [dx, dy] of [[-16, -6], [-4, 20], [18, 12]]) { ctx.fillStyle = 'rgba(70,40,20,0.7)'; ctx.beginPath(); ctx.arc(dx, dy, 1.6, 0, Math.PI * 2); ctx.fill(); }
   } else if (type === 'colony') {
     // Staphylococcus: a golden grape-bunch of cocci inside a thick capsule
     aura(ctx, 36, t, 'rgba(200,64,42,0.4)');
@@ -36,22 +52,44 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
       const g = ctx.createRadialGradient(cx - 3, cy - 4, 1, cx, cy, 12);
       g.addColorStop(0, '#fbe6a0'); g.addColorStop(0.6, '#e0b040'); g.addColorStop(1, '#8a6418');
       ctx.fillStyle = flash ? '#ffffff' : g; ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = INK; ctx.lineWidth = 1.8; ctx.stroke();
+      if (!flash) {
+        // the thick Gram-positive wall as a pale inner band, and the ribosome speckle
+        ctx.strokeStyle = 'rgba(255,250,225,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(150,110,40,0.3)';
+        for (let i = 0; i < 7; i++) { const a = i * 2.39996 + cx, r = 1.5 + (i % 3) * 2.2; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 0.6, 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.strokeStyle = INK; ctx.lineWidth = 1.8; ctx.stroke();
     }
+    // the capsule's slime, beaded at its edge
+    ctx.fillStyle = 'rgba(160,140,90,0.45)';
+    for (let i = 0; i < 28; i++) { const a = (i / 28) * Math.PI * 2; ctx.beginPath(); ctx.arc(Math.cos(a) * 38.5, Math.sin(a) * 32.5, 1.2, 0, Math.PI * 2); ctx.fill(); }
   } else if (type === 'flu') {
     // a mother virus: a big spiked capsid, with buds of new virions on its surface
     aura(ctx, 30, t, 'rgba(138,74,184,0.45)');
     ctx.rotate(t * 0.6);
     ctx.strokeStyle = INK; ctx.lineWidth = 2;
-    for (let i = 0; i < 20; i++) {
-      const a = (i / 20) * Math.PI * 2;
-      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 24, Math.sin(a) * 24); ctx.lineTo(Math.cos(a) * 34, Math.sin(a) * 34); ctx.stroke();
-      ctx.fillStyle = i % 2 ? '#ff7ab8' : '#ffd0e8'; ctx.beginPath(); ctx.arc(Math.cos(a) * 35, Math.sin(a) * 35, 3.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2, ha = i % 3 !== 2;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 24, Math.sin(a) * 24); ctx.lineTo(Math.cos(a) * 33, Math.sin(a) * 33); ctx.stroke();
+      if (ha) {
+        // haemagglutinin: a lollipop spike
+        ctx.fillStyle = i % 2 ? '#ff7ab8' : '#ffd0e8'; ctx.beginPath(); ctx.arc(Math.cos(a) * 34.5, Math.sin(a) * 34.5, 3.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      } else {
+        // neuraminidase: a box-headed spike
+        ctx.save(); ctx.translate(Math.cos(a) * 34.5, Math.sin(a) * 34.5); ctx.rotate(a);
+        ctx.fillStyle = '#f0c84a'; ctx.beginPath(); ctx.rect(-2.6, -3.6, 5.2, 7.2); ctx.fill(); ctx.stroke(); ctx.restore();
+      }
     }
     const g = ctx.createRadialGradient(-6, -6, 2, 0, 0, 26); g.addColorStop(0, '#d8b0f0'); g.addColorStop(1, '#4a1e70');
     ctx.fillStyle = flash ? '#ffffff' : g; ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI * 2); ctx.fill(); ctx.lineWidth = 2.6; ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,200,240,0.6)'; ctx.lineWidth = 2;
-    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(0, 0, 8 + i * 4, i, i + 2.4); ctx.stroke(); }
+    // the eight genome segments, coiled inside the envelope
+    if (!flash) {
+      ctx.strokeStyle = 'rgba(255,200,240,0.7)'; ctx.lineWidth = 1.6;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2, cx = Math.cos(a) * 11, cy = Math.sin(a) * 11;
+        ctx.beginPath(); for (let k = 0; k <= 10; k++) { const u = k / 10, r = 2.2 + Math.sin(u * 12) * 1.2; ctx.lineTo(cx + Math.cos(a) * (u * 8 - 4) - Math.sin(a) * r, cy + Math.sin(a) * (u * 8 - 4) + Math.cos(a) * r); } ctx.stroke();
+      }
+    }
     for (let i = 0; i < 3; i++) {
       const a = t * 1.3 + i * 2.1, bud = 0.6 + 0.4 * Math.sin(t * 2 + i);
       ctx.fillStyle = '#b07ad8'; ctx.strokeStyle = INK; ctx.lineWidth = 1.6;
@@ -64,6 +102,9 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
     ctx.strokeStyle = 'rgba(250,245,235,0.95)'; ctx.lineWidth = 9;
     ctx.beginPath(); ctx.ellipse(0, 0, 40, 30, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(0, 0, 44.5, 34.5, 0, 0, Math.PI * 2); ctx.stroke();
+    // type IV pili bristling from the capsule
+    ctx.strokeStyle = 'rgba(42,30,24,0.6)'; ctx.lineWidth = 1.1;
+    for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2 + 0.1, x = Math.cos(a) * 44.5, y = Math.sin(a) * 34.5, k = 1.12 + (i % 3) * 0.04; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x * k, y * k); ctx.stroke(); }
     for (const sg of [-1, 1]) {
       const g = ctx.createRadialGradient(sg * 16 - 4, -6, 2, sg * 16, 0, 26); g.addColorStop(0, '#f0a0a0'); g.addColorStop(0.6, '#c8505a'); g.addColorStop(1, '#6a1e28');
       ctx.fillStyle = flash ? '#ffffff' : g;
@@ -81,6 +122,15 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
     ctx.strokeStyle = 'rgba(60,30,10,0.55)'; ctx.lineWidth = 1.6;
     for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 32, Math.sin(a) * 32); ctx.stroke(); }
     hex(14); ctx.fillStyle = '#5a2a10'; ctx.fill();
+    if (!flash) {
+      // capsomeres: the protein subunits tiling each face
+      ctx.fillStyle = 'rgba(255,230,180,0.55)';
+      for (let k = 0; k < 6; k++) for (const [u, v] of [[0.55, 0.2], [0.75, 0.12], [0.62, 0.4], [0.85, 0.32]]) {
+        const a = (k / 6) * Math.PI * 2, b = ((k + 1) / 6) * Math.PI * 2;
+        const x = Math.cos(a) * 32 * u + (Math.cos(b) - Math.cos(a)) * 32 * v, y = Math.sin(a) * 32 * u + (Math.sin(b) - Math.sin(a)) * 32 * v;
+        ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+    }
     ctx.restore();
     ctx.strokeStyle = '#3a9a4a'; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
     for (let i = 0; i < 4; i++) {
@@ -101,6 +151,13 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
     const g = ctx.createRadialGradient(-5, -5, 2, 0, 0, 24); g.addColorStop(0, '#ff9a6a'); g.addColorStop(0.6, '#b8302a'); g.addColorStop(1, '#4a0a0a');
     ctx.fillStyle = flash ? '#ffffff' : g;
     ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.lineTo(Math.cos(a) * 22, Math.sin(a) * 22); } ctx.closePath(); ctx.fill(); ctx.lineWidth = 2.8; ctx.stroke();
+    if (!flash) {
+      // the envelope's lipid texture and inner capsid outline
+      ctx.strokeStyle = 'rgba(255,170,120,0.45)'; ctx.lineWidth = 1;
+      ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + Math.PI / 6; ctx.lineTo(Math.cos(a) * 14, Math.sin(a) * 14); } ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = 'rgba(80,10,10,0.5)';
+      for (let i = 0; i < 14; i++) { const a = i * 2.39996, r = 10 + (i % 4) * 2.5; ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 1, 0, Math.PI * 2); ctx.fill(); }
+    }
     ctx.fillStyle = '#1a0404'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#ff3a2a'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
   }

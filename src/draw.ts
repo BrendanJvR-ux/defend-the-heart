@@ -257,30 +257,57 @@ export function drawPathogen(ctx: CanvasRenderingContext2D, type: PathogenType, 
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   if (CONFIG.pathogens[type].taxon) {
     ctx.restore(); drawBacterium(ctx, type as BacteriumType, x, y, angle, hit, scale, t); return;
-  } else if (type === 'virus' || type === 'hijacker') {
-    const hij = type === 'hijacker';
-    ctx.rotate(hij ? t * 2 : 0);
-    ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6;
-    const n = hij ? 6 : 10;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 7, Math.sin(a) * 7); ctx.lineTo(Math.cos(a) * (hij ? 14 : 12), Math.sin(a) * (hij ? 14 : 12)); ctx.stroke();
-      ctx.fillStyle = hij ? '#ffd24a' : '#ff7ab8';
-      if (hij) { ctx.beginPath(); ctx.moveTo(Math.cos(a) * 14 + Math.cos(a + 1.6) * 3, Math.sin(a) * 14 + Math.sin(a + 1.6) * 3); ctx.lineTo(Math.cos(a) * 18, Math.sin(a) * 18); ctx.lineTo(Math.cos(a) * 14 - Math.cos(a + 1.6) * 3, Math.sin(a) * 14 - Math.sin(a + 1.6) * 3); ctx.closePath(); ctx.fill(); ctx.stroke(); }
-      else { ctx.beginPath(); ctx.arc(Math.cos(a) * 12.5, Math.sin(a) * 12.5, 2, 0, Math.PI * 2); ctx.fill(); }
+  } else if (type === 'virus') {
+    // a virion: a faceted icosahedral capsid with glycoprotein spikes, each tipped with a knob
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 1.3;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 8, Math.sin(a) * 8); ctx.lineTo(Math.cos(a) * 12.5, Math.sin(a) * 12.5); ctx.stroke();
+      ctx.fillStyle = i % 2 ? '#ff7ab8' : '#ffb0d8'; ctx.beginPath(); ctx.arc(Math.cos(a) * 13.2, Math.sin(a) * 13.2, 1.9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
-    const g = ctx.createRadialGradient(-2, -2, 1, 0, 0, 8); g.addColorStop(0, hij ? '#ffc890' : '#c89ae8'); g.addColorStop(1, hij ? C.hijackerDark : C.virusDark);
+    const g = ctx.createRadialGradient(-3, -3, 1, 0, 0, 10); g.addColorStop(0, '#e6ccf8'); g.addColorStop(0.55, '#a878d8'); g.addColorStop(1, C.virusDark);
+    const facets = (r: number) => { ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + 0.26; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); };
+    facets(9); ctx.fillStyle = hit > 0 ? '#ffffff' : g; ctx.fill();
+    if (hit <= 0) {
+      // the capsid's triangular faces, and the coiled genome glimpsed inside
+      ctx.strokeStyle = 'rgba(60,20,90,0.45)'; ctx.lineWidth = 0.8;
+      for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2 + 0.26; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(255,230,250,0.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 3.6, 0.4, 5.4); ctx.stroke();
+    }
+    facets(9); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.7; ctx.stroke();
+  } else if (type === 'hijacker') {
+    // a hijacker: a spinning hexagonal envelope with barbed docking spikes and a dark injection core
+    ctx.rotate(t * 2);
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 8, Math.sin(a) * 8); ctx.lineTo(Math.cos(a) * 14, Math.sin(a) * 14); ctx.stroke();
+      ctx.fillStyle = '#ffd24a';
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 14 + Math.cos(a + 1.6) * 3.2, Math.sin(a) * 14 + Math.sin(a + 1.6) * 3.2); ctx.lineTo(Math.cos(a) * 19, Math.sin(a) * 19); ctx.lineTo(Math.cos(a) * 14 - Math.cos(a + 1.6) * 3.2, Math.sin(a) * 14 - Math.sin(a + 1.6) * 3.2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // a smaller barb between each pair of spikes
+      const b = a + Math.PI / 6; ctx.beginPath(); ctx.moveTo(Math.cos(b) * 9, Math.sin(b) * 9); ctx.lineTo(Math.cos(b) * 12.5, Math.sin(b) * 12.5); ctx.stroke();
+    }
+    const g = ctx.createRadialGradient(-2, -2, 1, 0, 0, 10); g.addColorStop(0, '#ffd8a8'); g.addColorStop(0.6, '#e08a3a'); g.addColorStop(1, C.hijackerDark);
     ctx.fillStyle = hit > 0 ? '#ffffff' : g;
-    ctx.beginPath(); if (hij) { for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9); } ctx.closePath(); } else ctx.arc(0, 0, 8, 0, Math.PI * 2);
-    ctx.fill(); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.8; ctx.stroke();
-    if (hij) { ctx.fillStyle = '#2a1008'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill(); }
+    ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.lineTo(Math.cos(a) * 9.5, Math.sin(a) * 9.5); } ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 1.8; ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,50,10,0.5)'; ctx.lineWidth = 0.8; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.lineTo(Math.cos(a) * 5.5, Math.sin(a) * 5.5); } ctx.closePath(); ctx.stroke();
+    ctx.fillStyle = '#2a1008'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ff6a2a'; ctx.beginPath(); ctx.arc(0, 0, 1.2, 0, Math.PI * 2); ctx.fill();
   } else {
-    // an infected white cell: a sickly purple membrane, the virus visible inside, red glare
+    // an infected white cell: a sickly, rippling membrane; its lobed nucleus; new virions crowding inside; a red glare
     ctx.beginPath();
-    for (let i = 0; i <= 18; i++) { const a = (i / 18) * Math.PI * 2; const r = 15 + Math.sin(a * 5 + t * 6) * 2; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+    for (let i = 0; i <= 24; i++) { const a = (i / 24) * Math.PI * 2; const r = 15 + Math.sin(a * 5 + t * 6) * 1.8 + Math.sin(a * 9 - t * 4) * 0.8; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
     ctx.closePath();
-    ctx.fillStyle = hit > 0 ? '#ffffff' : '#b89ad0'; ctx.fill(); ctx.strokeStyle = '#4a1e70'; ctx.lineWidth = 2.6; ctx.stroke();
-    ctx.fillStyle = '#e0702a'; for (const [dx, dy] of [[-5, -3], [4, 4], [6, -5]]) { ctx.beginPath(); ctx.arc(dx, dy, 3.4, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = '#ff2a2a'; ctx.beginPath(); ctx.arc(-3, -8, 2, 0, Math.PI * 2); ctx.arc(4, -8, 2, 0, Math.PI * 2); ctx.fill();
+    const g = ctx.createRadialGradient(-4, -5, 2, 0, 0, 17); g.addColorStop(0, '#e2d0ee'); g.addColorStop(0.7, '#b89ad0'); g.addColorStop(1, '#7a5a98');
+    ctx.fillStyle = hit > 0 ? '#ffffff' : g; ctx.fill(); ctx.strokeStyle = '#4a1e70'; ctx.lineWidth = 2.4; ctx.stroke();
+    if (hit <= 0) {
+      ctx.fillStyle = 'rgba(80,40,110,0.55)'; // a lobed nucleus, pushed aside
+      for (const [dx, dy, r] of [[-6, 3, 4.2], [-2, 7, 3.6], [-8, -2, 3.4]]) { ctx.beginPath(); ctx.arc(dx, dy, r, 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = '#7a3a0a'; ctx.lineWidth = 0.8;
+      for (const [dx, dy] of [[4, -3], [7, 3], [2, 4], [6, -8], [9, -2]]) { ctx.fillStyle = '#e0702a'; ctx.beginPath(); ctx.arc(dx, dy, 2.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+    }
+    ctx.fillStyle = '#ff2a2a'; ctx.beginPath(); ctx.arc(-3, -9, 1.9, 0, Math.PI * 2); ctx.arc(4, -9, 1.9, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 }
