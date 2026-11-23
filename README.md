@@ -68,8 +68,8 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 
 ### Balance assumptions
 
-- A scripted sensible player (spend energy on nodes matched to each vessel's threat; during the wave open the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, close it when it is clear, switch only for twice the threat; pulse into clusters of three) wins every organ, bosses included: heart 8/20, lungs 12/20, brain 12/18, liver 16/24, kidney 8/20. Never building loses on every organ.
-- **Holding one route open is worse than dilating with care.** A scripted player who builds the same way but opens the busiest route as soon as it can and never closes it loses the heart and the brain, and finishes the lungs on 8/20, the liver on 10/24 and the kidney on 5/20.
+- A scripted sensible player (spend energy on nodes matched to each vessel's threat; during the wave open the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, close it when it is clear, switch only for twice the threat; pulse into clusters of three) wins every organ, bosses included: heart 7/20, lungs 12/20, brain 12/18, liver 16/24, kidney 8/20. Never building loses on every organ.
+- **Holding one route open is worse than dilating with care.** A scripted player who builds the same way but opens the busiest route as soon as it can and never closes it loses the heart and the brain, and finishes the lungs on 8/20, the liver on 10/24 and the kidney on 5/20 (the tests require it to lose, or end at least 2 health worse).
 - Virus health (14) is set so IgM kills one in a single hit and IgG/IgA need two or three; bacteria (70, armour 5) shrug off much of IgM until IgG opens them.
 - White cells alone (no nodes) leak 9 heart health in wave 1: they help, they do not carry.
 - Hijackers appear in wave 5 on three vessels, so they meet the white cells whichever vessel you dilate.
