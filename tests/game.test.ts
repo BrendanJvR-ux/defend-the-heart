@@ -440,6 +440,15 @@ describe('Defend the Heart: balance', () => {
     expect(run.map((r) => r.phase)).toEqual(LEVELS.map(() => 'victory'));
   });
 
+  it('from the liver on, energy is tight: the career player fills at most 60% of the build sites', () => {
+    for (const r of careerRun().filter((x) => x.level >= 3)) {
+      const g = play(sensibleBuild, sensibleDilate, 3, r.level, r.perks); newGame(r.level);
+      const share = g.s.nodes.length / M.SITES.length;
+      console.log(LEVELS[r.level].id, 'built', g.s.nodes.length, 'of', M.SITES.length, 'sites');
+      expect(share, LEVELS[r.level].id).toBeLessThanOrEqual(0.6);
+    }
+  });
+
   it('never building loses every organ, even with every upgrade', () => {
     for (let i = 0; i < LEVELS.length; i++) expect(play(noBuild, sensibleDilate, 3, i, ALL_PERKS).s.phase, LEVELS[i].id).toBe('defeat');
   });

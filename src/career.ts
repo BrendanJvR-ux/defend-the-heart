@@ -49,6 +49,19 @@ export function perksOf(c: Career): Perks {
   };
 }
 
+/** The bacteria an organ's waves bring (bosses counted as their species), in order of first appearance. */
+export function organBacteria(level: number): BacteriumType[] {
+  const out: BacteriumType[] = [];
+  for (const w of LEVELS[level].waves) for (const g of w.groups) {
+    const sp = CONFIG.pathogens[g.type].taxon?.species;
+    if (sp && !out.includes(sp)) out.push(sp);
+  }
+  return out;
+}
+
+/** An organ's bacteria that this career has no IgG target for yet. */
+export const missingTargets = (level: number, perks: Perks): BacteriumType[] => organBacteria(level).filter((b) => !perks.targets.includes(b));
+
 /** Gold for winning organ `level` (0-based) with `healthLeft`: full on the first clear, a quarter on a replay. */
 export function goldFor(level: number, healthLeft: number, firstClear: boolean): number {
   const full = 100 * (level + 1) + 5 * healthLeft;

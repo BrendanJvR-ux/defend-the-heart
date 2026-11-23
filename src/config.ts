@@ -163,6 +163,8 @@ export interface LevelDef {
   regenPerWave?: number;
   /** Kidney: on the last `fraction` of every vessel, pathogens are filtered to ×`factor` speed. */
   filtration?: { fraction: number; factor: number };
+  /** Energy income multiplier for this organ (kill bounties and the wave-clear bonus); later organs pay less. */
+  income?: number;
   /** Spleen: a lost white cell is remade `after` seconds later, costing `cost` organ health. */
   respawn?: { after: number; cost: number };
   map: {
@@ -315,7 +317,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave.',
-    hp: 24, startEnergy: 160, cells: 2, regenPerWave: 3,
+    hp: 24, startEnergy: 160, cells: 2, regenPerWave: 3, income: 0.75,
     startingNodes: [{ vessel: 'portalLeft', site: 0, type: 'igm' }, { vessel: 'arteryLower', site: 1, type: 'igm' }],
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
@@ -351,7 +353,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. The hardest waves.',
-    hp: 20, startEnergy: 295, cells: 2,
+    hp: 20, startEnergy: 295, cells: 2, income: 0.7,
     filtration: { fraction: 0.28, factor: 0.6 },
     startingNodes: [{ vessel: 'leftUpper', site: 2, type: 'igm' }, { vessel: 'rightUpper', site: 2, type: 'igm' }],
     map: {
@@ -378,21 +380,21 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'Filtration', hint: 'E. coli climbs from the bladder. Pathogens slow down near the kidney (the striped stretch), so nodes there fire for longer.',
-        groups: [g('ecoli', 'left', 8, 1, 3.2), g('virus', 'upper', 12, 6, 0.3), g('virus', 'topLeft', 8, 12, 0.3)] },
+        groups: [g('ecoli', 'left', 6, 1, 3.2), g('virus', 'upper', 10, 6, 0.3), g('virus', 'topLeft', 6, 12, 0.3)] },
       { title: 'Stones and swarms', hint: 'Viruses on the right, bacteria below, hijackers behind them on the left.',
-        groups: [g('virus', 'right', 13, 2, 0.3), g('ecoli', 'lower', 7, 1, 3), g('hijacker', 'left', 5, 12, 1), g('saureus', 'topLeft', 5, 4, 3)] },
+        groups: [g('virus', 'right', 10, 2, 0.3), g('ecoli', 'lower', 6, 1, 3), g('hijacker', 'left', 4, 12, 1), g('saureus', 'topLeft', 4, 4, 3)] },
       { title: 'Infection spreads', hint: 'Hijackers on two vessels. Only dilate where you can keep your cells safe.',
-        groups: [g('ecoli', 'right', 8, 1, 2.6), g('hijacker', 'upper', 7, 3, 1), g('virus', 'left', 13, 6, 0.3), g('hijacker', 'lower', 7, 10, 1), g('virus', 'topLeft', 10, 14, 0.3)] },
+        groups: [g('ecoli', 'right', 6, 1, 2.6), g('hijacker', 'upper', 6, 3, 1), g('virus', 'left', 10, 6, 0.3), g('hijacker', 'lower', 6, 10, 1), g('virus', 'topLeft', 8, 14, 0.3)] },
       { title: 'Sepsis', hint: 'The final wave: every vessel, every kind of pathogen.',
-        groups: [g('ecoli', 'left', 7, 1, 3), g('saureus', 'right', 7, 2, 3), g('virus', 'upper', 13, 6, 0.3), g('hijacker', 'left', 5, 10, 1), g('hijacker', 'right', 5, 14, 1), g('virus', 'lower', 10, 18, 0.3), g('hijacker', 'upper', 5, 22, 1), g('virus', 'topLeft', 10, 8, 0.3)] },
+        groups: [g('ecoli', 'left', 6, 1, 3), g('saureus', 'right', 6, 2, 3), g('virus', 'upper', 10, 6, 0.3), g('hijacker', 'left', 4, 10, 1), g('hijacker', 'right', 4, 14, 1), g('virus', 'lower', 8, 18, 0.3), g('hijacker', 'upper', 4, 22, 1), g('virus', 'topLeft', 8, 8, 0.3)] },
       { title: 'Boss: sepsis', hint: 'A giant hijacker infects every white cell it touches. Do not dilate its vessel unless your nodes can kill it first.',
-        groups: [g('sepsis', 'upper', 1, 2, 1), g('ecoli', 'left', 7, 4, 3), g('virus', 'right', 10, 12, 0.3), g('saureus', 'topLeft', 5, 8, 3)] },
+        groups: [g('sepsis', 'upper', 1, 2, 1), g('ecoli', 'left', 6, 4, 3), g('virus', 'right', 8, 12, 0.3), g('saureus', 'topLeft', 4, 8, 3)] },
     ],
   },
   {
     id: 'spleen', title: 'The Spleen', organ: 'Spleen', tagline: 'The body\'s own immune organ.',
     twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
-    hp: 22, startEnergy: 255, cells: 2,
+    hp: 22, startEnergy: 314, cells: 2, income: 0.7,
     respawn: { after: 8, cost: 1 },
     startingNodes: [{ vessel: 'leftUpper', site: 1, type: 'igm' }, { vessel: 'rightUpper', site: 1, type: 'igm' }],
     map: {
@@ -420,15 +422,15 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'Encapsulated', hint: 'The spleen clears bacteria in thick capsules: pneumococci, meningococci, Klebsiella. Aim IgG at them. Lose a white cell and the spleen remakes it, at a cost of 1 health.',
-        groups: [g('spneumo', 'left', 10, 1, 3.2), g('saureus', 'upper', 6, 4, 3.4), g('virus', 'right', 10, 8, 0.35)] },
+        groups: [g('spneumo', 'left', 8, 1, 3.2), g('saureus', 'upper', 5, 4, 3.4), g('virus', 'right', 8, 8, 0.35)] },
       { title: 'Two capsules', hint: 'Meningococci from below, Klebsiella from the right.',
-        groups: [g('nmening', 'lowerLeft', 8, 1, 3), g('kpneumo', 'right', 7, 3, 3.2), g('virus', 'upper', 12, 10, 0.3), g('saureus', 'lower', 6, 6, 3)] },
+        groups: [g('nmening', 'lowerLeft', 4, 1, 3), g('kpneumo', 'right', 4, 3, 3.2), g('virus', 'upper', 6, 10, 0.3), g('saureus', 'lower', 3, 6, 3)] },
       { title: 'Hijacked', hint: 'Hijackers come down from above. Each white cell they take, the spleen pays 1 health to remake.',
-        groups: [g('spneumo', 'left', 10, 1, 3), g('nmening', 'lowerRight', 8, 3, 3), g('hijacker', 'upper', 5, 8, 1), g('kpneumo', 'lower', 7, 5, 3), g('virus', 'right', 12, 14, 0.3)] },
+        groups: [g('spneumo', 'left', 8, 1, 3), g('nmening', 'lowerRight', 7, 3, 3), g('hijacker', 'upper', 4, 8, 1), g('kpneumo', 'lower', 6, 5, 3), g('virus', 'right', 10, 14, 0.3)] },
       { title: 'Sepsis of the blood', hint: 'Everything at once, from every side.',
-        groups: [g('spneumo', 'right', 10, 1, 2.8), g('nmening', 'left', 10, 3, 2.8), g('kpneumo', 'lowerLeft', 8, 5, 3), g('saureus', 'lowerRight', 7, 2, 3), g('hijacker', 'upper', 6, 10, 1), g('virus', 'lower', 14, 14, 0.3)] },
+        groups: [g('spneumo', 'right', 8, 1, 2.8), g('nmening', 'left', 8, 3, 2.8), g('kpneumo', 'lowerLeft', 7, 5, 3), g('saureus', 'lowerRight', 6, 2, 3), g('hijacker', 'upper', 5, 10, 1), g('virus', 'lower', 12, 14, 0.3)] },
       { title: 'Boss: malaria', hint: 'Plasmodium, the malaria parasite, climbs from below and hides in red blood cells: nothing can hit it then. IgM and IgE wear it down; IgG barely scratches it.',
-        groups: [g('plasmodium', 'lowerLeft', 1, 2, 1), g('spneumo', 'left', 7, 6, 3), g('virus', 'right', 12, 12, 0.3)] },
+        groups: [g('plasmodium', 'lowerLeft', 1, 2, 1), g('spneumo', 'left', 6, 6, 3), g('virus', 'right', 10, 12, 0.3)] },
     ],
   },
 ];

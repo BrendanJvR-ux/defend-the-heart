@@ -479,8 +479,14 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     if (hide) ctx.globalAlpha = 0.45;
     drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, CONFIG.pathogens[p.type].boss ? 1.2 : p.type === 'infected' ? 1.35 : 1.4, t + p.id);
     if (hide) {
-      ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(200,60,60,0.85)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 6]);
-      ctx.beginPath(); ctx.arc(q.x, q.y, 52, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      // a thick dashed ring that slowly turns, and a HIDING tag: nothing can hit it until it shows again
+      ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(200,50,60,0.95)'; ctx.lineWidth = 6; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 20;
+      ctx.beginPath(); ctx.arc(q.x, q.y, 62, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+      ctx.font = '900 26px Palatino, Georgia, serif'; ctx.textAlign = 'center';
+      const tw = ctx.measureText('HIDING').width;
+      ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.beginPath(); ctx.roundRect(q.x - tw / 2 - 10, q.y - 106, tw + 20, 34, 8); ctx.fill();
+      ctx.strokeStyle = 'rgba(200,50,60,0.95)'; ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.fillStyle = '#8a1e24'; ctx.fillText('HIDING', q.x, q.y - 80);
     }
     if (CONFIG.pathogens[p.type].boss) bar(ctx, q.x, q.y - 66, 80, p.hp / p.maxHp, '#c8402a');
     else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, CONFIG.pathogens[p.type].taxon || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, '#c8402a');

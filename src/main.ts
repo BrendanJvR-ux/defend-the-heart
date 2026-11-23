@@ -6,7 +6,7 @@ import {
   type State, newGame, step, advance, nextSpeed, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
   aliveCells, wave, whenLabel, resumeGame, leakSummary, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
-import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, type Career, type KV, type UpgradeId } from './career';
+import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
 import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
 
@@ -82,6 +82,8 @@ function targetButtons(act: string, disabled: (b: BacteriumType) => string): str
     return `<button data-act="${act}" data-target="${b}" ${why ? 'disabled' : ''} title="${esc(why)}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>${locked ? 'Unlock in Upgrades' : esc(st.short ?? '')}</small></span></button>`;
   }).join('')}</div>`;
 }
+/** Bacteria names in italics, joined. */
+const bugNames = (ts: BacteriumType[]) => ts.map((b) => `<i>${esc(CONFIG.pathogens[b].plural)}</i>`).join(', ');
 const targetNames = (ts: BacteriumType[]) => ts.map((b) => `<i>${esc(CONFIG.pathogens[b].plural)}</i>`).join(' and ');
 const MULT_LINE = '×3 on its target, ×2.5 on the same shape, ×2 on the same Gram stain, ×0.5 on other bacteria, ×0.25 on viruses.';
 
@@ -178,6 +180,9 @@ popover.addEventListener('click', (e) => {
   }
 });
 
+// every build (placing, re-aiming) is saved at once, so a reload keeps it
+popover.addEventListener('click', () => { if (s.phase === 'prep' && gameShown) { career.run = snapshot(s); saveNow(); } });
+
 canvas.addEventListener('pointerdown', (e) => {
   const p = toMap(e);
   if (s.phase === 'prep') {
@@ -262,7 +267,8 @@ function playLevel(i: number, confirmed = false) {
   const sp = s.speed; s = newGame(i, perksOf(career)); s.speed = sp;
   closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = ''; spentToasted = 0;
   maybeTutorial();
-  toast(`Level ${i + 1}: defend the ${organTitle(i).toLowerCase()}.`);
+  const miss = missingTargets(i, s.perks);
+  toast(miss.length ? `Level ${i + 1}: the ${organTitle(i).toLowerCase()} brings ${miss.map((b) => CONFIG.pathogens[b].plural).join(' and ')}, and you have no IgG target for ${miss.length > 1 ? 'them' : 'it'} yet.` : `Level ${i + 1}: defend the ${organTitle(i).toLowerCase()}.`);
 }
 
 // ── Saving: at the start of every build phase, and when an organ is won or lost ──
@@ -307,19 +313,20 @@ function renderMenu() {
       </div>`;
   } else if (menuPage.page === 'organs') {
     h = `<h2>Organs</h2><p class="sub">Clear an organ to unlock the next. Cleared organs can be replayed.</p>
-      <div class="menuButtons">${LEVELS.map((l, i) => `<button data-menu="level" data-level="${i}" ${i < unlocked ? '' : 'disabled'}>${i + 1}. ${esc(organTitle(i))}<small>${i >= unlocked ? 'locked' : career.cleared[i] ? `cleared · best ${career.best[i]}/${l.hp}` : esc(l.tagline)}</small></button>`).join('')}</div>
+      <div class="menuButtons">${LEVELS.map((l, i) => `<button data-menu="level" data-level="${i}" ${i < unlocked ? '' : 'disabled'}>${i + 1}. ${esc(organTitle(i))}<small>${i >= unlocked ? 'locked' : career.cleared[i] ? `cleared · best ${career.best[i]}/${l.hp}` : esc(l.tagline)}${i < unlocked && missingTargets(i, perksOf(career)).length ? `<br><b class="needs">no IgG target yet for ${missingTargets(i, perksOf(career)).map((b) => CONFIG.pathogens[b].plural).join(', ')}</b>` : ''}</small></button>`).join('')}</div>
       <p><button data-menu="back">Back</button></p>`;
   } else if (menuPage.page === 'shop') {
-    const row = (id: UpgradeId, iconHtml = '') => {
+    const row = (id: UpgradeId, iconHtml = '', extra = '') => {
       const u = UPGRADES[id], have = career.bought[id] ?? 0, chk = buyCheck(career, id);
       const pips = u.prices.length > 1 ? `<span class="pips">${u.prices.map((_, i) => `<i class="${i < have ? 'on' : ''}"></i>`).join('')}</span>` : '';
-      return `<li>${iconHtml}<span><b>${esc(u.name)}</b> ${pips}<small>${esc(u.blurb)}</small></span><button data-menu="buy" data-up="${id}" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason)}">${have >= u.prices.length ? (u.prices.length > 1 ? 'Maxed' : 'Owned') : `${chk.price} gold`}</button></li>`;
+      return `<li>${iconHtml}<span><b>${esc(u.name)}</b> ${pips}<small>${esc(u.blurb)}${extra ? ` ${esc(extra)}` : ''}</small></span><button data-menu="buy" data-up="${id}" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason)}">${have >= u.prices.length ? (u.prices.length > 1 ? 'Maxed' : 'Owned') : `${chk.price} gold`}</button></li>`;
     };
+    const where = (b: BacteriumType) => LEVELS.map((_, i) => (organBacteria(i).includes(b) ? organTitle(i) : '')).filter(Boolean).join(', ');
     const nodeImg = (n: NodeType) => `<img alt="" src="${nodeIcon(n)}" width="40" height="31">`;
     h = `<h2>Upgrades</h2><p class="sub">You have <b>${career.gold}</b> gold. Clear organs to earn more (a quarter on a replay). Upgrades apply at once; an extra starting node from the next organ you start.</p>
       <div class="shop">
         <h3>Node damage</h3><ul>${(['igm', 'igg', 'iga', 'ige'] as NodeType[]).map((n) => row(`dmg-${n}` as UpgradeId, nodeImg(n))).join('')}</ul>
-        <h3>IgG targets</h3><p class="sub"><i>S. aureus</i> is always unlocked.</p><ul>${BACTERIA.filter((b) => b !== 'saureus').map((b) => row(`target-${b}` as UpgradeId, icon(b, 34))).join('')}</ul>
+        <h3>IgG targets</h3><p class="sub"><i>S. aureus</i> is always unlocked.</p><ul>${BACTERIA.filter((b) => b !== 'saureus').map((b) => row(`target-${b}` as UpgradeId, icon(b, 34), `Comes in: ${where(b)}.`)).join('')}</ul>
         <h3>Special</h3><ul>${(['dual', 'no', 'extraNode', 'cheapFirst'] as UpgradeId[]).map((id) => row(id)).join('')}</ul>
       </div>
       <p><button data-menu="back">Back</button></p>`;
@@ -353,6 +360,7 @@ panel.addEventListener('click', (e) => {
   if (a === 'pulse') pulse();
   if (a === 'restart') restart();
   if (a === 'level') playLevel(Number(el.dataset.level));
+  if (a === 'shop') openMenu({ page: 'shop' });
 });
 panel.addEventListener('pointerover', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = true; const site = (e.target as HTMLElement).closest('[data-site]') as HTMLElement | null; view.hoverSite = site?.dataset.site ?? view.hoverSite; });
 panel.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = false; });
@@ -471,6 +479,7 @@ function renderPanel() {
     const L = levelDef(s);
     h = `<section class="card organ"><h3>Level ${s.level + 1} · ${esc(L.title)}</h3><p class="hint small"><b>${esc(L.tagline)}</b> ${esc(L.twist)}</p>
         <div class="levels">${LEVELS.map((l, i) => `<button data-act="level" data-level="${i}" class="${i === s.level ? 'on' : ''}" ${i < unlocked ? '' : 'disabled'} title="${i < unlocked ? (i === s.level ? 'Restart this organ' : `Play ${esc(l.title)}`) : 'Locked: clear the previous organ'}">${i + 1}<small>${i < unlocked ? esc(organTitle(i)) : 'locked'}</small></button>`).join('')}</div></section>
+      ${(() => { const miss = missingTargets(s.level, s.perks); return miss.length ? `<p class="notice">Bacteria here you have no IgG target for: ${bugNames(miss)}. An IgG aimed at something else hits them at only ×0.5 to ×2. <button data-act="shop">Upgrades (${career.gold} gold)</button></p>` : ''; })()}
       <h2><small>Prepare · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>
       <p class="hint">${esc(def.hint)}</p>
       ${s.message ? `<p class="notice">${esc(s.message)}</p>` : ''}

@@ -50,7 +50,7 @@ Your gold is shown in the top bar. Winning an organ pays gold: **100 × the orga
 | Extra starting node | 1 | 150 | Every organ starts with one more IgM already placed |
 | Cheaper first node | 1 | 150 | The first node you place in each build phase costs half |
 
-The heart and lungs can be won without upgrades; from the brain on, the right IgG targets and some damage make a real difference, and the liver and kidney need them.
+The heart and lungs can be won without upgrades; from the brain on, the right IgG targets and some damage make a real difference, and the liver and kidney need them. Before you start an organ, the **Organs** list, a message and the build panel name any of its bacteria you have no IgG target for yet; the shop says which organs each bacterium comes in.
 
 ## Bosses
 
@@ -63,7 +63,7 @@ Every organ ends with a boss wave: one giant pathogen with its own trick, plus a
 | Brain | **Meningococcus** | A giant *N. meningitidis* that IgA cannot slow. | IgG aimed at *N. meningitidis* (×3) |
 | Liver | **Hepatitis giant** | Regrows 9 health per second as it climbs the long portal vein. | IgM, IgE: damage must outpace it |
 | Kidney | **Sepsis hijacker** | A giant hijacker that infects **every** white cell it touches and keeps going. | Nodes, not white cells |
-| Spleen | ***Plasmodium*** (malaria) | A parasite, not a bacterium. Every 6 s it hides inside a red blood cell for 2 s (shown faded, with a dashed ring): nothing can target or hit it then, and antibodies in flight miss. | IgM, IgE, and a pulse timed for when it shows |
+| Spleen | ***Plasmodium*** (malaria) | A parasite, not a bacterium. Every 6 s it hides inside a red blood cell for 2 s (shown faded, with a turning dashed ring and a HIDING tag): nothing can target or hit it then, and antibodies in flight miss. | IgM, IgE, and a pulse timed for when it shows |
 
 ## The bacteria
 
@@ -83,7 +83,7 @@ All six have 70 health and the same speed; viruses (10 health) are fast and come
 ## How it plays
 
 1. **Prepare.** The panel and the map show the next wave: which pathogens, how many, roughly when, and up which vessel (and whether it forks).
-2. **Place lymph nodes** (between waves only). Click a **+** site beside a vessel section and pick a type. Each node fires its immunoglobulin at pathogens on its own route; a node on a fork's shared stem guards both branches. Nodes cost energy; you start with 160–312 energy and two nodes already placed (three on the heart), and earn energy for every kill and every wave cleared. Most routes have five sites (the liver's more, the brain's two).
+2. **Place lymph nodes** (between waves only). Click a **+** site beside a vessel section and pick a type. Each node fires its immunoglobulin at pathogens on its own route; a node on a fork's shared stem guards both branches. Nodes cost energy; you start with 160–314 energy and two nodes already placed (three on the heart), and earn energy for every kill and every wave cleared. From the liver on, energy is tight (kills and cleared waves pay 70–75% as much), so you can fill only about half of the build sites: choose where to build. Every build is saved at once. Most routes have five sites (the liver's more, the brain's two).
 
 | Node | Cost | Damage | Effect |
 |---|---|---|---|
@@ -121,10 +121,10 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 
 - A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG with the unlocked target that does most to that vessel's wave, and builds IgM instead when no target helps; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; pulses into clusters of three):
   - **without upgrades** wins the heart (19/20) and the lungs (12/20), and loses the liver and kidney;
-  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 19/20, lungs 12/20 (buying the *S. pneumoniae* target), brain 15/18 (*Listeria*, *N. meningitidis* and IgM damage), liver 16/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 15/20 (IgM and IgG damage), spleen 13/22 (IgA, IgG and IgE damage).
+  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 19/20, lungs 12/20 (buying the *S. pneumoniae* target), brain 15/18 (*Listeria*, *N. meningitidis* and IgM damage), liver 14/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 8/20 (IgM and IgG damage), spleen 13/22 (IgA and IgG damage). From the liver on it fills only 56%, 55% and 53% of the build sites.
 - **A clumsy new player wins the heart.** A scripted player who builds only IgM on the first free sites in the list, opens a vessel only once a pathogen is 80% of the way in, and never pulses, still clears the heart without losing health. (The **Place by list** order takes each vessel's outermost site first, then the next.)
 - Never building loses every organ, even with every upgrade; white cells alone leak most of the heart's health in wave 1 (it ends on 5/20).
-- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs, brain and spleen at least 2 health worse (heart 17, lungs 5, brain 4, spleen 5). The tests require this on every organ.
+- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs, brain and spleen at least 2 health worse (heart 17, lungs 5, brain 4, spleen 11). The tests require this on every organ.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
 ### Files

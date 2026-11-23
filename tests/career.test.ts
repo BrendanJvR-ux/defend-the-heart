@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { LEVELS } from '../src/config';
 import * as M from '../src/level';
 import { newGame, placeNode, nodeAt, startWave, step, resumeGame, type State } from '../src/sim';
-import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, type KV } from '../src/career';
+import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, organBacteria, missingTargets, type KV } from '../src/career';
 
 /** An in-memory store standing in for localStorage. */
 function memory(init: Record<string, string> = {}): KV & { data: Record<string, string> } {
@@ -208,4 +208,17 @@ describe('Career: a sixth organ', () => {
     c.cleared[4] = true; expect(unlockedCount(c)).toBe(6);
   });
   it('the spleen pays 600 + 5 per health left on a first clear', () => { expect(goldFor(5, 10, true)).toBe(650); });
+});
+
+describe('Career: what an organ needs', () => {
+  it('lists the bacteria each organ brings, bosses counted as their species', () => {
+    expect(organBacteria(0)).toEqual(['saureus']);
+    expect(organBacteria(4).sort()).toEqual(['ecoli', 'saureus']);
+    expect(organBacteria(2)).toContain('nmening'); // the meningococcus boss and its waves
+  });
+  it('names the IgG targets for an organ that are not unlocked yet', () => {
+    expect(missingTargets(4, NO_PERKS)).toEqual(['ecoli']);
+    expect(missingTargets(4, { ...NO_PERKS, targets: ['saureus', 'ecoli'] })).toEqual([]);
+    expect(missingTargets(0, NO_PERKS)).toEqual([]);
+  });
 });

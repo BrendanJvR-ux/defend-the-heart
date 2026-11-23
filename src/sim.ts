@@ -371,7 +371,7 @@ export function hurt(s: State, p: Pathogen, dmg: number) {
   if (p.hp <= 0) {
     const st = CONFIG.pathogens[p.type];
     s.killed++;
-    s.energy += st.bounty;
+    s.energy += Math.round(st.bounty * (LEVELS[s.level].income ?? 1));
     const q = pathogenPos(p);
     s.rings.push({ x: q.x, y: q.y, r: st.boss ? 70 : 18, t: 0, dur: st.boss ? 0.9 : 0.35, kind: 'pop' });
     if (st.boss) s.floaters.push({ x: q.x, y: q.y - 50, text: `${st.name} destroyed!`, t: 0, color: '#1e6a8a' });
@@ -662,7 +662,7 @@ function recall(s: State, dt: number) {
     }
     s.nodes = s.nodes.filter((x) => !s.spent.some((sp) => sp.site === x.site));
     if (s.wave >= totalWaves(s)) { s.phase = 'victory'; return; }
-    const bonus = CONFIG.waveClearEnergy(s.wave);
+    const bonus = Math.round(CONFIG.waveClearEnergy(s.wave) * (LEVELS[s.level].income ?? 1));
     s.energy += bonus;
     s.no = Math.min(s.perks.noMax, s.no + CONFIG.no.waveTopUp);
     s.discountUsed = false;
