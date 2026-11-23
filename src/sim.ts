@@ -154,12 +154,15 @@ export function canStartWave(s: State): { ok: boolean; reason: string } {
 
 // ── Combat: dilation, paid for with NO ──────────────────────────────────────
 
+/** NO needed to open a vessel: its cost, plus enough to hold it open for a moment. */
+export const openNeed = () => CONFIG.no.openCost + CONFIG.no.drainPerSec * CONFIG.no.minOpenSeconds;
+
 /** Can vessel r be opened (or, if it is the open one, closed) right now? */
 export function dilateCheck(s: State, r: VesselId): { ok: boolean; reason: string } {
   if (s.phase !== 'combat') return { ok: false, reason: 'Dilate during the wave.' };
   if (!VESSELS[r]) return { ok: false, reason: 'Not a vessel of this organ.' };
   if (s.dilated === r) return { ok: true, reason: '' };
-  if (s.no < CONFIG.no.openCost) return { ok: false, reason: `Not enough NO to open the ${VESSELS[r].name.toLowerCase()}.` };
+  if (s.no < openNeed()) return { ok: false, reason: `Not enough NO to open the ${VESSELS[r].name.toLowerCase()}.` };
   return { ok: true, reason: '' };
 }
 

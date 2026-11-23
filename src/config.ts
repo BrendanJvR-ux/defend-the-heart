@@ -95,7 +95,7 @@ export const CONFIG = {
   immunePulse: { perWave: 1, radius: 85, damage: 42, ringSeconds: 0.45 },
 
   /** Nitric oxide: the fuel that holds a vessel open during a wave. */
-  no: { max: 100, openCost: 15, drainPerSec: 8, regenPerSec: 3, waveTopUp: 35 },
+  no: { max: 100, openCost: 15, drainPerSec: 8, regenPerSec: 3, waveTopUp: 35, minOpenSeconds: 1 },
 
   pathogens: {
     bacterium: { name: 'Bacterium', plural: 'Bacteria', hp: 70, speed: 30, armour: 5, heartDamage: 3, contactDps: 3, bounty: 7 },

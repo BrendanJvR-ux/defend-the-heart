@@ -3,7 +3,7 @@ import { CONFIG, LEVELS, NODE_TYPES, type NodeType, type PathogenType, type Vess
 import * as map from './level';
 import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
-  type State, newGame, step, toggleRoute, dilateCheck, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
+  type State, newGame, step, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
   aliveCells, wave, whenLabel, buildCheck, placeNode, nodeAt, levelDef, totalWaves, surging,
 } from './sim';
 import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
@@ -207,7 +207,7 @@ function nodeIcon(t: NodeType): string {
 
 let lastSig = '';
 function signature() {
-  return JSON.stringify([s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.dilated, Math.floor(s.no), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
+  return JSON.stringify([s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.dilated, s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
 }
 
 function previewHtml(): string {
@@ -246,7 +246,7 @@ function renderPanel() {
       <p class="hint">${esc(def.hint)}</p>
       ${s.message ? `<p class="notice">${esc(s.message)}</p>` : ''}
       <section class="card"><h3>Incoming threats</h3><div class="lanes">${previewHtml()}</div></section>
-      <section class="card"><h3>Dilation <span class="count">${Math.floor(s.no)} NO</span></h3>
+      <section class="card"><h3>Dilation <span class="count"><span data-no>${Math.floor(s.no)}</span> NO</span></h3>
         <p class="hint">During the wave, open one vessel at a time with NO. Opening costs ${CONFIG.no.openCost}; an open vessel drains NO; closed, it refills.</p></section>
       <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
         <p class="hint">Click a + site beside a vessel to place a node. Each fires its immunoglobulin at pathogens on its own vessel.</p>
@@ -260,12 +260,12 @@ function renderPanel() {
     const out = outCells(s).length, returning = aliveCells(s).some((c) => c.mode === 'returning');
     const organ = esc(levelDef(s).organ.toLowerCase());
     const where = s.dilated ? (out ? `Patrolling the ${esc(vesselName(s.dilated).toLowerCase())}.` : `Heading home before setting out along the ${esc(vesselName(s.dilated).toLowerCase())}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
-    const noLow = s.no < CONFIG.no.openCost && !s.dilated;
+    const noLow = s.no < openNeed() && !s.dilated;
     h = `<h2><small>Defend · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>
-      <section class="card"><h3>Dilate <span class="count">${Math.floor(s.no)} / ${CONFIG.no.max} NO</span></h3>
-        <p class="nogauge ${noLow ? 'low' : ''}"><i style="width:${(s.no / CONFIG.no.max) * 100}%"></i></p>
-        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.dilated === v}" class="${s.dilated === v ? 'on' : ''}" ${s.dilated === v || s.no >= CONFIG.no.openCost ? '' : 'disabled'}>${vesselName(v)}<small>${s.dilated === v ? `open · key ${i + 1} closes` : `resting · key ${i + 1}`}</small></button>`).join('')}</div>
-        <p class="hint">Opening costs ${CONFIG.no.openCost} NO, an open vessel drains ${CONFIG.no.drainPerSec} a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out the vessel closes.</p></section>
+      <section class="card"><h3>Dilate <span class="count"><span data-no>${Math.floor(s.no)}</span> / ${CONFIG.no.max} NO</span></h3>
+        <p class="nogauge ${noLow ? 'low' : ''}"><i data-nobar style="width:${(s.no / CONFIG.no.max) * 100}%"></i></p>
+        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.dilated === v}" class="${s.dilated === v ? 'on' : ''}" ${s.dilated === v || s.no >= openNeed() ? '' : 'disabled'}>${vesselName(v)}<small>${s.dilated === v ? `open · key ${i + 1} closes` : `resting · key ${i + 1}`}</small></button>`).join('')}</div>
+        <p class="hint">Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), an open vessel drains ${CONFIG.no.drainPerSec} a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out the vessel closes.</p></section>
       <section class="card"><h3>White cells <span class="count">${cells} of ${levelDef(s).cells}</span></h3>
         <p class="cells">${Array.from({ length: levelDef(s).cells }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 30)}</span>`).join('')}</p>
         <p class="hint">${where}${s.infections ? ` <b>${s.infections} infected</b> by hijacker viruses: they now head for the ${esc(levelDef(s).organ.toLowerCase())}.` : ' Keep them clear of hijacker viruses.'}</p></section>
@@ -293,6 +293,10 @@ function renderHud() {
   $('wave').textContent = `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)}`;
   $('energy').textContent = String(s.energy);
   $('cells').textContent = s.phase === 'combat' || s.phase === 'recall' ? `${aliveCells(s).length}/${levelDef(s).cells}` : `${levelDef(s).cells} ready`;
+  // the NO figure and bar change every frame: update them in place rather than redrawing the panel
+  const noText = String(Math.floor(s.no));
+  for (const el of panel.querySelectorAll<HTMLElement>('[data-no]')) if (el.textContent !== noText) el.textContent = noText;
+  const bar = panel.querySelector<HTMLElement>('[data-nobar]'); if (bar) bar.style.width = `${(s.no / CONFIG.no.max) * 100}%`;
   if (s.noOuts !== lastNoOuts) { if (s.noOuts > lastNoOuts) toast('NO ran out: the vessel contracts and your white cells return.'); lastNoOuts = s.noOuts; }
   $('pulseStat').textContent = s.phase === 'combat' ? (s.pulsesLeft > 0 ? 'Ready' : 'Used') : s.phase === 'prep' ? 'Next wave' : '—';
   $('btnPause').textContent = s.paused ? 'Resume' : 'Pause';

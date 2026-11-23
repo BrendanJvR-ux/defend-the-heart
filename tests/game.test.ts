@@ -5,7 +5,7 @@ import { siteById, dist } from '../src/level';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
-  newGame, toggleRoute, dilateCheck, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
+  newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
   waveSpawns, placeNode, buildCheck, nodeAt, hurt, effectiveArmour, type State, type Pathogen,
 } from '../src/sim';
 
@@ -95,6 +95,17 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
     s.no = CONFIG.no.openCost - 1; expect(toggleRoute(s, 'left')).toBe(false); expect(s.dilated).toBe('right');
     expect(dilateCheck(s, 'left').reason).toBe('Not enough NO to open the left vessel.');
   });
+  it('opening needs enough NO to stay open for a moment, not just the opening cost', () => {
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0);
+    const need = CONFIG.no.openCost + CONFIG.no.drainPerSec * CONFIG.no.minOpenSeconds;
+    expect(openNeed()).toBe(need);
+    s.no = need - 0.5;
+    expect(toggleRoute(s, 'left')).toBe(false);
+    expect(dilateCheck(s, 'left').reason).toBe('Not enough NO to open the left vessel.');
+    s.no = need; expect(toggleRoute(s, 'left')).toBe(true);
+    tick(s, CONFIG.no.minOpenSeconds * 0.9); expect(s.dilated).toBe('left');
+  });
+
   it('running dry closes the route once, never goes negative, and sends the cells home', () => {
     const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 10);
     toggleRoute(s, 'left'); tick(s, 0.5); s.no = 0.1; step(s, 0.1);

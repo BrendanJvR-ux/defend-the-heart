@@ -2,7 +2,7 @@
 import { CONFIG, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
 import { drawBoss } from './bosses';
 import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, entryDef, forkAt, routesOf, type Vec } from './level';
-import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss } from './sim';
+import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawGut } from './organs';
 
 export interface View {
@@ -182,7 +182,7 @@ function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
 function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
   if (s.phase !== 'combat') return;
   const heart = LEVEL.id === 'heart', y = HEART.y + (heart ? 159 : LEVEL.map.ry + 50) + 30, w = 150;
-  const low = s.no < CONFIG.no.openCost && !s.dilated, k = s.no / CONFIG.no.max;
+  const low = s.no < openNeed() && !s.dilated, k = s.no / CONFIG.no.max;
   ctx.save();
   ctx.globalAlpha = low ? 0.55 + 0.45 * Math.abs(Math.sin(t * 5)) : 1;
   ctx.fillStyle = 'rgba(244,234,216,0.92)'; ctx.beginPath(); ctx.roundRect(HEART.x - w / 2 - 44, y - 13, w + 96, 26, 13); ctx.fill();
