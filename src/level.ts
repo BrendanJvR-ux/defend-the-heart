@@ -126,5 +126,12 @@ loadLevel(0);
 
 export const siteById = (id: string) => SITES.find((s) => s.id === id)!;
 
+/** A site's place along its route, for lists: "site 2 of 5, far out". */
+export function siteLabel(site: Site): string {
+  const n = LEVEL.map.siteFractions.length, pos = site.index + 1;
+  const where = pos / n <= 0.34 ? 'far out' : pos / n <= 0.67 ? 'midway' : 'near the organ';
+  return `site ${pos} of ${n}, ${where}`;
+}
+
 export { dist };
 export type { Vec };

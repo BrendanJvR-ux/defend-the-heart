@@ -130,7 +130,11 @@ function parse(raw: string): Career | null {
   if (typeof o.gold === 'number' && o.gold >= 0) c.gold = Math.floor(o.gold);
   if (Array.isArray(o.cleared)) o.cleared.forEach((x, i) => { if (i < c.cleared.length) c.cleared[i] = x === true; });
   if (Array.isArray(o.best)) o.best.forEach((x, i) => { if (i < c.best.length && typeof x === 'number') c.best[i] = x; });
-  if (o.bought && typeof o.bought === 'object') for (const [k, n] of Object.entries(o.bought)) if (typeof n === 'number') c.bought[k as UpgradeId] = n;
+  // only known upgrades, at whole-number levels, capped at the top level
+  if (o.bought && typeof o.bought === 'object') for (const [k, n] of Object.entries(o.bought)) {
+    if (!Object.prototype.hasOwnProperty.call(UPGRADES, k) || !Number.isInteger(n) || (n as number) < 1) continue;
+    c.bought[k as UpgradeId] = Math.min(n as number, UPGRADES[k as UpgradeId].prices.length);
+  }
   c.run = validRun(o.run) ? o.run : null;
   return c;
 }
@@ -138,7 +142,8 @@ function parse(raw: string): Career | null {
 function validRun(r: unknown): r is RunSave {
   if (!r || typeof r !== 'object') return false;
   const x = r as RunSave;
-  return [x.level, x.wave, x.heartHp, x.energy, x.no].every((n) => typeof n === 'number') && Array.isArray(x.nodes)
+  return Number.isInteger(x.level) && x.level >= 0 && x.level < LEVELS.length
+    && [x.wave, x.heartHp, x.energy, x.no].every((n) => typeof n === 'number' && Number.isFinite(n)) && Array.isArray(x.nodes)
     && x.nodes.every((n) => n && typeof n.site === 'string' && typeof n.type === 'string' && Array.isArray(n.targets)
       && n.targets.every((b) => (BACTERIA as string[]).includes(b)));
 }

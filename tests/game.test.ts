@@ -502,6 +502,13 @@ describe('Defend the Heart: organ levels', () => {
     }
   });
 
+  it('every site has a readable position label', () => {
+    LEVELS.forEach((_, i) => {
+      newGame(i);
+      for (const x of M.SITES) expect(M.siteLabel(x), x.id).toMatch(/^site \d+ of \d+, (far out|midway|near the organ)$/);
+    });
+  });
+
   it('more build sites: at least five guarding each route (four on the kidney\'s short upper fork), two on the brain', () => {
     const atLeast = [5, 5, 2, 5, 4];
     LEVELS.forEach((_, i) => {

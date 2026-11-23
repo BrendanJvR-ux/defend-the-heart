@@ -92,7 +92,7 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
   const x = `<button class="x" data-act="close" aria-label="Close">×</button>`;
   const back = `<p><button data-act="back">Back</button></p>`;
   if (mode === 'aim') {
-    const dual = s.perks.dual ? `<p><button data-act="todual" ${buildCheck(s, id, 'igg', s.perks.targets.slice(0, 2)).ok || s.perks.targets.length < 2 ? '' : 'disabled'}>Aim at two targets (${nodeCost(s, 'igg', ['saureus', 'ecoli'])} energy)</button></p>` : '';
+    const dual = s.perks.dual && s.perks.targets.length >= 2 ? `<p><button data-act="todual" ${buildCheck(s, id, 'igg', s.perks.targets.slice(0, 2)).ok ? '' : 'disabled'}>Aim at two targets (${nodeCost(s, 'igg', ['saureus', 'ecoli'])} energy)</button></p>` : '';
     popover.innerHTML = `${x}<h3>Aim the IgG node</h3><p class="sub">${MULT_LINE}</p>
       ${targetButtons('aim', (b) => buildCheck(s, id, 'igg', [b]).reason)}${dual}${back}`;
   } else if (mode === 'dualA' || mode === 'dualB') {
@@ -106,7 +106,7 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
   } else if (node) {
     const st = CONFIG.nodes[node.type];
     const life = st.burnsOutAfter ? `<p class="notice">Burns out after ${st.burnsOutAfter - node.wavesFought} more wave${st.burnsOutAfter - node.wavesFought === 1 ? '' : 's'}.</p>` : '';
-    const second = s.perks.dual && node.targets.length === 1 ? ` <button data-act="toadd">Add a second target (${retargetCost(node, [node.targets[0], 'ecoli'])})</button>` : '';
+    const second = s.perks.dual && node.targets.length === 1 && s.perks.targets.length >= 2 ? ` <button data-act="toadd">Add a second target (${retargetCost(node, [node.targets[0], 'ecoli'])})</button>` : '';
     const aim = node.type === 'igg' ? `<p class="sub">Aimed at ${targetNames(node.targets)}.</p><p><button data-act="toreaim">Re-aim (${CONFIG.iggRetarget} energy)</button>${second}</p>` : '';
     const dmg = st.damage * s.perks.dmg[node.type];
     popover.innerHTML = `${x}<h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${Math.round(dmg * 10) / 10} damage${node.type === 'igg' ? ' × match' : ''} every ${st.cooldown}s${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}.</p>${aim}${life}`;
@@ -198,7 +198,7 @@ function restart() { const sp = s.speed; s = newGame(s.level, perksOf(career)); 
 const runInProgress = () => (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.phase !== 'prep' || s.energy !== levelDef(s).startEnergy);
 function playLevel(i: number, confirmed = false) {
   if (i >= unlocked) { toast('Clear the previous organ to unlock this one.'); return; }
-  if (!confirmed && i !== s.level && runInProgress()) { openMenu({ page: 'switch', level: i }); return; }
+  if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: i }); return; }
   const sp = s.speed; s = newGame(i, perksOf(career)); s.speed = sp;
   closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = '';
   toast(`Level ${i + 1}: defend the ${organTitle(i).toLowerCase()}.`);
@@ -265,8 +265,11 @@ function renderMenu() {
     h = `<h2>Start over?</h2><p>Your cleared organs${career.gold ? ', gold' : ''} and the game in progress will be lost.</p>
       <div class="menuButtons"><button data-menu="newYes" class="primary danger">Start a new career</button><button data-menu="back">Keep my career</button></div>`;
   } else {
-    const L = levelDef(s);
-    h = `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).</p>
+    const L = levelDef(s), same = menuPage.level === s.level;
+    h = same
+      ? `<h2>Start the ${esc(L.organ.toLowerCase())} again?</h2><p>This ends your run at wave ${s.wave}.</p>
+      <div class="menuButtons"><button data-menu="switchYes" data-level="${menuPage.level}">Start again from wave 1</button><button data-menu="close" class="primary">Carry on at wave ${s.wave}</button></div>`
+      : `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).</p>
       <div class="menuButtons"><button data-menu="switchYes" data-level="${menuPage.level}" class="primary">Play ${esc(LEVELS[menuPage.level].title)}</button><button data-menu="close">Stay</button></div>`;
   }
   menuEl.innerHTML = `<div class="plate">${h}</div>`;
@@ -318,7 +321,7 @@ menuEl.addEventListener('click', (e) => {
     const y = menuEl.scrollTop; renderMenu(); menuEl.scrollTop = y;
   }
   else if (a === 'back') openMenu({ page: 'main' });
-  else if (a === 'close') closeMenu();
+  else if (a === 'close') { gameShown = true; closeMenu(); }
   else if (a === 'level') { gameShown = true; playLevel(Number(el.dataset.level)); if (menuPage?.page !== 'switch') { s.paused = false; pausedBeforeMenu = false; } }
   else if (a === 'switchYes') { gameShown = true; pausedBeforeMenu = false; playLevel(Number(el.dataset.level), true); s.paused = false; }
 });
@@ -412,7 +415,7 @@ function renderPanel() {
       <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
         <p class="hint">Click a + site beside a vessel to place a node. Each fires its immunoglobulin at pathogens on its own vessel.</p>
         <ul class="key">${NODE_TYPES.map((t) => `<li><img alt="" src="${nodeIcon(t)}" width="40" height="31"><span><b>${CONFIG.nodes[t].short}</b> · ${CONFIG.nodes[t].cost}<small>${esc(CONFIG.nodes[t].blurb)}</small></span></li>`).join('')}</ul>
-        <details><summary>Place by list (keyboard)</summary><div class="flist">${empties.map((x) => `<button data-act="site" data-site="${x.id}">${esc(vesselName(x.vessel))} · ${['outer', 'middle', 'inner'][x.index]}</button>`).join('') || '<em>Every site has a node.</em>'}</div></details></section>
+        <details><summary>Place by list (keyboard)</summary><div class="flist">${empties.map((x) => `<button data-act="site" data-site="${x.id}">${esc(vesselName(x.vessel))} · ${map.siteLabel(x)}</button>`).join('') || '<em>Every site has a node.</em>'}</div></details></section>
       <div class="start"><button data-act="start" class="primary" ${c.ok ? '' : 'disabled'}>Start wave ${s.wave}</button><p class="hint small">${c.ok ? 'Building locks once the wave begins.' : esc(c.reason)}</p></div>`;
   } else if (s.phase === 'combat') {
     const cells = aliveCells(s).length;

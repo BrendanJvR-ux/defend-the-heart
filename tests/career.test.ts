@@ -158,3 +158,18 @@ describe('Career: gold and the shop', () => {
     expect([p.dual, p.noMax, p.extraNode, p.cheapFirst]).toEqual([true, 140, true, true]);
   });
 });
+
+describe('Career: hostile saves', () => {
+  const withRun = (run: object) => memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 10, run }) });
+  const base = { wave: 2, heartHp: 10, energy: 50, no: 40, nodes: [] };
+  it('a saved run for an organ that does not exist, or not a whole number, is dropped', () => {
+    for (const level of [7, -1, 1.5, NaN]) expect(loadCareer(withRun({ ...base, level })).run, String(level)).toBeNull();
+    expect(loadCareer(withRun({ ...base, level: 2 })).run?.level).toBe(2);
+  });
+  it('upgrade levels in a save must be whole numbers within range, for known upgrades only', () => {
+    const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 500, bought: { 'dmg-igm': -1, 'dmg-iga': 1.5, 'dmg-igg': 9, dual: 1, nonsense: 2 } }) });
+    const c = loadCareer(kv);
+    expect(c.bought).toEqual({ 'dmg-igg': 3, dual: 1 });
+    expect(buy(c, 'dmg-igm').ok).toBe(true); expect(Number.isFinite(c.gold)).toBe(true);
+  });
+});
