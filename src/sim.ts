@@ -415,7 +415,7 @@ function easeWidths(s: State, dt: number) {
 }
 
 /** Game speeds the Speed button steps through. */
-export const SPEEDS = [1, 1.5, 2];
+export const SPEEDS = [1, 1.5, 2, 3];
 export const nextSpeed = (sp: number) => SPEEDS[(SPEEDS.indexOf(sp) + 1) % SPEEDS.length] ?? 1;
 
 /** Move the game on by one frame of real time at the game's speed, in equal sub-steps no longer than a real frame. */

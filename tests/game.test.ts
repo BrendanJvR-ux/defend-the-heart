@@ -895,12 +895,12 @@ describe('Defend the Heart: upgrades in play', () => {
 });
 
 describe('Defend the Heart: game speed', () => {
-  it('the speed button steps through ×1, ×1.5 and ×2, then back to ×1', () => {
-    expect(SPEEDS).toEqual([1, 1.5, 2]);
-    expect([nextSpeed(1), nextSpeed(1.5), nextSpeed(2)]).toEqual([1.5, 2, 1]);
-    expect(nextSpeed(3)).toBe(1); // an unknown speed falls back to ×1
+  it('the speed button steps through ×1, ×1.5, ×2 and ×3, then back to ×1', () => {
+    expect(SPEEDS).toEqual([1, 1.5, 2, 3]);
+    expect([nextSpeed(1), nextSpeed(1.5), nextSpeed(2), nextSpeed(3)]).toEqual([1.5, 2, 3, 1]);
+    expect(nextSpeed(5)).toBe(1); // an unknown speed falls back to ×1
   });
-  it('a frame at ×1.5 or ×2 moves the game on 1.5 or 2 times as far', () => {
+  it('a frame at each speed moves the game on that many times as far', () => {
     for (const sp of SPEEDS) {
       const s = newGame(0); startWave(s); s.speed = sp;
       const t0 = s.waveTime; advance(s, 1 / 30);
