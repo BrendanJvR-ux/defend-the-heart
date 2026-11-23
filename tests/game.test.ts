@@ -21,10 +21,14 @@ function go(s: State, v: VesselId) { startWave(s); toggleRoute(s, v); }
 /** Keep NO from running dry in tests that watch a long stretch of one open route. */
 const endlessNo = (s: State) => { s.no = 1e9; };
 function finishWaveUntil(s: State, phase: State['phase']) { let n = 0; while (s.phase !== phase && n++ < 30 * 400) step(s, 1 / 30); }
+/** The sites that guard route r: its own, and its fork's shared stem sites. */
+const guarding = (r: VesselId) => M.SITES.filter((x) => x.vessel === r || (x.stem && M.entryOf(x.vessel) === M.entryOf(r)));
 /** Leave only the given pathogens in play (no further spawns). */
 function quiet(s: State) { s.spawns = []; s.pathogens = []; }
 
-const threat = (n: number, v: VesselId) => waveSpawns(n).filter((x) => x.vessel === v).reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
+/** The wave's pathogens entering by route v's vessel (a fork's two branches share them). */
+const spawnsFor = (n: number, v: VesselId) => waveSpawns(n).filter((x) => M.entryOf(x.vessel) === M.entryOf(v));
+const threat = (n: number, v: VesselId) => spawnsFor(n, v).reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
 const pulseAtCluster = (min: number) => (s: State) => { if (s.phase === 'combat' && s.pulsesLeft > 0 && pulseTargets(s).length >= min) firePulse(s); };
 
 /** A sensible player: dilate the busiest vessel; spend energy on nodes for the other threatened vessels,
@@ -37,17 +41,17 @@ function sensibleBuild(s: State) {
   for (let guard = 0; guard < 12; guard++) {
     let placed = false;
     for (const v of order) {
-      const types = new Set(waveSpawns(n).filter((x) => x.vessel === v).map((x) => x.type));
+      const types = new Set(spawnsFor(n, v).map((x) => x.type));
       const want: NodeType = [...types].some((t) => CONFIG.pathogens[t].boss) && !nodeOn(s, v, 'ige') ? 'ige' : [...types].some((t) => CONFIG.pathogens[t].armour >= 5) && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
-      const site = M.SITES.filter((x) => x.vessel === v && !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
+      const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
       if (site && placeNode(s, site.id, want)) placed = true;
     }
     if (!placed) break;
   }
 }
-const nodeOn = (s: State, v: VesselId, t: NodeType) => s.nodes.some((x) => x.vessel === v && x.type === t);
+const nodeOn = (s: State, v: VesselId, t: NodeType) => s.nodes.some((x) => guarding(v).some((g) => g.id === x.site) && x.type === t);
 /** Summed health of the pathogens on a route that are past 65% of the way in (where the cells meet them). */
-const danger = (s: State, v: VesselId) => s.pathogens.filter((p) => p.hp > 0 && p.vessel === v && p.s > 0.65 * M.VESSELS[v].length).reduce((a, p) => a + p.hp, 0);
+const danger = (s: State, v: VesselId) => s.pathogens.filter((p) => p.hp > 0 && covers(v, p) && p.s > 0.65 * M.VESSELS[v].length).reduce((a, p) => a + p.hp, 0);
 /** A sensible player's dilation, every tick of a wave: open where the danger is, close when it is clear,
  *  switch only for a much bigger threat and with NO to spare. */
 function sensibleDilate(s: State) {
@@ -303,6 +307,13 @@ describe('Defend the Heart: balance', () => {
   });
 });
 
+/** Holds the route with the most wave threat open: opens it as soon as it can, never closes it. */
+function holdOpen(s: State) {
+  if (s.phase !== 'combat' || s.dilated) return;
+  const e = [...M.ENTRY_IDS].sort((a, b) => threat(s.wave, b) - threat(s.wave, a))[0];
+  if (s.no >= CONFIG.no.openCost) toggleRoute(s, M.routesOf(e)[0]);
+}
+
 describe('Defend the Heart: organ levels', () => {
   it('there are five organs, each with its own map, waves and a full set of build sites', () => {
     expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney']);
@@ -311,14 +322,46 @@ describe('Defend the Heart: organ levels', () => {
       expect(s.level).toBe(i);
       expect(s.heartHp).toBe(LEVELS[i].hp);
       expect(totalWaves(s)).toBe(LEVELS[i].waves.length);
-      expect(M.VESSEL_IDS).toEqual(LEVELS[i].map.vessels.map((v) => v.id));
+      expect(M.ENTRY_IDS).toEqual(LEVELS[i].map.vessels.map((v) => v.id));
       expect(s.nodes.length).toBe(LEVELS[i].startingNodes.length);
-      for (const v of M.VESSEL_IDS) expect(M.SITES.filter((x) => x.vessel === v).length).toBe(LEVELS[i].map.siteFractions.length);
-      // every wave only uses this organ's vessels
-      for (const w of LEVELS[i].waves) for (const g of w.groups) expect(M.VESSEL_IDS).toContain(g.vessel);
+      // every route has at least two sites guarding it (its own, or its fork's shared stem)
+      for (const r of M.VESSEL_IDS) expect(guarding(r).length).toBeGreaterThanOrEqual(2);
+      // every wave group names an entry vessel of this organ, and every entry is used by some wave
+      const used = new Set<string>();
+      for (const w of LEVELS[i].waves) for (const g of w.groups) { expect(M.ENTRY_IDS).toContain(g.vessel); used.add(g.vessel); }
+      expect([...used].sort()).toEqual([...M.ENTRY_IDS].sort());
       // sites stay on the map and off the organ
       for (const x of M.SITES) { expect(map.organClearance(x)).toBeGreaterThan(60); expect(x.x).toBeGreaterThan(40); expect(x.y).toBeLessThan(960); }
     }
+  });
+
+  it('each organ has one more route than the last; forks only from the brain on', () => {
+    const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3]]; // entries, routes, forks
+    LEVELS.forEach((_, i) => {
+      newGame(i);
+      const forks = M.ENTRY_IDS.filter((e) => M.routesOf(e).length === 2).length;
+      expect([M.ENTRY_IDS.length, M.VESSEL_IDS.length, forks]).toEqual(expected[i]);
+    });
+  });
+
+  it('every route ends at its organ, and routes of different vessels keep apart', () => {
+    LEVELS.forEach((_, i) => {
+      newGame(i);
+      for (const r of M.VESSEL_IDS) {
+        const pts = M.VESSELS[r].pts;
+        // the heart's outline is not the map ellipse, so it gets more slack
+        expect(map.organClearance(pts[pts.length - 1])).toBeLessThan(i === 0 ? 60 : 20);
+        for (const o of M.VESSEL_IDS) {
+          if (M.entryOf(o) === M.entryOf(r)) continue;
+          // away from the organ (where every vessel converges), vessels stay at least 40 apart
+          for (let d = 0; d < M.VESSELS[r].length; d += 10) {
+            const q = M.pointAt(M.VESSELS[r], d);
+            if (map.organClearance(q) < 60) continue;
+            expect(map.nearestOnVessel(M.VESSELS[o], q).d).toBeGreaterThan(40);
+          }
+        }
+      }
+    });
   });
 
   it('lungs: on each inhale the blood surges and pathogens move faster', () => {
@@ -337,9 +380,9 @@ describe('Defend the Heart: organ levels', () => {
     expect(s.dilated).toBeNull();
   });
 
-  it('brain: two sites per vessel, three white cells', () => {
+  it('brain: at most two sites on any route, three white cells', () => {
     const s = newGame(2);
-    for (const v of M.VESSEL_IDS) expect(M.SITES.filter((x) => x.vessel === v).length).toBe(2);
+    for (const r of M.VESSEL_IDS) expect(guarding(r).length).toBeLessThanOrEqual(2);
     go(s, 'left');
     expect(aliveCells(s).length).toBe(3);
   });
@@ -354,12 +397,20 @@ describe('Defend the Heart: organ levels', () => {
 
   it('kidney: pathogens are slowed on the filtered last stretch of a vessel', () => {
     const s = newGame(4); go(s, 'left'); quiet(s); s.cells = [];
-    const L = M.VESSELS.upper.length;
-    const far = mk(s, 'virus', 'upper', 40), near = mk(s, 'virus', 'upper', L * 0.9);
+    const L = M.VESSELS.lower.length;
+    const far = mk(s, 'virus', 'lower', 40), near = mk(s, 'virus', 'lower', L * 0.9);
     expect(filtered(s, far)).toBe(false); expect(filtered(s, near)).toBe(true);
     const a = far.s, b = near.s; step(s, 0.05);
     expect((near.s - b) / (far.s - a)).toBeCloseTo(LEVELS[4].filtration!.factor, 2);
   });
+
+  for (let i = 0; i < LEVELS.length; i++) {
+    it(`${LEVELS[i].title}: holding one vessel open does worse than dilating with care`, () => {
+      const good = play(sensibleBuild, sensibleDilate, 3, i), hold = play(sensibleBuild, holdOpen, 3, i);
+      console.log(LEVELS[i].id, 'hold-open', hold.hp, hold.s.phase);
+      expect(hold.s.phase === 'defeat' || hold.s.heartHp < good.s.heartHp).toBe(true);
+    });
+  }
 
   for (let i = 1; i < LEVELS.length; i++) {
     it(`${LEVELS[i].title}: a sensible player wins, and never building loses`, () => {
