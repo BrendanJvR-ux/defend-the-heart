@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CONFIG, LEVELS, type LevelDef, type NodeType, type PathogenType, type VesselId } from '../src/config';
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
+import { layoutLabels, type Box } from '../src/labels';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
@@ -695,4 +696,28 @@ describe('Defend the Heart: forking vessels', () => {
   it('clicking the shared stem picks the open route, else branch A', () => {
     expect(M.routeAtStem('left', 'leftB')).toBe('leftB'); expect(M.routeAtStem('left', 'right')).toBe('leftA'); expect(M.routeAtStem('left', null)).toBe('leftA');
   });
+});
+
+describe('Defend the Heart: map labels', () => {
+  // Palatino bold at 24px runs about 13 map units a character
+  const widthOf = (text: string) => text.length * 13;
+  const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const hitsCircle = (b: Box, c: { x: number; y: number }, r: number) => {
+    const nx = Math.max(b.x, Math.min(c.x, b.x + b.w)), ny = Math.max(b.y, Math.min(c.y, b.y + b.h));
+    return Math.hypot(nx - c.x, ny - c.y) < r;
+  };
+  for (let i = 0; i < LEVELS.length; i++) {
+    it(`${LEVELS[i].title}: every vessel label (and its DILATED tag) clears the build sites, the other labels and the map edge`, () => {
+      newGame(i);
+      const labels = layoutLabels(widthOf);
+      // one per vessel entering the map, plus one per branch of each fork
+      expect(labels.length).toBe(M.ENTRY_IDS.length + M.ENTRY_IDS.filter((e) => M.routesOf(e).length > 1).length * 2);
+      for (const l of labels) {
+        for (const site of M.SITES) expect(hitsCircle(l.box, site, 32), `${l.text} over site ${site.id}`).toBe(false);
+        expect(l.box.x).toBeGreaterThanOrEqual(0); expect(l.box.y).toBeGreaterThanOrEqual(0);
+        expect(l.box.x + l.box.w).toBeLessThanOrEqual(M.W); expect(l.box.y + l.box.h).toBeLessThanOrEqual(M.H);
+        for (const o of labels) if (o !== l) expect(overlaps(l.box, o.box), `${l.text} over ${o.text}`).toBe(false);
+      }
+    });
+  }
 });

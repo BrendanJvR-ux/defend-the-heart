@@ -83,6 +83,7 @@ Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy pe
 | `src/sim.ts` | State, rules and simulation (no DOM): placement, mid-wave dilation and the NO gauge, forks, waves, immunoglobulins, white cells, infection, the pulse, recall. |
 | `src/bosses.ts` | The five boss pathogens' drawings. |
 | `src/organs.ts` | The lungs, brain, liver (with the gut) and kidney as anatomy-plate drawings. |
+| `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
 | `src/main.ts` | HUD, panel, level picker and saved progress, build popover, mouse / touch / keyboard input, overlays. |
-| `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the three immunoglobulins, infection), each organ's map and twist, each boss's trick, plus balance on every organ (including the hold-open check). |
+| `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the three immunoglobulins, infection), each organ's map and twist, each boss's trick, map labels that never cover a site or each other, plus balance on every organ (including the hold-open check). |
