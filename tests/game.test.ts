@@ -868,6 +868,13 @@ describe('Defend the Heart: upgrades in play', () => {
     const e = s.energy; expect(retargetNode(s, site.id, ['saureus', 'ecoli'])).toBe(true);
     expect(s.energy).toBe(e - 30); expect(nodeAt(s, site.id)!.targets).toEqual(['saureus', 'ecoli']);
   });
+  it('a dual-target node is re-aimed at two new targets for 20, keeping both', () => {
+    const s = newGame(0, perks({ dual: true, targets: ['saureus', 'ecoli', 'kpneumo'] })); s.energy = 200;
+    const site = M.SITES.find((x) => !nodeAt(s, x.id))!; placeNode(s, site.id, 'igg', ['saureus', 'ecoli']);
+    const e = s.energy; expect(retargetNode(s, site.id, ['ecoli', 'kpneumo'])).toBe(true);
+    expect(s.energy).toBe(e - CONFIG.iggRetarget); expect(nodeAt(s, site.id)!.targets).toEqual(['ecoli', 'kpneumo']);
+  });
+
   it('cheaper first node halves only the first node each build phase', () => {
     const s = newGame(0, perks({ cheapFirst: true })); s.energy = 500;
     const free = M.SITES.filter((x) => !nodeAt(s, x.id));

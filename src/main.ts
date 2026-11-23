@@ -99,6 +99,10 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
     const first = view.dualFirst;
     popover.innerHTML = `${x}<h3>${mode === 'dualA' ? 'First target' : 'Second target'}</h3><p class="sub">${mode === 'dualA' ? 'A dual-target IgG uses the better match of its two targets.' : `With ${targetNames([first!])}.`}</p>
       ${targetButtons(mode, (b) => mode === 'dualA' ? '' : b === first ? 'Already chosen.' : buildCheck(s, id, 'igg', [first!, b]).reason)}${back}`;
+  } else if ((mode === 'reaimA' || mode === 'reaimB') && node) {
+    const first = view.dualFirst;
+    popover.innerHTML = `${x}<h3>Re-aim both targets: ${mode === 'reaimA' ? 'first' : 'second'}</h3><p class="sub">Now aimed at ${targetNames(node.targets)}. Re-aiming costs ${CONFIG.iggRetarget} energy.${mode === 'reaimB' ? ` First: ${targetNames([first!])}.` : ''}</p>
+      ${targetButtons(mode, (b) => mode === 'reaimA' ? '' : b === first ? 'Already chosen.' : retargetCheck(s, id, [first!, b]).reason)}${back}`;
   } else if ((mode === 'reaim' || mode === 'addSecond') && node) {
     const adding = mode === 'addSecond';
     popover.innerHTML = `${x}<h3>${adding ? 'Add a second target' : 'Re-aim the IgG node'}</h3><p class="sub">Now aimed at ${targetNames(node.targets)}. ${adding ? `A second target costs ${retargetCost(node, ['saureus', 'ecoli'])} energy.` : `Re-aiming costs ${CONFIG.iggRetarget} energy.`}</p>
@@ -106,8 +110,11 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
   } else if (node) {
     const st = CONFIG.nodes[node.type];
     const life = st.burnsOutAfter ? `<p class="notice">Burns out after ${st.burnsOutAfter - node.wavesFought} more wave${st.burnsOutAfter - node.wavesFought === 1 ? '' : 's'}.</p>` : '';
-    const second = s.perks.dual && node.targets.length === 1 && s.perks.targets.length >= 2 ? ` <button data-act="toadd">Add a second target (${retargetCost(node, [node.targets[0], 'ecoli'])})</button>` : '';
-    const aim = node.type === 'igg' ? `<p class="sub">Aimed at ${targetNames(node.targets)}.</p><p><button data-act="toreaim">Re-aim (${CONFIG.iggRetarget} energy)</button>${second}</p>` : '';
+    const dualNode = node.targets.length === 2, choices = s.perks.targets.length;
+    // re-aiming needs somewhere else to aim: another unlocked target (or, for a dual node, a third)
+    const reaim = choices > node.targets.length ? `<button data-act="${dualNode ? 'toreaimA' : 'toreaim'}">${dualNode ? 'Re-aim both' : 'Re-aim'} (${CONFIG.iggRetarget} energy)</button>` : '';
+    const second = s.perks.dual && !dualNode && choices >= 2 ? ` <button data-act="toadd">Add a second target (${retargetCost(node, [node.targets[0], 'ecoli'])})</button>` : '';
+    const aim = node.type === 'igg' ? `<p class="sub">Aimed at ${targetNames(node.targets)}.</p>${reaim || second ? `<p>${reaim}${second}</p>` : ''}` : '';
     const dmg = st.damage * s.perks.dmg[node.type];
     popover.innerHTML = `${x}<h3>${esc(st.name)}</h3><p class="sub">Guards the ${esc(vesselName(site.vessel).toLowerCase())}.</p><p>${esc(st.blurb)}</p><p class="sub">${Math.round(dmg * 10) / 10} damage${node.type === 'igg' ? ' × match' : ''} every ${st.cooldown}s${st.slow ? `, slows to ${Math.round(st.slow * 100)}% speed for ${st.slowSeconds}s` : ''}.</p>${aim}${life}`;
   } else {
@@ -142,6 +149,12 @@ popover.addEventListener('click', (e) => {
   else if (act === 'back') openSite(id, 'main');
   else if (act === 'toreaim') openSite(id, 'reaim');
   else if (act === 'toadd') openSite(id, 'addSecond');
+  else if (act === 'toreaimA') openSite(id, 'reaimA');
+  else if (act === 'reaimA') { view.dualFirst = el.dataset.target as BacteriumType; openSite(id, 'reaimB'); }
+  else if (act === 'reaimB') {
+    const ts = [view.dualFirst!, el.dataset.target as BacteriumType];
+    if (retargetNode(s, id, ts)) { toast(`IgG re-aimed at ${ts.map((b) => CONFIG.pathogens[b].plural).join(' and ')} (−${CONFIG.iggRetarget} energy).`); closeSite(); lastSig = ''; }
+  }
   else if (act === 'todual') openSite(id, 'dualA');
   else if (act === 'dualA') { view.dualFirst = el.dataset.target as BacteriumType; openSite(id, 'dualB'); }
   else if (act === 'dualB') {
@@ -193,14 +206,14 @@ function pulse() {
   lastSig = '';
 }
 
-function restart() { const sp = s.speed; s = newGame(s.level, perksOf(career)); lastPhase = ''; s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
+function restart() { const sp = s.speed; s = newGame(s.level, perksOf(career)); lastPhase = ''; spentToasted = 0; s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
 /** A run worth asking about before it is thrown away: past the first wave, or with nodes built. */
 const runInProgress = () => (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.phase !== 'prep' || s.energy !== levelDef(s).startEnergy);
 function playLevel(i: number, confirmed = false) {
   if (i >= unlocked) { toast('Clear the previous organ to unlock this one.'); return; }
   if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: i }); return; }
   const sp = s.speed; s = newGame(i, perksOf(career)); s.speed = sp;
-  closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = '';
+  closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = ''; spentToasted = 0;
   toast(`Level ${i + 1}: defend the ${organTitle(i).toLowerCase()}.`);
 }
 
@@ -309,7 +322,7 @@ menuEl.addEventListener('click', (e) => {
   if (!el || el.disabled) return;
   const a = el.dataset.menu;
   if (a === 'continue' && career.run) {
-    const sp = s.speed; s = resumeGame(career.run, perksOf(career)); s.speed = sp; lastPhase = ''; gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false;
+    const sp = s.speed; s = resumeGame(career.run, perksOf(career)); s.speed = sp; lastPhase = ''; spentToasted = 0; gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false;
     toast(`Welcome back: the ${organTitle(s.level).toLowerCase()}, wave ${s.wave}.`);
   } else if (a === 'new') { if (careerStarted()) openMenu({ page: 'confirmNew' }); else startCareer(); }
   else if (a === 'newYes') startCareer();
@@ -327,7 +340,7 @@ menuEl.addEventListener('click', (e) => {
 });
 function startCareer() {
   career = freshCareer(); unlocked = unlockedCount(career); saveNow();
-  const sp = s.speed; s = newGame(0, perksOf(career)); s.speed = sp; lastPhase = ''; gameShown = true;
+  const sp = s.speed; s = newGame(0, perksOf(career)); s.speed = sp; lastPhase = ''; spentToasted = 0; gameShown = true;
   closeMenu(); pausedBeforeMenu = false; s.paused = false;
   toast('A new career: defend the heart.');
 }

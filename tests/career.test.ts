@@ -173,3 +173,28 @@ describe('Career: hostile saves', () => {
     expect(buy(c, 'dmg-igm').ok).toBe(true); expect(Number.isFinite(c.gold)).toBe(true);
   });
 });
+
+describe('Career: more hostile saves', () => {
+  it('a second unreadable save is kept as well, not lost', () => {
+    const kv = memory({ [SAVE_KEY]: 'bad one' });
+    loadCareer(kv);
+    kv.data[SAVE_KEY] = 'bad two';
+    loadCareer(kv);
+    const kept = Object.entries(kv.data).filter(([k]) => k.startsWith(BACKUP_KEY)).map(([, v]) => v).sort();
+    expect(kept).toEqual(['bad one', 'bad two']);
+    loadCareer(kv); // the same bad save again is not copied twice
+    expect(Object.keys(kv.data).filter((k) => k.startsWith(BACKUP_KEY)).length).toBe(2);
+  });
+
+  it('resumed IgG nodes only keep targets this career has unlocked', () => {
+    const s = newGame(1, { ...NO_PERKS, targets: ['saureus', 'spneumo', 'ecoli'], dual: true }); s.energy = 999;
+    const free = M.SITES.filter((x) => !nodeAt(s, x.id));
+    placeNode(s, free[0].id, 'igg', ['spneumo', 'ecoli']); placeNode(s, free[1].id, 'igg', ['spneumo']);
+    const run = snapshot(s);
+    const r = resumeGame(run, NO_PERKS); // nothing unlocked but S. aureus, no dual
+    const igg = r.nodes.filter((n) => n.type === 'igg').map((n) => n.targets.join('+'));
+    expect(igg).toEqual(['saureus', 'saureus']);
+    const d = resumeGame(run, { ...NO_PERKS, targets: ['saureus', 'ecoli'] }); // ecoli unlocked, still no dual
+    expect(d.nodes.filter((n) => n.type === 'igg').map((n) => n.targets.join('+'))).toEqual(['ecoli', 'saureus']);
+  });
+});

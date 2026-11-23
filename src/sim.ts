@@ -110,7 +110,10 @@ export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
   for (const n of run.nodes) {
     const site = SITES.find((x) => x.id === n.site);
     if (!site || !CONFIG.nodes[n.type] || s.nodes.some((x) => x.site === n.site)) continue;
-    s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets: n.type === 'igg' ? [...n.targets] : [], wavesFought: n.wavesFought | 0 });
+    // IgG targets: only ones this career has unlocked, two only with dual-target, S. aureus if none are left
+    let targets = n.type === 'igg' ? n.targets.filter((b) => perks.targets.includes(b)).slice(0, perks.dual ? 2 : 1) : [];
+    if (n.type === 'igg' && !targets.length) targets = ['saureus'];
+    s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets, wavesFought: n.wavesFought | 0 });
   }
   return s;
 }

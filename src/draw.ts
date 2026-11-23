@@ -12,7 +12,7 @@ export interface View {
   hoverSite: string | null;
   selectedSite: string | null;
   /** Which page of the build popover is open. */
-  popMode: 'main' | 'aim' | 'reaim' | 'dualA' | 'dualB' | 'addSecond';
+  popMode: 'main' | 'aim' | 'reaim' | 'dualA' | 'dualB' | 'addSecond' | 'reaimA' | 'reaimB';
   /** Dual-target IgG: the first target chosen. */
   dualFirst: BacteriumType | null;
   showPulseRadius: boolean;

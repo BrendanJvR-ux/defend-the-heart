@@ -108,8 +108,8 @@ export function loadCareer(kv: KV): Career {
   if (raw != null) {
     const c = parse(raw);
     if (c) return c;
-    // unreadable, or from a newer version: keep it aside, play on with a fresh career
-    if (safeGet(kv, BACKUP_KEY) == null) safeSet(kv, BACKUP_KEY, raw);
+    // unreadable, or from a newer version: keep it aside (beside any kept before), play on with a fresh career
+    keepAside(kv, raw);
     return freshCareer();
   }
   // older saves kept only how many organs were unlocked (one more than cleared)
@@ -117,6 +117,15 @@ export function loadCareer(kv: KV): Career {
   const unlocked = Number(safeGet(kv, 'dth-unlocked'));
   if (Number.isFinite(unlocked)) for (let i = 0; i < Math.min(LEVELS.length, unlocked - 1); i++) c.cleared[i] = true;
   return c;
+}
+
+/** Copy an unreadable save to the first free backup slot (dth-career-unreadable, -2, -3 …), unless it is already kept. */
+function keepAside(kv: KV, raw: string) {
+  for (let i = 1; i <= 20; i++) {
+    const key = i === 1 ? BACKUP_KEY : `${BACKUP_KEY}-${i}`, have = safeGet(kv, key);
+    if (have === raw) return;
+    if (have == null) { safeSet(kv, key, raw); return; }
+  }
 }
 
 export function saveCareer(kv: KV, c: Career): void { safeSet(kv, SAVE_KEY, JSON.stringify(c)); }
