@@ -334,7 +334,8 @@ function drawPreview(ctx: CanvasRenderingContext2D, s: State) {
     const p = pointAt(VESSELS[v], 70);
     const w = 70 + counts.size * 86;
     const from = VESSELS[v].pts[0];
-    const bx = Math.max(24, Math.min(W - w - 24, p.x - w / 2)), by = Math.max(24, Math.min(H - 70, p.y + (from.y < 0 ? 40 : from.y > H ? -110 : 46)));
+    // a vessel from the top edge has its name to the right of it, so its tag sits to the left
+    const bx = Math.max(24, Math.min(W - w - 24, from.y < 0 ? p.x - w - 24 : p.x - w / 2)), by = Math.max(24, Math.min(H - 70, p.y + (from.y < 0 ? 40 : from.y > H ? -110 : 46)));
     ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.strokeStyle = '#c8402a'; ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.roundRect(bx, by, w, 48, 10); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#c8402a'; ctx.font = '900 22px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('IN', bx + 12, by + 32);
@@ -357,13 +358,13 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   for (const v of order) drawVessel(ctx, s, v, view, t, flowT);
   for (const v of VESSEL_IDS) if (isFinite(forkAt(v)) && routesOf(entryOf(v))[0] === v) drawJunction(ctx, s, v);
   // labels: an unforked vessel's near its mouth; a fork's entry name on its stem and each branch's past the fork
-  const labels: { v: VesselId; at: number; text: string; top: boolean }[] = [];
+  const labels: { v: VesselId; at: number; text: string; top: boolean; branch: boolean }[] = [];
   for (const e of ENTRY_IDS) {
     const rs = routesOf(e), first = VESSELS[rs[0]], top = first.pts[0].y < 0;
-    labels.push({ v: rs[0], at: 150, text: rs.length > 1 ? entryDef(e).label : first.label, top });
-    if (rs.length > 1) for (const r of rs) labels.push({ v: r, at: forkAt(r) + (VESSELS[r].length - forkAt(r)) * 0.45, text: VESSELS[r].label, top: false });
+    labels.push({ v: rs[0], at: 150, text: rs.length > 1 ? entryDef(e).label : first.label, top, branch: false });
+    if (rs.length > 1) for (const r of rs) labels.push({ v: r, at: forkAt(r) + (VESSELS[r].length - forkAt(r)) * 0.45, text: VESSELS[r].label, top: false, branch: true });
   }
-  for (const { v, at, text, top } of labels) {
+  for (const { v, at, text, top, branch } of labels) {
     const ves = VESSELS[v];
     const p = pointAt(ves, at);
     ctx.font = '700 24px Palatino, Georgia, serif'; ctx.textAlign = 'center';
@@ -374,7 +375,8 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     ctx.fillStyle = 'rgba(244,234,216,0.9)'; const tw = ctx.measureText(label).width;
     ctx.fillRect(lx - tw / 2 - 10, ly - 23, tw + 20, 32);
     ctx.fillStyle = C.ink; ctx.fillText(label, lx, ly);
-    if (s.dilated === v && (text === VESSELS[v].label)) {
+    // the DILATED tag goes on the open route's own label: a branch's, or an unforked vessel's
+    if (s.dilated === v && (branch || routesOf(entryOf(v)).length === 1)) {
       ctx.fillStyle = C.pulse; ctx.beginPath(); ctx.roundRect(lx - 58, ly + 14, 116, 28, 14); ctx.fill();
       ctx.fillStyle = '#ffffff'; ctx.font = '700 17px Palatino, Georgia, serif'; ctx.fillText('DILATED', lx, ly + 34);
     }

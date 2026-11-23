@@ -160,6 +160,7 @@ export const openNeed = () => CONFIG.no.openCost + CONFIG.no.drainPerSec * CONFI
 /** Can vessel r be opened (or, if it is the open one, closed) right now? */
 export function dilateCheck(s: State, r: VesselId): { ok: boolean; reason: string } {
   if (s.phase !== 'combat') return { ok: false, reason: 'Dilate during the wave.' };
+  if (s.paused) return { ok: false, reason: 'Paused.' };
   if (!VESSELS[r]) return { ok: false, reason: 'Not a vessel of this organ.' };
   if (s.dilated === r) return { ok: true, reason: '' };
   if (s.no < openNeed()) return { ok: false, reason: `Not enough NO to open the ${VESSELS[r].name.toLowerCase()}.` };
@@ -173,6 +174,8 @@ export function toggleRoute(s: State, r: VesselId): boolean {
   closeRoute(s);
   s.no -= CONFIG.no.openCost;
   s.dilated = r;
+  // cells still heading home along this vessel turn round where they are
+  for (const c of aliveCells(s)) if (c.mode === 'returning' && c.vessel === r) c.mode = 'out';
   deployHome(s);
   return true;
 }
@@ -267,6 +270,7 @@ export function hurt(s: State, p: Pathogen, dmg: number, armoured = false) {
       // the colony bursts: its bacteria spill out around where it died
       for (let i = 0; i < st.splitInto.count; i++) {
         const b = newPathogen(s, st.splitInto.type, p.vessel, Math.max(0, p.s - 10 + i * 8));
+        if (p.committed) b.committed = true; // spilled just behind a parent past the fork: same branch
         b.side = (i % 2 ? 1 : -1) * (4 + i * 2);
         b.hp = b.maxHp = Math.round(b.maxHp * (st.splitInto.hpFactor ?? 1));
       }
@@ -325,7 +329,7 @@ export function step(s: State, dtRaw: number) {
   while (s.spawns.length && s.spawns[0].at <= s.waveTime) { const sp = s.spawns.shift()!; newPathogen(s, sp.type, sp.vessel); }
 
   // Pathogens drift with the blood towards the heart (IgA slows them). Bosses heal or shed as they go.
-  const shed: [PathogenType, VesselId, number][] = [];
+  const shed: [PathogenType, VesselId, number, boolean][] = [];
   for (const p of s.pathogens) {
     p.hit = Math.max(0, p.hit - dt);
     p.wob += dt * 4;
@@ -336,10 +340,10 @@ export function step(s: State, dtRaw: number) {
     if (st.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + st.regen * dt);
     if (st.sheds && p.hp > 0 && p.s > 0) {
       p.shedT = (p.shedT ?? st.sheds.every) - dt;
-      if (p.shedT <= 0) { p.shedT += st.sheds.every; shed.push([st.sheds.type, p.vessel, Math.max(0, p.s - 6)]); }
+      if (p.shedT <= 0) { p.shedT += st.sheds.every; shed.push([st.sheds.type, p.vessel, Math.max(0, p.s - 6), p.committed]); }
     }
   }
-  for (const [type, v, at] of shed) newPathogen(s, type, v, at);
+  for (const [type, v, at, committed] of shed) { const q = newPathogen(s, type, v, at); if (committed) q.committed = true; }
   for (const p of s.pathogens) if (!p.committed && p.s >= forkAt(p.vessel)) chooseBranch(s, p);
 
   // Lymph nodes: each fires its immunoglobulin at the most advanced pathogen on its own vessel within reach.

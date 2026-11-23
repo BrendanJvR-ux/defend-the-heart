@@ -106,6 +106,24 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
     tick(s, CONFIG.no.minOpenSeconds * 0.9); expect(s.dilated).toBe('left');
   });
 
+  it('reopening the vessel you just closed turns its returning cells back out', () => {
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0);
+    toggleRoute(s, 'left'); tick(s, 3); const at = outCells(s).map((c) => c.s);
+    toggleRoute(s, 'left'); step(s, 1 / 30);
+    expect(s.cells.every((c) => c.mode === 'returning')).toBe(true);
+    toggleRoute(s, 'left');
+    expect(outCells(s).length).toBe(2);
+    // they turn round where they are, not back at the organ
+    outCells(s).forEach((c, i) => expect(Math.abs(c.s - at[i])).toBeLessThan(20));
+  });
+
+  it('dilation is refused while paused, like the pulse', () => {
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); s.paused = true;
+    expect(toggleRoute(s, 'left')).toBe(false);
+    expect(dilateCheck(s, 'left').reason).toBe('Paused.');
+    expect(s.no).toBe(CONFIG.no.max);
+  });
+
   it('running dry closes the route once, never goes negative, and sends the cells home', () => {
     const s = newGame(0); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 10);
     toggleRoute(s, 'left'); tick(s, 0.5); s.no = 0.1; step(s, 0.1);
@@ -419,7 +437,8 @@ describe('Defend the Heart: organ levels', () => {
     it(`${LEVELS[i].title}: holding one vessel open does worse than dilating with care`, () => {
       const good = play(sensibleBuild, sensibleDilate, 3, i), hold = play(sensibleBuild, holdOpen, 3, i);
       console.log(LEVELS[i].id, 'hold-open', hold.hp, hold.s.phase);
-      expect(hold.s.phase === 'defeat' || hold.s.heartHp < good.s.heartHp).toBe(true);
+      // by a clear margin: losing, or at least 2 organ health worse
+      expect(hold.s.phase === 'defeat' || hold.s.heartHp <= good.s.heartHp - 2).toBe(true);
     });
   }
 
@@ -641,6 +660,29 @@ describe('Defend the Heart: forking vessels', () => {
     const e = s.pathogens.find((x) => x.type === 'infected')!;
     expect(e.committed).toBe(false); expect(M.entryOf(e.vessel)).toBe('left');
     tick(s, 2); expect(e.vessel).toBe('leftA');
+  });
+
+  it('a split or shed pathogen from a parent just past the fork stays on its branch', () => {
+    const s = fixtureGame(); startWave(s); quiet(s);
+    const b = decided(mk(s, 'colony', 'leftB', M.forkAt('leftB') + 4)); hurt(s, b, 9999);
+    const kids = s.pathogens.filter((p) => p.type === 'bacterium' && p.hp > 0);
+    expect(kids.length).toBe(3); expect(kids.every((k) => k.vessel === 'leftB' && k.committed)).toBe(true);
+    const t2 = fixtureGame(); startWave(t2); quiet(t2); mk(t2, 'bacterium', 'upper', 0);
+    const f = decided(mk(t2, 'flu', 'leftB', M.forkAt('leftB') + 3)); f.shedT = 0.01;
+    const speed = CONFIG.pathogens.flu.speed; CONFIG.pathogens.flu.speed = 0; step(t2, 1 / 30); CONFIG.pathogens.flu.speed = speed;
+    const v = t2.pathogens.find((p) => p.type === 'virus')!;
+    expect(v).toBeTruthy(); expect(v.vessel).toBe('leftB'); expect(v.committed).toBe(true);
+  });
+
+  it('a split or shed pathogen on the stem is undecided and chooses at the fork', () => {
+    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'bacterium', 'upper', 0); toggleRoute(s, 'leftA');
+    const b = undecided(mk(s, 'colony', 'leftA', M.forkAt('leftA') - 60)); hurt(s, b, 9999);
+    const kids = s.pathogens.filter((p) => p.type === 'bacterium' && p.vessel !== 'upper' && p.hp > 0);
+    expect(kids.every((k) => !k.committed)).toBe(true);
+    const f = undecided(mk(s, 'flu', 'leftA', M.forkAt('leftA') - 40)); f.shedT = 0.01; step(s, 1 / 30);
+    const v = s.pathogens.find((p) => p.type === 'virus')!;
+    expect(v.committed).toBe(false);
+    tick(s, 3); expect(v.vessel).toBe('leftB');
   });
 
   it('a split pathogen made on a branch stays on that branch', () => {
