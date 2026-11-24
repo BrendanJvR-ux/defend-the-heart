@@ -6,13 +6,13 @@
 /** Vessel ids are per level ('left', 'portal', 'lowerLeft' …). */
 export type VesselId = string;
 /** The named bacteria. */
-export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb' | 'hpylori' | 'salmonella' | 'spyogenes';
-export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella', 'spyogenes'];
+export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb' | 'hpylori' | 'salmonella' | 'spyogenes' | 'paeruginosa' | 'chlamydia';
+export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella', 'spyogenes', 'paeruginosa', 'chlamydia'];
 export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'infected' | BossType;
 /** What an IgG antibody recognises: Gram stain, shape and species. */
 export interface Taxon { gram: '+' | '-'; shape: 'coccus' | 'rod'; species: BacteriumType }
 /** One boss per organ, met in that organ's last wave. */
-export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium' | 'granuloma' | 'burrower' | 'hiv';
+export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium' | 'granuloma' | 'burrower' | 'hiv' | 'necrotizer' | 'herpes';
 export type NodeType = 'igm' | 'igg' | 'iga' | 'ige';
 
 export interface PathogenStats {
@@ -60,6 +60,11 @@ export interface PathogenStats {
   ignoresCells?: boolean;
   /** Every lymph node guarding its route is switched off, for the rest of the wave, as it passes. */
   switchesOffNodes?: boolean;
+  /** Frenzy: every antibody strike makes it this much faster (a share of its speed), up to `max` times its speed. */
+  frenzy?: { per: number; max: number };
+  /** Goes dormant the first `times` times its health falls to half: out of reach for `for` seconds, regaining `heal`
+   *  of its full health. */
+  dormant?: { times: number; for: number; heal: number };
 }
 
 export interface NodeStats {
@@ -165,6 +170,12 @@ export const CONFIG = {
     burrower: { name: 'H. pylori swarm', plural: 'H. pylori swarms', hp: 620, speed: 15, heartDamage: 8, contactDps: 5, bounty: 60, boss: true, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' },
       burrows: { every: 5, for: 1.6, speed: 3 }, blurb: 'A swarm of H. pylori, untouched by acid. Every few seconds it burrows into the stomach lining, where nothing can touch it, and tunnels on three times as fast.' },
     spyogenes: { name: 'Streptococcus pyogenes', plural: 'S. pyogenes', short: 'Gram+ coccus, in long chains', hp: 75, speed: 32, heartDamage: 3, contactDps: 4, bounty: 8, taxon: { gram: '+', shape: 'coccus', species: 'spyogenes' } },
+    paeruginosa: { name: 'Pseudomonas aeruginosa', plural: 'Pseudomonas', short: 'Gram− rod, one whip-like flagellum', hp: 80, speed: 32, heartDamage: 3, contactDps: 4, bounty: 8, taxon: { gram: '-', shape: 'rod', species: 'paeruginosa' } },
+    chlamydia: { name: 'Chlamydia trachomatis', plural: 'Chlamydia', short: 'Gram− coccoid, lives inside cells', hp: 65, speed: 34, heartDamage: 3, contactDps: 3, bounty: 8, taxon: { gram: '-', shape: 'coccus', species: 'chlamydia' } },
+    necrotizer: { name: 'Flesh-eating strep', plural: 'Flesh-eating strep', hp: 520, speed: 13, heartDamage: 8, contactDps: 6, bounty: 60, boss: true, taxon: { gram: '+', shape: 'coccus', species: 'spyogenes' },
+      frenzy: { per: 0.02, max: 2.2 }, blurb: 'Necrotising fasciitis: S. pyogenes tearing through tissue. Every antibody strike makes it faster, up to more than twice its speed: slow it with IgA, or kill it fast with IgE.' },
+    herpes: { name: 'Herpes virus', plural: 'Herpes viruses', hp: 480, speed: 15, heartDamage: 8, contactDps: 5, bounty: 60, boss: true,
+      dormant: { times: 2, for: 3, heal: 0.25 }, blurb: 'Herpes simplex, which hides in nerves. Twice, when its health falls to half, it goes dormant for 3 s, out of reach, and comes back with a quarter of its health restored. IgM and IgE.' },
     hiv: { name: 'HIV', plural: 'HIV', hp: 460, speed: 18, heartDamage: 8, contactDps: 0, bounty: 60, boss: true, ignoresCells: true, switchesOffNodes: true,
       blurb: 'The virus that attacks the immune system itself. White cells can\'t touch it, and every lymph node it passes is switched off for the rest of the wave. Kill it before it gets far: IgM and IgE.' },
     plasmodium: { name: 'Plasmodium', plural: 'Plasmodia', hp: 560, speed: 16, heartDamage: 8, contactDps: 5, bounty: 60, boss: true,
@@ -174,7 +185,7 @@ export const CONFIG = {
 
 // ── Levels ──────────────────────────────────────────────────────────────────
 
-export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow' | 'stomach' | 'lymphnode';
+export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow' | 'stomach' | 'lymphnode' | 'skin' | 'eye';
 type P = { x: number; y: number };
 
 export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
@@ -214,6 +225,9 @@ export interface LevelDef {
   /** Lymph node: every pathogen that reaches the organ weakens the lymph nodes guarding its route by `per` (a share of
    *  their damage), down to `min`, until the wave ends. */
   weakens?: { per: number; min: number };
+  /** Skin: pathogens enter through wounds, partway along their vessels: each group starts between `from` and `to`
+   *  (shares of the route's length). */
+  wounds?: { from: number; to: number };
   /** Endless mode: how fast this organ's endless waves grow, as a share of the usual rate (1 = as configured). */
   endlessPace?: number;
   /** Kidney: pathogens grow tougher every wave: health ×(1 + `waveHpGrowth` × waves before this one). */
@@ -617,6 +631,90 @@ export const LEVELS: LevelDef[] = [
         groups: [g('spyogenes', 'bottomLeft', 10, 1, 2.2), g('saureus', 'topRight', 8, 2, 2.6), g('ecoli', 'topLeft', 8, 4, 2.8), g('spyogenes', 'right', 6, 6, 2.6), g('hijacker', 'bottomRight', 5, 10, 1), g('virus', 'top', 14, 14, 0.3)] },
       { title: 'Boss: HIV', hint: 'HIV attacks the immune system itself: white cells can\'t touch it, and every lymph node it passes is switched off for the rest of the wave. Kill it early, with IgM and IgE.',
         groups: [g('hiv', 'topLeft', 1, 2, 1), g('spyogenes', 'bottomRight', 8, 6, 2.6), g('virus', 'left', 10, 12, 0.3)] },
+    ],
+  },
+  {
+    id: 'skin', title: 'The Skin', organ: 'Skin', tagline: 'The body\'s first wall, broken open.',
+    twist: 'Open wounds: pathogens enter through cuts, partway along their vessels, not from the edge of the map.',
+    endlessPace: 1.3, hp: 24, startEnergy: 460, cells: 3, income: 0.45,
+    wounds: { from: 0.2, to: 0.5 },
+    map: {
+      center: { x: 800, y: 480 }, rx: 260, ry: 120, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      vessels: [
+        { id: 'topLeft', name: 'Upper-left vessel', label: 'Upper left', pts: [{ x: 160, y: -40 }, { x: 220, y: 120 }, { x: 400, y: 200 }],
+          fork: { branches: [
+            { id: 'topLeftOuter', name: 'Upper-left outer branch', label: 'Outer', pts: [{ x: 470, y: 300 }, { x: 576, y: 418 }] },
+            { id: 'topLeftInner', name: 'Upper-left inner branch', label: 'Inner', pts: [{ x: 580, y: 240 }, { x: 690, y: 372 }] },
+          ] } },
+        { id: 'topMid', name: 'Upper vessel', label: 'Upper', pts: [{ x: 860, y: -40 }, { x: 900, y: 110 }, { x: 840, y: 240 }, { x: 822, y: 360 }] },
+        { id: 'topRight', name: 'Upper-right vessel', label: 'Upper right', pts: [{ x: 1440, y: -40 }, { x: 1380, y: 120 }, { x: 1200, y: 200 }],
+          fork: { branches: [
+            { id: 'topRightOuter', name: 'Upper-right outer branch', label: 'Outer', pts: [{ x: 1130, y: 300 }, { x: 1024, y: 418 }] },
+            { id: 'topRightInner', name: 'Upper-right inner branch', label: 'Inner', pts: [{ x: 1020, y: 240 }, { x: 910, y: 372 }] },
+          ] } },
+        { id: 'bottomLeft', name: 'Lower-left vessel', label: 'Lower left', pts: [{ x: 160, y: 1040 }, { x: 220, y: 880 }, { x: 400, y: 800 }],
+          fork: { branches: [
+            { id: 'bottomLeftOuter', name: 'Lower-left outer branch', label: 'Outer', pts: [{ x: 470, y: 700 }, { x: 576, y: 542 }] },
+            { id: 'bottomLeftInner', name: 'Lower-left inner branch', label: 'Inner', pts: [{ x: 580, y: 760 }, { x: 690, y: 588 }] },
+          ] } },
+        { id: 'bottomMid', name: 'Lower vessel', label: 'Lower', pts: [{ x: 740, y: 1040 }, { x: 700, y: 890 }, { x: 760, y: 760 }, { x: 778, y: 600 }] },
+        { id: 'bottomRight', name: 'Lower-right vessel', label: 'Lower right', pts: [{ x: 1440, y: 1040 }, { x: 1380, y: 880 }, { x: 1200, y: 800 }],
+          fork: { branches: [
+            { id: 'bottomRightOuter', name: 'Lower-right outer branch', label: 'Outer', pts: [{ x: 1130, y: 700 }, { x: 1024, y: 542 }] },
+            { id: 'bottomRightInner', name: 'Lower-right inner branch', label: 'Inner', pts: [{ x: 1020, y: 760 }, { x: 910, y: 588 }] },
+          ] } },
+      ],
+    },
+    waves: [
+      { title: 'A graze', hint: 'Pathogens come in through cuts, partway along the vessels, not from the edge of the map: guard the inner sites too.',
+        groups: [g('saureus', 'topLeft', 8, 1, 2.8), g('spyogenes', 'bottomRight', 6, 4, 2.8), g('virus', 'topMid', 8, 8, 0.35)] },
+      { title: 'Burn wound', hint: 'Pseudomonas, the burn-ward bacterium: tough, and quick through wounds.',
+        groups: [g('paeruginosa', 'topRight', 7, 1, 3), g('saureus', 'topLeft', 7, 3, 2.8), g('spyogenes', 'bottomMid', 5, 6, 3), g('virus', 'bottomRight', 9, 10, 0.3)] },
+      { title: 'Infected cut', hint: 'Pseudomonas from two sides, hijackers through a wound from below.',
+        groups: [g('paeruginosa', 'topLeft', 8, 1, 2.8), g('paeruginosa', 'bottomRight', 6, 4, 3), g('spyogenes', 'topMid', 7, 6, 2.8), g('hijacker', 'bottomMid', 4, 9, 1), g('saureus', 'bottomLeft', 7, 3, 2.8), g('virus', 'topRight', 11, 14, 0.3)] },
+      { title: 'Cellulitis', hint: 'The infection spreads under the skin: every vessel at once.',
+        groups: [g('paeruginosa', 'bottomLeft', 9, 1, 2.6), g('saureus', 'topRight', 9, 2, 2.4), g('spyogenes', 'bottomRight', 8, 4, 2.6), g('paeruginosa', 'topMid', 6, 6, 2.8), g('hijacker', 'topLeft', 5, 10, 1), g('virus', 'bottomMid', 13, 14, 0.3)] },
+      { title: 'Boss: flesh-eating strep', hint: 'Necrotising fasciitis. Every antibody strike makes it faster, up to more than twice its speed: slow it with IgA, or hit it hard and fast with IgE.',
+        groups: [g('necrotizer', 'topLeft', 1, 2, 1), g('paeruginosa', 'bottomRight', 7, 6, 2.8), g('virus', 'topRight', 11, 12, 0.3)] },
+    ],
+  },
+  {
+    id: 'eye', title: 'The Eye', organ: 'Eye', tagline: 'Immune-privileged: you defend it alone.',
+    twist: 'Immune privilege: no white cells come to the eye, so there is no pulse. Only your lymph nodes defend it.',
+    endlessPace: 0.47, hp: 22, startEnergy: 200, cells: 0, income: 0.45,
+    map: {
+      center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      vessels: [
+        { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 420 }, { x: 200, y: 380 }, { x: 380, y: 450 }],
+          fork: { branches: [
+            { id: 'leftUpper', name: 'Left upper branch', label: 'Left upper', pts: [{ x: 560, y: 420 }, { x: 675, y: 420 }] },
+            { id: 'leftLower', name: 'Left lower branch', label: 'Left lower', pts: [{ x: 530, y: 560 }, { x: 682, y: 560 }] },
+          ] } },
+        { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 580 }, { x: 1400, y: 610 }, { x: 1230, y: 560 }],
+          fork: { branches: [
+            { id: 'rightUpper', name: 'Right upper branch', label: 'Right upper', pts: [{ x: 1050, y: 470 }, { x: 926, y: 460 }] },
+            { id: 'rightLower', name: 'Right lower branch', label: 'Right lower', pts: [{ x: 1080, y: 640 }, { x: 910, y: 570 }] },
+          ] } },
+        { id: 'upper', name: 'Upper vessel', label: 'Upper', pts: [{ x: 1040, y: -40 }, { x: 1000, y: 110 }, { x: 950, y: 170 }],
+          fork: { branches: [
+            { id: 'upperInner', name: 'Upper inner branch', label: 'Upper inner', pts: [{ x: 900, y: 200 }, { x: 830, y: 286 }] },
+            { id: 'upperOuter', name: 'Upper outer branch', label: 'Upper outer', pts: [{ x: 1020, y: 260 }, { x: 905, y: 355 }] },
+          ] } },
+        { id: 'topLeft', name: 'Top-left vessel', label: 'Top left', pts: [{ x: 400, y: -40 }, { x: 450, y: 120 }, { x: 600, y: 220 }, { x: 720, y: 320 }] },
+        { id: 'lower', name: 'Lower vessel', label: 'Lower', pts: [{ x: 300, y: 1040 }, { x: 380, y: 870 }, { x: 560, y: 790 }, { x: 700, y: 710 }, { x: 770, y: 654 }] },
+      ],
+    },
+    waves: [
+      { title: 'Conjunctivitis', hint: 'The eye is immune-privileged: no white cells come here, so there is no pulse. Your lymph nodes are all there is.',
+        groups: [g('saureus', 'left', 7, 1, 3), g('chlamydia', 'right', 6, 4, 3), g('virus', 'upper', 8, 8, 0.35)] },
+      { title: 'Trachoma', hint: 'Chlamydia, the commonest infectious cause of blindness: aim IgG at it.',
+        groups: [g('chlamydia', 'left', 8, 1, 2.8), g('paeruginosa', 'lower', 6, 3, 3), g('saureus', 'right', 6, 6, 3), g('virus', 'topLeft', 9, 10, 0.3)] },
+      { title: 'Contact-lens ulcer', hint: 'Pseudomonas on the cornea: tough and fast.',
+        groups: [g('paeruginosa', 'right', 8, 1, 2.8), g('chlamydia', 'upper', 7, 3, 2.8), g('saureus', 'left', 7, 2, 3), g('virus', 'lower', 11, 12, 0.3)] },
+      { title: 'Red eye', hint: 'From every side: nothing but your nodes stands in the way.',
+        groups: [g('chlamydia', 'topLeft', 9, 1, 2.6), g('paeruginosa', 'left', 8, 2, 2.6), g('saureus', 'lower', 8, 4, 2.6), g('chlamydia', 'right', 6, 6, 2.8), g('virus', 'upper', 14, 12, 0.3)] },
+      { title: 'Boss: herpes', hint: 'Herpes simplex hides in nerves. Twice, when its health falls to half, it goes dormant for 3 s, out of reach, and comes back a quarter healed. IgM and IgE.',
+        groups: [g('herpes', 'upper', 1, 2, 1), g('chlamydia', 'left', 7, 6, 2.8), g('virus', 'right', 11, 12, 0.3)] },
     ],
   },
 ];

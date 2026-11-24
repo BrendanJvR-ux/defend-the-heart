@@ -13,6 +13,10 @@ export interface Pathogen {
   slow: number; slowT: number;
   /** A walled boss: antibody strikes its wall has taken. */
   wallHits?: number;
+  /** A frenzied boss: its speed multiplier, raised by every strike. */
+  frenzy?: number;
+  /** A boss that goes dormant: seconds of dormancy left, and how many times it has gone dormant. */
+  dormantT?: number; dormantUsed?: number;
   /** Bosses that shed: seconds until the next one. */
   shedT?: number;
 }
@@ -31,7 +35,8 @@ export interface LymphNode {
 export interface Shot { type: NodeType; targets: BacteriumType[]; power: number; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
 export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' | 'sacrifice' | 'struck' }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number }
-export interface Spawn { type: PathogenType; vessel: VesselId; at: number }
+/** A pathogen due to enter: when, up which route, and (skin wounds) how far along it, as a share of its length. */
+export interface Spawn { type: PathogenType; vessel: VesselId; at: number; pos?: number }
 
 export interface State {
   /** Index into LEVELS: which organ is being defended. */
@@ -409,7 +414,9 @@ function deployHome(s: State) {
 
 export function waveSpawns(n: number, level = LEVEL_INDEX, endless = false): Spawn[] {
   const out: Spawn[] = [], L = LEVELS[level], def = endless ? endlessWave(level, n) : L.waves[n - 1];
-  for (const g of def.groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval });
+  // skin: each group comes in through its own wound, a fixed (seeded) way along its vessel
+  const wound = (gi: number) => { const w = L.wounds; if (!w) return undefined; const x = Math.sin(n * 12.9898 + gi * 78.233) * 43758.5453; return w.from + (w.to - w.from) * (x - Math.floor(x)); };
+  def.groups.forEach((g, gi) => { const pos = CONFIG.pathogens[g.type].boss ? undefined : wound(gi); for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval, pos }); });
   // a boss wave sends its boss up every vessel, one after another
   if (bossWave(level, n, endless)) {
     for (const g of def.groups.filter((x) => CONFIG.pathogens[x.type].boss)) {
@@ -525,6 +532,14 @@ export function hurt(s: State, p: Pathogen, dmg: number, struck = false) {
   }
   p.hp -= dmg;
   p.hit = 0.15;
+  const fz = CONFIG.pathogens[p.type].frenzy;
+  if (fz && struck) p.frenzy = Math.min(fz.max, (p.frenzy ?? 1) + fz.per);
+  const dm = CONFIG.pathogens[p.type].dormant;
+  if (dm && p.hp > 0 && p.hp <= p.maxHp / 2 && !(p.dormantT ?? 0) && (p.dormantUsed ?? 0) < dm.times) {
+    p.dormantT = dm.for; p.dormantUsed = (p.dormantUsed ?? 0) + 1;
+    const q = pathogenPos(p);
+    s.floaters.push({ x: q.x, y: q.y - 60, text: 'Dormant!', t: 0, color: '#5a2878' });
+  }
   if (p.hp <= 0) {
     const st = CONFIG.pathogens[p.type];
     s.killed++;
@@ -591,7 +606,7 @@ export function burstGallbladder(s: State) {
 /** A hiding boss inside a red blood cell: nothing can target or hit it. */
 export function hidden(s: State, p: Pathogen): boolean {
   const h = CONFIG.pathogens[p.type].hides ?? CONFIG.pathogens[p.type].burrows;
-  return !!h && s.phase === 'combat' && s.waveTime % h.every >= h.every - h.for;
+  return (p.dormantT ?? 0) > 0 || (!!h && s.phase === 'combat' && s.waveTime % h.every >= h.every - h.for);
 }
 
 /** A hijacker virus enters a white cell: the cell is lost and rises again as an infected cell heading for the heart.
@@ -646,6 +661,8 @@ export function leakSummary(s: State): LeakSummary | null {
   if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
   else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`
     + (hasTarget(s, st.taxon.species) ? '' : ` Unlock the ${name} target in Upgrades first (or borrow it for this organ): you don't have it yet.`);
+  else if (type === 'necrotizer') advice = 'The flesh-eating strep speeds up with every hit: slow it with IgA where it enters, and finish it with IgE before it gets going.';
+  else if (type === 'herpes') advice = 'Herpes goes dormant twice and comes back healed: keep enough IgM and IgE on its vessel to finish it after it wakes.';
   else if (type === 'hiv') advice = 'HIV switches off every lymph node it passes and white cells can\'t touch it: stack IgM and IgE far out on its vessel, so it dies before it gets far.';
   else if (type === 'burrower') advice = 'The swarm is acid-proof and burrows out of reach every few seconds: put many nodes on its vessel, IgG aimed at H. pylori first, so it is worn down in the moments it is out.';
   else if (type === 'granuloma') advice = 'The granuloma\'s wall soaks up three quarters of every hit until enough antibodies have struck it: build many fast-firing nodes on its vessel, or break it at once with the pulse.';
@@ -680,7 +697,7 @@ export function step(s: State, dtRaw: number) {
   if (s.phase !== 'combat') return;
 
   s.waveTime += dt;
-  while (s.spawns.length && s.spawns[0].at <= s.waveTime) { const sp = s.spawns.shift()!; newPathogen(s, sp.type, sp.vessel); }
+  while (s.spawns.length && s.spawns[0].at <= s.waveTime) { const sp = s.spawns.shift()!; newPathogen(s, sp.type, sp.vessel, sp.pos ? sp.pos * VESSELS[sp.vessel].length : 0); }
 
   // Pathogens drift with the blood towards the heart (IgA slows them). Bosses heal or shed as they go.
   const shed: [PathogenType, VesselId, number, boolean][] = [];
@@ -688,7 +705,9 @@ export function step(s: State, dtRaw: number) {
     p.hit = Math.max(0, p.hit - dt);
     p.wob += dt * 4;
     if (p.slowT > 0) { p.slowT -= dt; if (p.slowT <= 0) p.slow = 1; }
-    p.s += CONFIG.pathogens[p.type].speed * p.slow * organFlow(s, p) * dt;
+    p.s += CONFIG.pathogens[p.type].speed * p.slow * (p.frenzy ?? 1) * organFlow(s, p) * dt;
+    // a dormant boss wakes when its time is up, a quarter healed
+    if ((p.dormantT ?? 0) > 0) { p.dormantT! -= dt; if (p.dormantT! <= 0) { p.dormantT = 0; p.hp = Math.min(p.maxHp, p.hp + CONFIG.pathogens[p.type].dormant!.heal * p.maxHp); } }
     const st = CONFIG.pathogens[p.type];
     if (st.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + st.regen * dt);
     const acid = LEVELS[s.level].acid;

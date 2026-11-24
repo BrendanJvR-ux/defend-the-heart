@@ -7,7 +7,7 @@ import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed } from './sim';
-import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode } from './organs';
+import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode, drawSkin, drawEye } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
 export interface View {
@@ -271,6 +271,8 @@ function organImages(px: number, L: LevelDef = LEVEL) {
   else if (L.id === 'marrow') drawMarrow(x, c, m.rx, m.ry, 1, 0);
   else if (L.id === 'stomach') drawStomach(x, c, m.rx, m.ry, 1, 0);
   else if (L.id === 'lymphnode') drawLymphNode(x, c, m.rx, m.ry, 1, 0);
+  else if (L.id === 'skin') drawSkin(x, c, m.rx, m.ry, 1, 0);
+  else if (L.id === 'eye') drawEye(x, c, m.rx, m.ry, 1, 0);
   else drawKidney(x, c, m.rx, m.ry, 1, 0);
   // darker organs are lifted to a common lightness, so none is solid cross-hatching
   inkify(img, { px, form: 44, level: 0.3 });
@@ -620,7 +622,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
       ctx.globalAlpha = 1; ctx.strokeStyle = INK_RED; ctx.lineWidth = 3.5; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 20;
       ctx.beginPath(); ctx.arc(q.x, q.y, 62, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
       ctx.font = '900 26px Palatino, Georgia, serif'; ctx.textAlign = 'center';
-      const tag = CONFIG.pathogens[p.type].burrows ? 'BURROWED' : 'HIDING';
+      const tag = (p.dormantT ?? 0) > 0 ? 'DORMANT' : CONFIG.pathogens[p.type].burrows ? 'BURROWED' : 'HIDING';
       const tw = ctx.measureText(tag).width;
       // above the boss, or below it when it is near the top edge (where the boss banner is)
       const ty = q.y - 107 < 96 ? q.y + 72 : q.y - 107;

@@ -24,6 +24,8 @@ export const UPGRADES: Record<UpgradeId, { name: string; blurb: string; prices: 
   'target-hpylori': { name: 'IgG target: H. pylori', blurb: 'Aim IgG at H. pylori (Gram− curved rods).', prices: [120] },
   'target-salmonella': { name: 'IgG target: Salmonella', blurb: 'Aim IgG at Salmonella (Gram− rods).', prices: [120] },
   'target-spyogenes': { name: 'IgG target: S. pyogenes', blurb: 'Aim IgG at S. pyogenes (Gram+ cocci in chains).', prices: [120] },
+  'target-paeruginosa': { name: 'IgG target: Pseudomonas', blurb: 'Aim IgG at Pseudomonas (Gram− rods).', prices: [120] },
+  'target-chlamydia': { name: 'IgG target: Chlamydia', blurb: 'Aim IgG at Chlamydia (Gram− coccoid).', prices: [120] },
   dual: { name: 'Dual-target IgG', blurb: 'An IgG node can be aimed at two unlocked targets; each hit uses the better match. A dual node costs 80 energy.', prices: [600] },
   no: { name: 'More NO', blurb: '+20 NO capacity, per level.', prices: [100, 200] },
   extraNode: { name: 'Extra starting node', blurb: 'Every organ starts with one more IgM node already placed.', prices: [150] },

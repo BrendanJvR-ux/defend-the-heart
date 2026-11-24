@@ -256,9 +256,9 @@ describe('Defend the Heart: the IgG match', () => {
     expect(iggMultiplier(['ecoli', 'listeria'], 'listeria')).toBe(3);
   });
   it('the bacteria, with their Gram stain and shape', () => {
-    expect(BACTERIA).toEqual(['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella', 'spyogenes']);
+    expect(BACTERIA).toEqual(['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella', 'spyogenes', 'paeruginosa', 'chlamydia']);
     const tx = (b: BacteriumType) => { const x = CONFIG.pathogens[b].taxon!; return `${x.gram}${x.shape}`; };
-    expect(BACTERIA.map(tx)).toEqual(['+coccus', '+coccus', '+rod', '-coccus', '-rod', '-rod', '+rod', '-rod', '-rod', '+coccus']);
+    expect(BACTERIA.map(tx)).toEqual(['+coccus', '+coccus', '+rod', '-coccus', '-rod', '-rod', '+rod', '-rod', '-rod', '+coccus', '-rod', '-coccus']);
     for (const b of BACTERIA.slice(0, 6)) expect([CONFIG.pathogens[b].hp, CONFIG.pathogens[b].speed]).toEqual([70, 30]);
     // M. tuberculosis is slower and tougher
     expect(CONFIG.pathogens.mtb.hp).toBeGreaterThan(70); expect(CONFIG.pathogens.mtb.speed).toBeLessThan(30);
@@ -431,8 +431,8 @@ describe('Defend the Heart: balance', () => {
 
 
 describe('Defend the Heart: organ levels', () => {
-  it('there are nine organs, each with its own map, waves and a full set of build sites', () => {
-    expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney', 'spleen', 'marrow', 'stomach', 'lymphnode']);
+  it('there are eleven organs, each with its own map, waves and a full set of build sites', () => {
+    expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney', 'spleen', 'marrow', 'stomach', 'lymphnode', 'skin', 'eye']);
     for (let i = 0; i < LEVELS.length; i++) {
       const s = newGame(i);
       expect(s.level).toBe(i);
@@ -462,7 +462,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('more build sites: at least five guarding each route (four on the kidney\'s short upper fork), two on the brain', () => {
-    const atLeast = [5, 5, 2, 5, 4, 4, 4, 4, 3]; // the lymph node's short side branches have three
+    const atLeast = [5, 5, 2, 5, 4, 4, 4, 4, 3, 4, 4]; // the lymph node's short side branches have three
     LEVELS.forEach((_, i) => {
       newGame(i);
       for (const r of M.VESSEL_IDS) {
@@ -473,15 +473,15 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('S. aureus comes in every organ; each organ uses only its own species', () => {
-    const own: BacteriumType[][] = [['saureus'], ['saureus', 'spneumo', 'kpneumo'], ['saureus', 'spneumo', 'listeria', 'nmening'], ['saureus', 'ecoli', 'kpneumo'], ['saureus', 'ecoli'], ['saureus', 'spneumo', 'nmening', 'kpneumo'], ['saureus', 'mtb', 'ecoli'], ['saureus', 'hpylori', 'salmonella'], ['saureus', 'spyogenes', 'ecoli']];
+    const own: BacteriumType[][] = [['saureus'], ['saureus', 'spneumo', 'kpneumo'], ['saureus', 'spneumo', 'listeria', 'nmening'], ['saureus', 'ecoli', 'kpneumo'], ['saureus', 'ecoli'], ['saureus', 'spneumo', 'nmening', 'kpneumo'], ['saureus', 'mtb', 'ecoli'], ['saureus', 'hpylori', 'salmonella'], ['saureus', 'spyogenes', 'ecoli'], ['saureus', 'spyogenes', 'paeruginosa'], ['saureus', 'chlamydia', 'paeruginosa']];
     LEVELS.forEach((l, i) => {
       const kinds = new Set(l.waves.flatMap((w) => w.groups.map((g) => g.type)).filter((x) => CONFIG.pathogens[x].taxon && !CONFIG.pathogens[x].boss));
       expect([...kinds].sort()).toEqual([...own[i]].sort());
     });
   });
 
-  it('each organ has one more route than the last; forks only from the brain on', () => {
-    const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3], [6, 9, 3], [6, 10, 4], [7, 11, 4], [7, 12, 5]]; // entries, routes, forks
+  it('the routes rise to the lymph node (one more each organ), and forks come only from the brain on; the skin and eye share earlier layouts', () => {
+    const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3], [6, 9, 3], [6, 10, 4], [7, 11, 4], [7, 12, 5], [6, 10, 4], [5, 8, 3]]; // entries, routes, forks
     LEVELS.forEach((_, i) => {
       newGame(i);
       const forks = M.ENTRY_IDS.filter((e) => M.routesOf(e).length === 2).length;
@@ -549,8 +549,8 @@ describe('Defend the Heart: organ levels', () => {
     expect((near.s - b) / (far.s - a)).toBeCloseTo(LEVELS[4].filtration!.factor, 2);
   });
 
-  it('holding one vessel open, with the career player\'s upgrades at each organ, loses or ends at least 2 worse (the heart, the gentle tutorial organ, excepted)', { timeout: 30000 }, () => {
-    for (const r of careerRun().filter((x) => x.level > 0)) {
+  it('holding one vessel open, with the career player\'s upgrades at each organ, loses or ends at least 2 worse (not the heart, the gentle tutorial organ, nor the eye, which has no white cells to send)', { timeout: 30000 }, () => {
+    for (const r of careerRun().filter((x) => x.level > 0 && LEVELS[x.level].cells > 0)) {
       const good = play(blindBuild, sensibleDilate, 3, r.level, r.perks), hold = play(blindBuild, holdOpen, 3, r.level, r.perks);
       console.log(LEVELS[r.level].id, 'careful', good.s.heartHp, 'hold-open', hold.hp, hold.s.phase);
       expect(hold.s.phase === 'defeat' || hold.s.heartHp <= good.s.heartHp - 2, LEVELS[r.level].id).toBe(true);
@@ -991,6 +991,42 @@ describe('Defend the Heart: the kidney', () => {
       const p = s.pathogens.find((x) => !CONFIG.pathogens[x.type].boss)!; // as the wave spawns it
       expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (1 + LEVELS[K].waveHpGrowth! * (w - 1))));
     }
+  });
+});
+
+describe('Defend the Heart: the skin and the eye', () => {
+  const SKIN = LEVELS.findIndex((l) => l.id === 'skin'), EYE = LEVELS.findIndex((l) => l.id === 'eye');
+  it('skin: each group comes in through a wound partway along its vessel; bosses still come from the edge', () => {
+    newGame(SKIN);
+    const sp = waveSpawns(1, SKIN), w = LEVELS[SKIN].wounds!;
+    expect(sp.every((x) => x.pos !== undefined && x.pos >= w.from && x.pos <= w.to)).toBe(true);
+    expect(waveSpawns(LEVELS[SKIN].waves.length, SKIN).filter((x) => CONFIG.pathogens[x.type].boss).every((x) => x.pos === undefined)).toBe(true);
+    const s = newGame(SKIN); startWave(s); tick(s, 1.2);
+    const p = s.pathogens[0]; expect(p.s).toBeGreaterThan(w.from * M.VESSELS[p.vessel].length * 0.9);
+  });
+  it('the flesh-eating strep speeds up with every antibody strike, up to its limit', () => {
+    const s = newGame(SKIN); go(s, 'topMid'); quiet(s);
+    const b = mk(s, 'necrotizer', 'topMid', 50), fz = CONFIG.pathogens.necrotizer.frenzy!;
+    hurt(s, b, 1); expect(b.frenzy ?? 1).toBe(1); // a white cell's fighting doesn't
+    hurt(s, b, 1, true); expect(b.frenzy).toBeCloseTo(1 + fz.per, 6);
+    for (let i = 0; i < 500; i++) hurt(s, b, 0, true);
+    expect(b.frenzy).toBe(fz.max);
+  });
+  it('herpes goes dormant twice at half health, out of reach, and wakes a quarter healed', () => {
+    const s = newGame(EYE); go(s, 'lower'); quiet(s); s.nodes = [];
+    const b = mk(s, 'herpes', 'lower', 50), dm = CONFIG.pathogens.herpes.dormant!;
+    hurt(s, b, b.maxHp * 0.55, true);
+    expect(hidden(s, b)).toBe(true); expect(b.dormantUsed).toBe(1);
+    const hp = b.hp; tick(s, dm.for + 0.1);
+    expect(hidden(s, b)).toBe(false); expect(b.hp).toBeCloseTo(hp + dm.heal * b.maxHp, 5);
+    hurt(s, b, b.hp - b.maxHp * 0.4, true); expect(b.dormantUsed).toBe(2); tick(s, dm.for + 0.1);
+    hurt(s, b, b.hp - b.maxHp * 0.3, true); expect(hidden(s, b)).toBe(false); // no third time
+  });
+  it('the eye has no white cells: no pulse, but a vessel can still be opened', () => {
+    const s = newGame(EYE); startWave(s);
+    expect(s.cells.length).toBe(0);
+    expect(pulseCheck(s).ok).toBe(false);
+    expect(toggleRoute(s, 'lower')).toBe(true);
   });
 });
 

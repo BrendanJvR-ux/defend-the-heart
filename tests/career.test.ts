@@ -17,7 +17,7 @@ describe('Career: the save', () => {
   it('a fresh career has no gold, nothing cleared, no run', () => {
     const c = freshCareer();
     expect([c.version, c.gold, c.run]).toEqual([1, 0, null]);
-    expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false]);
+    expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false, false, false]);
     expect(unlockedCount(c)).toBe(1);
   });
 
@@ -30,7 +30,7 @@ describe('Career: the save', () => {
 
   it('migrates old progress: dth-unlocked 3 means the heart and lungs cleared, no gold', () => {
     const c = loadCareer(memory({ 'dth-unlocked': '3', 'dth-level': '2' }));
-    expect(c.cleared).toEqual([true, true, false, false, false, false, false, false, false]);
+    expect(c.cleared).toEqual([true, true, false, false, false, false, false, false, false, false, false]);
     expect([c.gold, c.run]).toEqual([0, null]);
     expect(unlockedCount(c)).toBe(3);
   });
@@ -53,7 +53,7 @@ describe('Career: the save', () => {
   it('missing fields in a version-1 save are filled in', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 50 }) });
     const c = loadCareer(kv);
-    expect(c.gold).toBe(50); expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false]); expect(c.run).toBeNull();
+    expect(c.gold).toBe(50); expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false, false, false]); expect(c.run).toBeNull();
   });
 
   it('with no storage at all, the game still gets a fresh career and saving does nothing', () => {
@@ -124,10 +124,10 @@ describe('Career: continuing a game', () => {
     expect(c.run).toBeNull(); expect(c.cleared[2]).toBe(false);
   });
 
-  it('every organ can be cleared and unlocks the next, up to nine', () => {
+  it('every organ can be cleared and unlocks the next, up to eleven', () => {
     const c = freshCareer();
     for (let i = 0; i < LEVELS.length; i++) { const s = newGame(i); s.phase = 'victory'; onOrganEnd(c, s); }
-    expect(unlockedCount(c)).toBe(9);
+    expect(unlockedCount(c)).toBe(11);
   });
 });
 
@@ -215,7 +215,7 @@ describe('Career: a sixth organ', () => {
   it('a five-organ save gets a sixth, locked organ: the spleen opens once the kidney is cleared', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 5, cleared: [true, true, true, true, false], best: [1, 2, 3, 4, 0] }) });
     const c = loadCareer(kv);
-    expect(c.cleared).toEqual([true, true, true, true, false, false, false, false, false]); expect(c.best).toEqual([1, 2, 3, 4, 0, 0, 0, 0, 0]);
+    expect(c.cleared).toEqual([true, true, true, true, false, false, false, false, false, false, false]); expect(c.best).toEqual([1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0]);
     expect(unlockedCount(c)).toBe(5);
     c.cleared[4] = true; expect(unlockedCount(c)).toBe(6);
   });
@@ -223,7 +223,7 @@ describe('Career: a sixth organ', () => {
   it('a six-organ save gets a seventh, locked organ: the bone marrow opens once the spleen is cleared', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 5, cleared: [true, true, true, true, true, false], best: [1, 2, 3, 4, 5, 0] }) });
     const c = loadCareer(kv);
-    expect(c.cleared).toEqual([true, true, true, true, true, false, false, false, false]); expect(unlockedCount(c)).toBe(6);
+    expect(c.cleared).toEqual([true, true, true, true, true, false, false, false, false, false, false]); expect(unlockedCount(c)).toBe(6);
     c.cleared[5] = true; expect(unlockedCount(c)).toBe(7);
   });
 });

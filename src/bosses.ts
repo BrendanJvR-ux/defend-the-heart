@@ -28,7 +28,36 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
 function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const flash = hit > 0;
-  if (type === 'hiv') {
+  if (type === 'necrotizer') {
+    // necrotising fasciitis: chains of S. pyogenes tearing through a ragged, darkened patch of tissue
+    aura(ctx, 34, t, 'rgba(160,40,30,0.4)');
+    const rag = () => { ctx.beginPath(); for (let i = 0; i <= 28; i++) { const a = (i / 28) * Math.PI * 2, r = 32 + (i % 2 ? -5 : 3) + Math.sin(a * 3 + t * 2) * 2; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); };
+    const g = ctx.createRadialGradient(-6, -6, 4, 0, 0, 36); g.addColorStop(0, '#e8a090'); g.addColorStop(0.6, '#a8403a'); g.addColorStop(1, '#4a1a18');
+    rag(); ctx.fillStyle = flash ? '#ffffff' : g; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.4; ctx.stroke();
+    // dead (necrotic) blotches
+    ctx.fillStyle = 'rgba(40,20,15,0.55)';
+    for (const [x, y, r] of [[-10, 8, 7], [12, -10, 5], [6, 14, 4]]) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+    // chains of cocci winding through it
+    for (let c = 0; c < 4; c++) {
+      ctx.save(); ctx.rotate(c * 1.6 + t * 0.5);
+      for (let i = 0; i < 6; i++) { const x = -18 + i * 6.5, y = Math.sin(i * 0.9 + c) * 4 + 6; ctx.fillStyle = flash ? '#ffffff' : '#f0b0a8'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.stroke(); }
+      ctx.restore();
+    }
+  } else if (type === 'herpes') {
+    // herpes simplex: a hexagonal (icosahedral) capsid in a thick tegument, inside a spiked envelope
+    aura(ctx, 32, t, 'rgba(120,70,160,0.35)');
+    ctx.rotate(t * 0.5);
+    for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 30, Math.sin(a) * 30); ctx.lineTo(Math.cos(a) * 37, Math.sin(a) * 37); ctx.stroke(); }
+    const env = ctx.createRadialGradient(-8, -8, 3, 0, 0, 32); env.addColorStop(0, '#f0e0f6'); env.addColorStop(1, '#a888c0');
+    ctx.fillStyle = flash ? '#ffffff' : env; ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.4; ctx.stroke();
+    ctx.fillStyle = flash ? '#ffffff' : 'rgba(200,170,220,0.8)'; ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.fill(); // tegument
+    ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.lineTo(Math.cos(a) * 15, Math.sin(a) * 15); } ctx.closePath();
+    ctx.fillStyle = flash ? '#ffffff' : '#7a5a9a'; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1.8; ctx.stroke();
+    ctx.strokeStyle = 'rgba(240,220,250,0.7)'; ctx.lineWidth = 1.2;
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 15, Math.sin(a) * 15); ctx.stroke(); }
+    // its DNA, coiled inside
+    ctx.strokeStyle = '#e8c46a'; ctx.lineWidth = 1.4; ctx.beginPath(); for (let k = 0; k < 40; k++) { const a = k * 0.5, r = 2 + k * 0.2; k ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(2, 0); } ctx.stroke();
+  } else if (type === 'hiv') {
     // HIV: a round virion studded with knobbed spikes (gp120), a cone-shaped capsid inside holding its RNA
     aura(ctx, 32, t, 'rgba(110,60,150,0.4)');
     ctx.rotate(t * 0.5);

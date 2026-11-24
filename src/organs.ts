@@ -499,3 +499,82 @@ export function drawLymphNode(ctx: CanvasRenderingContext2D, c: Vec, rx: number,
   bean(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
   ctx.restore();
 }
+
+// ── Skin ────────────────────────────────────────────────────────────────────
+/** A block of skin in cross-section: the layered epidermis with its scaly top, the dermis with a hair follicle,
+ *  sweat gland and capillary loops, the pale fat beneath, and a cut through it all. */
+export function drawSkin(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell);
+  const R = seeded(71), w = rx * 1.9, h = ry * 1.75, x0 = -w / 2, y0 = -h / 2;
+  const block = () => { ctx.beginPath(); ctx.roundRect(x0, y0, w, h, 18); };
+  block(); ctx.fillStyle = '#f0d8c4'; ctx.fill();
+  if (kick > 0) { block(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
+  ctx.save(); block(); ctx.clip();
+  // fat (hypodermis): pale lobules at the bottom
+  ctx.fillStyle = '#f6e8b8'; ctx.fillRect(x0, y0 + h * 0.66, w, h * 0.34);
+  ctx.strokeStyle = 'rgba(150,120,60,0.55)'; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 26; i++) { const x = x0 + 14 + (i % 13) * (w / 13), y = y0 + h * 0.74 + Math.floor(i / 13) * h * 0.13; ctx.beginPath(); ctx.ellipse(x + (R() - 0.5) * 8, y, w / 28, h * 0.06, 0, 0, Math.PI * 2); ctx.stroke(); }
+  // dermis: pinker, with collagen fibres
+  ctx.fillStyle = '#e8b4a4'; ctx.fillRect(x0, y0 + h * 0.2, w, h * 0.46);
+  ctx.strokeStyle = 'rgba(150,70,60,0.35)'; ctx.lineWidth = 1.2;
+  for (let i = 0; i < 30; i++) { const x = x0 + R() * w, y = y0 + h * 0.25 + R() * h * 0.38; ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x + 12, y - 5, x + 24, y + 5, x + 36, y); ctx.stroke(); }
+  // the epidermis: a wavy band of cell layers, with the dead scaly layer on top
+  const wave = (yy: number, amp: number) => { ctx.beginPath(); ctx.moveTo(x0, yy); for (let x = x0; x <= x0 + w; x += 8) ctx.lineTo(x, yy + Math.sin(x * 0.08) * amp); ctx.lineTo(x0 + w, y0); ctx.lineTo(x0, y0); ctx.closePath(); };
+  wave(y0 + h * 0.22, 6); ctx.fillStyle = '#d89a8a'; ctx.fill();
+  wave(y0 + h * 0.08, 2); ctx.fillStyle = '#f2e4cc'; ctx.fill();
+  ctx.strokeStyle = 'rgba(120,70,60,0.5)'; ctx.lineWidth = 1;
+  for (let k = 0; k < 4; k++) { ctx.beginPath(); for (let x = x0; x <= x0 + w; x += 8) { const yy = y0 + h * (0.04 + k * 0.016) + Math.sin(x * 0.05 + k) * 1.2; x === x0 ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy); } ctx.stroke(); }
+  // a hair follicle with its hair, and a sebaceous gland beside it
+  const hx = x0 + w * 0.3;
+  ctx.fillStyle = '#c87a6a'; ctx.beginPath(); ctx.ellipse(hx, y0 + h * 0.45, 9, h * 0.25, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#3a2a1e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(hx + 4, y0 + h * 0.66); ctx.quadraticCurveTo(hx, y0 + h * 0.2, hx + 30, y0 - 20); ctx.stroke();
+  ctx.fillStyle = '#f0e0a0'; ctx.beginPath(); ctx.ellipse(hx + 18, y0 + h * 0.36, 10, 7, 0, 0, Math.PI * 2); ctx.fill();
+  // a coiled sweat gland and its duct
+  const sx = x0 + w * 0.68;
+  ctx.strokeStyle = '#8a5a7a'; ctx.lineWidth = 3;
+  ctx.beginPath(); for (let k = 0; k < 30; k++) { const a = k * 0.7; ctx.lineTo(sx + Math.cos(a) * (8 + k * 0.2), y0 + h * 0.6 + Math.sin(a) * 6); } ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(sx, y0 + h * 0.55); ctx.bezierCurveTo(sx - 6, y0 + h * 0.35, sx + 6, y0 + h * 0.2, sx, y0 + h * 0.04); ctx.stroke();
+  // capillary loops reaching up into the dermal papillae
+  ctx.globalAlpha = 0.6;
+  for (let i = 0; i < 9; i++) vesselTree(ctx, x0 + 30 + i * (w - 60) / 8, y0 + h * 0.62, -Math.PI / 2 + (R() - 0.5) * 0.4, h * 0.2, 2.2, 1, '#9a2a2a', R);
+  ctx.globalAlpha = 1;
+  ctx.restore();
+  // a cut: a dark wedge through the epidermis into the dermis
+  ctx.fillStyle = 'rgba(110,20,25,0.85)';
+  ctx.beginPath(); ctx.moveTo(x0 + w * 0.47, y0 - 2); ctx.lineTo(x0 + w * 0.53, y0 - 2); ctx.lineTo(x0 + w * 0.505, y0 + h * 0.4); ctx.closePath(); ctx.fill();
+  block(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
+  ctx.restore();
+}
+
+// ── Eye ─────────────────────────────────────────────────────────────────────
+/** The eye cut in half from front to back: the bulging cornea, the iris and lens, the clear vitreous, the retina
+ *  lining the back with its vessels fanning from the optic disc, and the optic nerve leaving behind. */
+export function drawEye(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell);
+  const R = seeded(83), r = Math.min(rx, ry) * 1.05;
+  // the optic nerve, behind
+  ctx.strokeStyle = INK; ctx.lineWidth = 34; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, r * 0.8); ctx.quadraticCurveTo(10, r * 1.2, 0, r * 1.5); ctx.stroke();
+  ctx.strokeStyle = '#f0e0b0'; ctx.lineWidth = 28; ctx.stroke();
+  const ball = () => { ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); };
+  // the sclera: the white of the eye
+  ball(); ctx.fillStyle = '#f6efe2'; ctx.fill();
+  if (kick > 0) { ball(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
+  ctx.save(); ball(); ctx.clip();
+  // the retina and choroid lining the back, with vessels fanning from the optic disc
+  ctx.fillStyle = '#e09a7a'; ctx.beginPath(); ctx.arc(0, 0, r * 0.93, 0.15 * Math.PI, 0.85 * Math.PI); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f2e8d8'; ctx.beginPath(); ctx.arc(0, 0, r * 0.82, 0, Math.PI * 2); ctx.fill(); // the vitreous
+  ctx.globalAlpha = 0.6;
+  for (const a of [-2.2, -1.6, -1.0, -0.4]) vesselTree(ctx, 0, r * 0.88, a, r * 0.45, 2.6, 3, '#9a2a2a', R);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f8f0c8'; ctx.beginPath(); ctx.ellipse(0, r * 0.86, 10, 6, 0, 0, Math.PI * 2); ctx.fill(); // the optic disc
+  ctx.restore();
+  // the cornea bulging at the front (top), the iris, and the lens behind the pupil
+  ctx.fillStyle = 'rgba(200,225,240,0.6)'; ctx.beginPath(); ctx.ellipse(0, -r * 0.92, r * 0.5, r * 0.22, 0, Math.PI, 0); ctx.fill();
+  ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = '#5a7a9a'; ctx.lineWidth = 9; ctx.lineCap = 'butt';
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sx * r * 0.55, -r * 0.78); ctx.lineTo(sx * r * 0.16, -r * 0.78); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(240,230,200,0.85)'; ctx.beginPath(); ctx.ellipse(0, -r * 0.62, r * 0.32, r * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.stroke();
+  ball(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
+  ctx.restore();
+}

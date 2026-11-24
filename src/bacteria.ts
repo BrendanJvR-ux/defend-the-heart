@@ -18,6 +18,8 @@ export const BACTERIA_LOOK: Record<BacteriumType, Look> = {
   hpylori: { base: '#b8a838', dark: '#5e5614', light: '#ece4a8', inner: '#7a7020' },
   salmonella: { base: '#e0884a', dark: '#8a4418', light: '#f8d4b0', inner: '#a85a28' },
   spyogenes: { base: '#d85a5a', dark: '#7a1e1e', light: '#f8c8c0', inner: '#9a2a2a' },
+  paeruginosa: { base: '#4aa890', dark: '#1e5a4a', light: '#c0ecdc', inner: '#2a7a64' },
+  chlamydia: { base: '#b07ac8', dark: '#5a2a78', light: '#ecd4f6', inner: '#7a4a9a' },
 };
 
 /** A fixed scatter of points (golden-angle spiral) so the inner speckle never shimmers between frames. */
@@ -132,6 +134,14 @@ function drawBody(ctx: CanvasRenderingContext2D, type: BacteriumType, hit: numbe
     // a Gram-negative rod with fine pili (its flagella all round are drawn live)
     pili(ctx, 17, 8, 12);
     rod(ctx, 32, 14, look, hit, false);
+  } else if (type === 'paeruginosa') {
+    // Pseudomonas: a slim rod tinged blue-green by its pigment (its single whip-like flagellum is drawn live)
+    rod(ctx, 28, 11, look, hit, false);
+  } else if (type === 'chlamydia') {
+    // Chlamydia: a pale inclusion (a bubble inside a host cell) crowded with tiny round elementary bodies
+    ctx.fillStyle = hit > 0 ? '#ffffff' : 'rgba(236,212,246,0.85)'; ctx.beginPath(); ctx.ellipse(0, 0, 15, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.4; ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]);
+    for (let i = 0; i < 14; i++) { const a = i * 2.39996, r = Math.sqrt((i + 0.5) / 14) * 10; coccus(ctx, Math.cos(a) * r, Math.sin(a) * r * 0.8, 2.3, 2.3, look, hit, false); }
   } else if (type === 'spyogenes') {
     // S. pyogenes: a long, gently curving chain of small cocci
     for (let i = 0; i < 6; i++) { const x = -19 + i * 7.6, y = Math.sin(i * 0.9) * 3; coccus(ctx, x, y, 4, 4.3, look, hit, true); }
@@ -195,6 +205,7 @@ export function drawBacterium(ctx: CanvasRenderingContext2D, type: BacteriumType
   else if (type === 'ecoli') flagella(ctx, look, true, t, 32, 14);
   else if (type === 'salmonella') flagella(ctx, look, true, t, 28, 13);
   else if (type === 'hpylori') flagella(ctx, look, false, t, 28, 8);
+  else if (type === 'paeruginosa') flagella(ctx, look, false, t, 28, 11);
   if (hit > 0 || typeof document === 'undefined') drawBody(ctx, type, hit); // the white hit-flash is rare: draw it directly
   else {
     // pick a sprite resolution from the on-screen size (rounded, so only a few sizes are ever made)
