@@ -214,6 +214,8 @@ export interface LevelDef {
   /** Lymph node: every pathogen that reaches the organ weakens the lymph nodes guarding its route by `per` (a share of
    *  their damage), down to `min`, until the wave ends. */
   weakens?: { per: number; min: number };
+  /** Endless mode: how fast this organ's endless waves grow, as a share of the usual rate (1 = as configured). */
+  endlessPace?: number;
   /** Kidney: pathogens grow tougher every wave: health ×(1 + `waveHpGrowth` × waves before this one). */
   waveHpGrowth?: number;
   map: {
@@ -235,7 +237,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'heart', title: 'The Heart', organ: 'Heart', tagline: 'Four vessels, one beating target.',
     twist: 'The first organ: learn lymph nodes, dilating with NO during the wave, and the pulse.',
-    hp: 20, startEnergy: 100, cells: 2,
+    endlessPace: 1.6, hp: 20, startEnergy: 100, cells: 2,
     map: {
       center: { x: 800, y: 480 }, rx: 100, ry: 100, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -304,7 +306,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'lungs', title: 'The Lungs', organ: 'Lung', tagline: 'Every breath drags the infection deeper.',
     twist: 'Breathing: every few seconds the lungs inhale and everything in the vessels surges forward.',
-    hp: 20, startEnergy: 100, cells: 2,
+    endlessPace: 0.9, hp: 20, startEnergy: 100, cells: 2,
     surge: { every: 6, length: 1.4, factor: 2.2 },
     map: {
       center: { x: 800, y: 450 }, rx: 225, ry: 175, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -332,7 +334,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'brain', title: 'The Brain', organ: 'Brain', tagline: 'Little room to build, nothing to spare.',
     twist: 'The blood–brain barrier: only two lymph node sites guard each route and less health, but you get three white cells. The lower-right vessel forks.',
-    hp: 18, startEnergy: 200, cells: 3,
+    endlessPace: 0.55, hp: 18, startEnergy: 200, cells: 3,
     map: {
       center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.3, 0.5, 0.7],
       vessels: [
@@ -363,7 +365,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave. Fall to half health and the gallbladder bursts: bile destroys two of your lymph nodes.',
-    hp: 24, startEnergy: 360, cells: 2, regenPerWave: 3, income: 0.7, gallbladder: { at: 0.5, nodes: 2 },
+    endlessPace: 1.8, hp: 24, startEnergy: 360, cells: 2, regenPerWave: 3, income: 0.7, gallbladder: { at: 0.5, nodes: 2 },
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
       vessels: [
@@ -398,7 +400,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 20% tougher.',
-    hp: 20, startEnergy: 380, cells: 2, income: 0.7, waveHpGrowth: 0.2,
+    endlessPace: 0.7, hp: 20, startEnergy: 380, cells: 2, income: 0.7, waveHpGrowth: 0.2,
     filtration: { fraction: 0.28, factor: 0.6 },
     map: {
       center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -438,7 +440,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'spleen', title: 'The Spleen', organ: 'Spleen', tagline: 'The body\'s own immune organ.',
     twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
-    hp: 22, startEnergy: 160, cells: 2, income: 0.7,
+    endlessPace: 1.4, hp: 22, startEnergy: 160, cells: 2, income: 0.7,
     respawn: { after: 8, cost: 1 },
     map: {
       center: { x: 800, y: 480 }, rx: 150, ry: 210, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -479,7 +481,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'marrow', title: 'The Bone Marrow', organ: 'Marrow', tagline: 'Where white cells are born.',
     twist: 'It makes white cells: you start with 2, and every cleared wave adds one more, up to 5.',
-    hp: 24, startEnergy: 260, cells: 2, income: 0.7,
+    endlessPace: 2.1, hp: 24, startEnergy: 260, cells: 2, income: 0.7,
     cellGrowth: { perWave: 1, max: 5 },
     map: {
       center: { x: 800, y: 480 }, rx: 260, ry: 120, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -524,7 +526,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'stomach', title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
     twist: 'Acid: on the last third of every vessel, pathogens lose 3 health a second. H. pylori feeds on it and gains health there instead.',
-    hp: 24, startEnergy: 260, cells: 2, income: 0.55,
+    endlessPace: 0.75, hp: 24, startEnergy: 260, cells: 2, income: 0.55,
     acid: { fraction: 0.33, dps: 3 },
     map: {
       center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -570,7 +572,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'lymphnode', title: 'The Lymph Node', organ: 'Node', tagline: 'The finale: your own defences are the target.',
     twist: 'Every pathogen that reaches the node weakens the lymph nodes guarding its vessel by 10% until the wave ends. The boss, HIV, switches off every lymph node it passes.',
-    hp: 26, startEnergy: 140, cells: 3, income: 0.6,
+    endlessPace: 0.4, hp: 26, startEnergy: 140, cells: 3, income: 0.6,
     weakens: { per: 0.1, min: 0.5 },
     map: {
       center: { x: 800, y: 500 }, rx: 190, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],

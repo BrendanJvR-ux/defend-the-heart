@@ -165,7 +165,7 @@ export const wave = (s: State) => (s.endless ? endlessWave(s.level, s.wave) : LE
 /** Endless wave n on an organ: its ordinary waves in turn, every group a little larger each time round; every
  *  `bossEvery`th wave is its boss wave (the boss up every vessel), escorts scaled the same way. */
 export function endlessWave(level: number, n: number): WaveDef {
-  const L = LEVELS[level], E = CONFIG.endless, k = 1 + E.countGrowth * (n - 1);
+  const L = LEVELS[level], E = CONFIG.endless, k = 1 + E.countGrowth * (L.endlessPace ?? 1) * (n - 1);
   const boss = n % E.bossEvery === 0, base = boss ? L.waves[L.waves.length - 1] : L.waves[(n - 1) % (L.waves.length - 1)];
   const groups: WaveGroup[] = base.groups.map((g) => ({ ...g, count: CONFIG.pathogens[g.type].boss ? g.count : Math.max(1, Math.round(g.count * k)) }));
   return { title: `Endless wave ${n}: ${base.title.replace(/^Boss: /, 'boss, ')}`, hint: base.hint, groups };
@@ -547,9 +547,11 @@ export function hurt(s: State, p: Pathogen, dmg: number, struck = false) {
 function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pathogen {
   const st = CONFIG.pathogens[type];
   const grow = LEVELS[s.level].waveHpGrowth;
-  let hp = grow ? Math.round(st.hp * (1 + grow * (s.wave - 1))) : st.hp;
+  // (in endless, the kidney's own growth runs over a cycle of its waves, then starts again: endless growth takes over)
+  const grownWaves = s.endless ? (s.wave - 1) % LEVELS[s.level].waves.length : s.wave - 1;
+  let hp = grow ? Math.round(st.hp * (1 + grow * grownWaves)) : st.hp;
   if (st.boss) hp = Math.round(hp * CONFIG.bossEveryVessel.hpShare); // one comes up every vessel
-  if (s.endless) hp = Math.round(hp * (1 + CONFIG.endless.hpGrowth * (s.wave - 1))); // endless waves grow tougher
+  if (s.endless) hp = Math.round(hp * (1 + CONFIG.endless.hpGrowth * (LEVELS[s.level].endlessPace ?? 1) * (s.wave - 1))); // endless waves grow tougher
   const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp, maxHp: hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
   // announce the first boss of the wave only (the others follow up the other vessels)

@@ -953,7 +953,7 @@ describe('Defend the Heart: endless mode', () => {
     expect(w1.groups.map((g) => g.count)).toEqual(L.waves[0].groups.map((g) => g.count));
     expect(w5.groups.some((g) => CONFIG.pathogens[g.type].boss)).toBe(true);
     // wave 6 is the organ's first wave again, every group larger
-    w6.groups.forEach((g, i) => expect(g.count).toBe(Math.max(1, Math.round(L.waves[(6 - 1) % (L.waves.length - 1)].groups[i].count * (1 + E.countGrowth * 5)))));
+    w6.groups.forEach((g, i) => expect(g.count).toBe(Math.max(1, Math.round(L.waves[(6 - 1) % (L.waves.length - 1)].groups[i].count * (1 + E.countGrowth * (L.endlessPace ?? 1) * 5)))));
     expect(waveSpawns(5, 1, true).filter((x) => CONFIG.pathogens[x.type].boss).length).toBe(L.map.vessels.length); // up every vessel
   });
   it('never ends in victory: after the organ\'s last wave the next endless wave comes, its pathogens tougher', () => {
@@ -962,15 +962,15 @@ describe('Defend the Heart: endless mode', () => {
     expect(s.phase).toBe('prep'); expect(s.wave).toBe(LEVELS[0].waves.length + 2);
     startWave(s); tick(s, 4);
     const p = s.pathogens.find((x) => !CONFIG.pathogens[x.type].boss)!;
-    expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (1 + CONFIG.endless.hpGrowth * (s.wave - 1))));
+    expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (1 + CONFIG.endless.hpGrowth * (LEVELS[0].endlessPace ?? 1) * (s.wave - 1))));
   });
-  it('with the career\'s upgrades, every endless run gets somewhere and none goes on for ever', { timeout: 60000 }, () => {
+  it('with the career\'s upgrades, every organ\'s endless run lasts about as long: 8 to 25 waves', { timeout: 60000 }, () => {
     const perks = careerRun().at(-1)!.perks, reached: string[] = [];
     for (let i = 0; i < LEVELS.length; i++) {
       const s = newGame(i, perks, undefined, true);
       while (s.phase === 'prep' && s.wave <= 60) { blindBuild(s); startWave(s); finishWave(s, (st) => { sensibleDilate(st); pulseAtCluster(3)(st); }); }
       reached.push(`${LEVELS[i].id} ${s.wave - 1}`);
-      expect(s.wave - 1, LEVELS[i].id).toBeGreaterThanOrEqual(3);
+      expect(s.wave - 1, LEVELS[i].id).toBeGreaterThanOrEqual(8); expect(s.wave - 1, LEVELS[i].id).toBeLessThanOrEqual(25);
       expect(s.phase, LEVELS[i].id).toBe('defeat');
     }
     console.log('endless waves held:', reached.join(', '));
