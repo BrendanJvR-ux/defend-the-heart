@@ -582,6 +582,17 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
       ctx.fillStyle = INK_BLUE; ctx.font = 'italic 700 17px Palatino, Georgia, serif'; ctx.fillText('DILATED', lx, ly + 34);
     }
   }
+  // skin wounds: a dark cut across the vessel where pathogens have come in, kept for the rest of the organ
+  for (const w of s.wounds) {
+    if (!VESSELS[w.vessel]) continue;
+    const q = pointAt(VESSELS[w.vessel], w.at), nx = -Math.sin(q.angle), ny = Math.cos(q.angle), tx = Math.cos(q.angle), ty = Math.sin(q.angle);
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = INKC; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(q.x - nx * 28 - tx * 6, q.y - ny * 28 - ty * 6); ctx.lineTo(q.x + nx * 28 + tx * 6, q.y + ny * 28 + ty * 6); ctx.stroke();
+    ctx.strokeStyle = '#8a1e24'; ctx.lineWidth = 4; ctx.stroke();
+    inkText(ctx, 'wound', q.x + nx * 40, q.y + ny * 40, '#6e2622', 14);
+    ctx.restore();
+  }
   // bile from the burst gallbladder: green stains where its lymph nodes were destroyed
   for (const b of s.bile) {
     const R = seeded(Math.round(b.x * 3 + b.y * 7));

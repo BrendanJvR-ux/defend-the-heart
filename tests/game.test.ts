@@ -462,7 +462,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('more build sites: at least five guarding each route (four on the kidney\'s short upper fork), two on the brain', () => {
-    const atLeast = [5, 5, 2, 5, 4, 4, 4, 4, 3, 4, 4]; // the lymph node's short side branches have three
+    const atLeast = [5, 5, 2, 5, 4, 4, 4, 4, 3, 3, 3]; // the lymph node's, skin's and eye's short branches have three
     LEVELS.forEach((_, i) => {
       newGame(i);
       for (const r of M.VESSEL_IDS) {
@@ -480,7 +480,7 @@ describe('Defend the Heart: organ levels', () => {
     });
   });
 
-  it('the routes rise to the lymph node (one more each organ), and forks come only from the brain on; the skin and eye share earlier layouts', () => {
+  it('the routes rise to the lymph node (one more each organ), and forks come only from the brain on; the skin and eye have fewer', () => {
     const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3], [6, 9, 3], [6, 10, 4], [7, 11, 4], [7, 12, 5], [6, 10, 4], [5, 8, 3]]; // entries, routes, forks
     LEVELS.forEach((_, i) => {
       newGame(i);
@@ -1013,8 +1013,8 @@ describe('Defend the Heart: the skin and the eye', () => {
     expect(b.frenzy).toBe(fz.max);
   });
   it('herpes goes dormant twice at half health, out of reach, and wakes a quarter healed', () => {
-    const s = newGame(EYE); go(s, 'lower'); quiet(s); s.nodes = [];
-    const b = mk(s, 'herpes', 'lower', 50), dm = CONFIG.pathogens.herpes.dormant!;
+    const s = newGame(EYE); go(s, 'left'); quiet(s); s.nodes = [];
+    const b = mk(s, 'herpes', 'left', 50), dm = CONFIG.pathogens.herpes.dormant!;
     hurt(s, b, b.maxHp * 0.55, true);
     expect(hidden(s, b)).toBe(true); expect(b.dormantUsed).toBe(1);
     const hp = b.hp; tick(s, dm.for + 0.1);
@@ -1026,7 +1026,7 @@ describe('Defend the Heart: the skin and the eye', () => {
     const s = newGame(EYE); startWave(s);
     expect(s.cells.length).toBe(0);
     expect(pulseCheck(s).ok).toBe(false);
-    expect(toggleRoute(s, 'lower')).toBe(true);
+    expect(toggleRoute(s, 'left')).toBe(true);
   });
 });
 

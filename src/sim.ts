@@ -45,6 +45,8 @@ export interface State {
   endless: boolean;
   /** IgG targets borrowed for this organ only (bought with gold; gone when the organ ends). */
   borrowed: BacteriumType[];
+  /** Skin: the wounds pathogens have come in through so far (a route and how far along it), marked on the map. */
+  wounds: { vessel: VesselId; at: number }[];
   /** Liver: where the gallbladder's bile destroyed lymph nodes (empty until it bursts; it bursts once). */
   bile: Vec[];
   /** The wave just fought (or being fought): what came up each vessel, and the organ health it cost; shown afterwards. */
@@ -104,7 +106,7 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 +
   const L = LEVELS[level];
   const s: State = {
     level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, open: [], no: perks.noMax, noOuts: 0,
-    perks, endless, borrowed: [], bile: [], waveLog: null, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
+    perks, endless, borrowed: [], wounds: [], bile: [], waveLog: null, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
@@ -697,7 +699,12 @@ export function step(s: State, dtRaw: number) {
   if (s.phase !== 'combat') return;
 
   s.waveTime += dt;
-  while (s.spawns.length && s.spawns[0].at <= s.waveTime) { const sp = s.spawns.shift()!; newPathogen(s, sp.type, sp.vessel, sp.pos ? sp.pos * VESSELS[sp.vessel].length : 0); }
+  while (s.spawns.length && s.spawns[0].at <= s.waveTime) {
+    const sp = s.spawns.shift()!, at = sp.pos ? sp.pos * VESSELS[sp.vessel].length : 0;
+    newPathogen(s, sp.type, sp.vessel, at);
+    // a wound opening for the first time stays marked for the rest of the organ
+    if (sp.pos && !s.wounds.some((w) => w.vessel === sp.vessel && Math.abs(w.at - at) < 20)) s.wounds.push({ vessel: sp.vessel, at });
+  }
 
   // Pathogens drift with the blood towards the heart (IgA slows them). Bosses heal or shed as they go.
   const shed: [PathogenType, VesselId, number, boolean][] = [];

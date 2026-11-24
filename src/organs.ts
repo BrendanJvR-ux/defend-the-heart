@@ -550,7 +550,8 @@ export function drawSkin(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: 
 /** The eye cut in half from front to back: the bulging cornea, the iris and lens, the clear vitreous, the retina
  *  lining the back with its vessels fanning from the optic disc, and the optic nerve leaving behind. */
 export function drawEye(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
-  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell);
+  // turned over: the cornea faces down the map and the optic nerve leaves upward, between the upper vessels
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell); ctx.rotate(Math.PI);
   const R = seeded(83), r = Math.min(rx, ry) * 1.05;
   // the optic nerve, behind
   ctx.strokeStyle = INK; ctx.lineWidth = 34; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, r * 0.8); ctx.quadraticCurveTo(10, r * 1.2, 0, r * 1.5); ctx.stroke();
