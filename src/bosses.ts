@@ -23,7 +23,29 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
 function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const flash = hit > 0;
-  if (type === 'granuloma') {
+  if (type === 'burrower') {
+    // an H. pylori swarm: curved rods crowded in a blob of mucus, a drill-like spiral at its front
+    aura(ctx, 34, t, 'rgba(160,150,50,0.35)');
+    ctx.rotate(angle);
+    const blob = () => { ctx.beginPath(); for (let i = 0; i <= 36; i++) { const a = (i / 36) * Math.PI * 2, r = 33 + Math.sin(a * 5 + t * 3) * 2.5 + Math.sin(a * 2) * 3; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); };
+    const mg = ctx.createRadialGradient(-6, -6, 3, 0, 0, 36); mg.addColorStop(0, '#f4f0c8'); mg.addColorStop(1, '#c8c070');
+    blob(); ctx.fillStyle = flash ? '#ffffff' : mg; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.4; ctx.stroke();
+    // the swarm: curved rods at every angle
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 16; i++) {
+      const a = i * 2.39996, r = 6 + Math.sqrt(i / 16) * 20, x = Math.cos(a) * r, y = Math.sin(a) * r, o = a * 1.7;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(o);
+      const c = () => { ctx.beginPath(); ctx.moveTo(-5, 1.5); ctx.bezierCurveTo(-2, -3, 2, 3, 5, -1.5); };
+      c(); ctx.strokeStyle = INK; ctx.lineWidth = 4.6; ctx.stroke();
+      c(); ctx.strokeStyle = flash ? '#ffffff' : '#b8a838'; ctx.lineWidth = 2.8; ctx.stroke();
+      ctx.restore();
+    }
+    // a spiral drill at the front, turning
+    ctx.save(); ctx.translate(36, 0); ctx.rotate(t * 6);
+    ctx.strokeStyle = INK; ctx.lineWidth = 2;
+    ctx.beginPath(); for (let k = 0; k < 30; k++) { const a = k * 0.5, r = 1 + k * 0.28; k ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(r, 0); } ctx.stroke();
+    ctx.restore();
+  } else if (type === 'granuloma') {
     // a tuberculous granuloma: a cheesy (caseous) core full of acid-fast rods, ringed by a Langhans giant cell
     // with its horseshoe of nuclei, palisades of epithelioid cells, and a cuff of small dark lymphocytes
     aura(ctx, 34, t, 'rgba(150,70,60,0.35)');

@@ -379,3 +379,63 @@ export function drawMarrow(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry
   bone(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
   ctx.restore();
 }
+
+// ── Stomach ─────────────────────────────────────────────────────────────────
+/** The stomach: a J of muscle from the oesophagus to the pylorus, its lining thrown into folds (rugae), a pool of
+ *  acid in its lower curve, and the gastric arteries along both curvatures. */
+export function drawStomach(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell * rx / 200, swell * ry / 150);
+  const R = seeded(91);
+  // the oesophagus coming in from above, the duodenum leaving to the lower right
+  ctx.lineCap = 'round';
+  for (const [pts, w] of [[[[-10, -140], [-20, -175], [-5, -215]], 34], [[[196, 5], [230, 30], [250, 85], [235, 140]], 30]] as [number[][], number][]) {
+    const path = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); };
+    path(); ctx.strokeStyle = INK; ctx.lineWidth = w + 5; ctx.lineJoin = 'round'; ctx.stroke();
+    path(); ctx.strokeStyle = '#e0a090'; ctx.lineWidth = w; ctx.stroke();
+    path(); ctx.strokeStyle = 'rgba(150,60,50,0.4)'; ctx.lineWidth = 2; ctx.setLineDash([4, 6]); ctx.stroke(); ctx.setLineDash([]);
+  }
+  const shape = () => {
+    ctx.beginPath();
+    ctx.moveTo(-40, -140);
+    ctx.bezierCurveTo(-130, -178, -210, -90, -188, -10); // the fundus
+    ctx.bezierCurveTo(-170, 92, -60, 156, 40, 142); // the greater curvature
+    ctx.bezierCurveTo(122, 130, 172, 78, 198, 22); // the antrum
+    ctx.lineTo(200, -12); // the pylorus
+    ctx.bezierCurveTo(130, -22, 62, 12, 12, -22); // the lesser curvature
+    ctx.bezierCurveTo(-14, -42, 6, -118, 22, -140);
+    ctx.closePath();
+  };
+  const g = ctx.createRadialGradient(-60, -60, 10, 0, 0, 220);
+  g.addColorStop(0, '#f0b8a0'); g.addColorStop(0.6, '#d88a78'); g.addColorStop(1, '#a8584a');
+  shape(); ctx.fillStyle = g; ctx.fill();
+  if (kick > 0) { shape(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
+  ctx.save(); shape(); ctx.clip();
+  // a pool of acid in the lower curve
+  ctx.fillStyle = 'rgba(200,210,90,0.45)';
+  ctx.beginPath(); ctx.moveTo(-200, 40); ctx.bezierCurveTo(-80, 30, 60, 60, 210, 30); ctx.lineTo(210, 200); ctx.lineTo(-200, 200); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(120,130,40,0.6)'; ctx.lineWidth = 1.4;
+  for (let i = 0; i < 18; i++) { ctx.beginPath(); ctx.arc(-150 + R() * 320, 60 + R() * 70, 2 + R() * 4, 0, Math.PI * 2); ctx.stroke(); }
+  // rugae: the lining's long folds, running from the fundus round to the pylorus
+  ctx.strokeStyle = 'rgba(110,40,40,0.55)'; ctx.lineWidth = 2.2;
+  for (let k = 0; k < 7; k++) {
+    const off = -40 + k * 16;
+    ctx.beginPath();
+    for (let u = 0; u <= 1.0001; u += 0.04) {
+      const x = -160 + u * 340, base = -30 + Math.sin(u * Math.PI) * 70 + off * (1 - u * 0.6);
+      const y = base + Math.sin(u * 22 + k) * 5;
+      u === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  // gastric arteries along both curvatures
+  ctx.globalAlpha = 0.6;
+  for (let i = 0; i < 6; i++) vesselTree(ctx, -150 + i * 55, 120 - Math.sin(i * 0.6) * 30, -1.6 + (R() - 0.5) * 0.4, 30, 2.4, 2, '#9a2a2a', R);
+  for (let i = 0; i < 4; i++) vesselTree(ctx, 20 + i * 45, -12 + i * 4, 1.5, 24, 2.2, 2, '#9a2a2a', R);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.beginPath(); ctx.ellipse(-110, -90, 30, 14, -0.6, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // the pyloric sphincter: a ring of muscle
+  ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(199, 5, 6, 18, 0, 0, Math.PI * 2); ctx.stroke();
+  shape(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
+  ctx.restore();
+}

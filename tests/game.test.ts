@@ -324,12 +324,15 @@ describe('Defend the Heart: the IgG match', () => {
     expect(iggMultiplier(['ecoli', 'listeria'], 'listeria')).toBe(3);
   });
   it('the bacteria, with their Gram stain and shape', () => {
-    expect(BACTERIA).toEqual(['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb']);
+    expect(BACTERIA).toEqual(['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella']);
     const tx = (b: BacteriumType) => { const x = CONFIG.pathogens[b].taxon!; return `${x.gram}${x.shape}`; };
-    expect(BACTERIA.map(tx)).toEqual(['+coccus', '+coccus', '+rod', '-coccus', '-rod', '-rod', '+rod']);
+    expect(BACTERIA.map(tx)).toEqual(['+coccus', '+coccus', '+rod', '-coccus', '-rod', '-rod', '+rod', '-rod', '-rod']);
     for (const b of BACTERIA.slice(0, 6)) expect([CONFIG.pathogens[b].hp, CONFIG.pathogens[b].speed]).toEqual([70, 30]);
     // M. tuberculosis is slower and tougher
     expect(CONFIG.pathogens.mtb.hp).toBeGreaterThan(70); expect(CONFIG.pathogens.mtb.speed).toBeLessThan(30);
+    // Salmonella is quicker and frailer; H. pylori is the one acid-proof bacterium
+    expect(CONFIG.pathogens.salmonella.speed).toBeGreaterThan(30); expect(CONFIG.pathogens.salmonella.hp).toBeLessThan(70);
+    expect(BACTERIA.filter((b) => CONFIG.pathogens[b].acidProof)).toEqual(['hpylori']);
   });
 });
 
@@ -522,8 +525,8 @@ function holdOpen(s: State) {
 }
 
 describe('Defend the Heart: organ levels', () => {
-  it('there are seven organs, each with its own map, waves and a full set of build sites', () => {
-    expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney', 'spleen', 'marrow']);
+  it('there are eight organs, each with its own map, waves and a full set of build sites', () => {
+    expect(LEVELS.map((l) => l.id)).toEqual(['heart', 'lungs', 'brain', 'liver', 'kidney', 'spleen', 'marrow', 'stomach']);
     for (let i = 0; i < LEVELS.length; i++) {
       const s = newGame(i);
       expect(s.level).toBe(i);
@@ -550,7 +553,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('more build sites: at least five guarding each route (four on the kidney\'s short upper fork), two on the brain', () => {
-    const atLeast = [5, 5, 2, 5, 4, 4, 4];
+    const atLeast = [5, 5, 2, 5, 4, 4, 4, 4];
     LEVELS.forEach((_, i) => {
       newGame(i);
       for (const r of M.VESSEL_IDS) {
@@ -561,7 +564,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('S. aureus comes in every organ; each organ uses only its own species', () => {
-    const own: BacteriumType[][] = [['saureus'], ['saureus', 'spneumo', 'kpneumo'], ['saureus', 'spneumo', 'listeria', 'nmening'], ['saureus', 'ecoli', 'kpneumo'], ['saureus', 'ecoli'], ['saureus', 'spneumo', 'nmening', 'kpneumo'], ['saureus', 'mtb', 'ecoli']];
+    const own: BacteriumType[][] = [['saureus'], ['saureus', 'spneumo', 'kpneumo'], ['saureus', 'spneumo', 'listeria', 'nmening'], ['saureus', 'ecoli', 'kpneumo'], ['saureus', 'ecoli'], ['saureus', 'spneumo', 'nmening', 'kpneumo'], ['saureus', 'mtb', 'ecoli'], ['saureus', 'hpylori', 'salmonella']];
     LEVELS.forEach((l, i) => {
       const kinds = new Set(l.waves.flatMap((w) => w.groups.map((g) => g.type)).filter((x) => CONFIG.pathogens[x].taxon && !CONFIG.pathogens[x].boss));
       expect([...kinds].sort()).toEqual([...own[i]].sort());
@@ -569,7 +572,7 @@ describe('Defend the Heart: organ levels', () => {
   });
 
   it('each organ has one more route than the last; forks only from the brain on', () => {
-    const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3], [6, 9, 3], [6, 10, 4]]; // entries, routes, forks
+    const expected = [[4, 4, 0], [5, 5, 0], [5, 6, 1], [5, 7, 2], [5, 8, 3], [6, 9, 3], [6, 10, 4], [7, 11, 4]]; // entries, routes, forks
     LEVELS.forEach((_, i) => {
       newGame(i);
       const forks = M.ENTRY_IDS.filter((e) => M.routesOf(e).length === 2).length;
@@ -1031,6 +1034,35 @@ describe('Defend the Heart: the bone marrow', () => {
     expect(firePulse(s)).toBe(1);
     expect(b.wallHits).toBe(CONFIG.pathogens.granuloma.walled!.hits);
     expect(b.hp).toBeCloseTo(b.maxHp * (2 / 3), 5);
+  });
+});
+
+describe('Defend the Heart: the stomach', () => {
+  const STOMACH = LEVELS.findIndex((l) => l.id === 'stomach');
+  it('acid on the last third of a vessel costs pathogens 4 health a second; nothing before it', () => {
+    const s = newGame(STOMACH); go(s, 'top'); quiet(s); s.cells = []; s.nodes = [];
+    const L = M.VESSELS.left.length, acid = LEVELS[STOMACH].acid!;
+    const out = mk(s, 'saureus', 'left', L * 0.3), inside = mk(s, 'saureus', 'left', L * (1 - acid.fraction) + 10);
+    out.slow = inside.slow = 0.0001; out.slowT = inside.slowT = 99; // keep them where they are
+    tick(s, 1);
+    expect(out.hp).toBe(out.maxHp);
+    expect(inside.hp).toBeCloseTo(inside.maxHp - acid.dps, 0);
+  });
+  it('H. pylori and its boss are untouched by acid', () => {
+    const s = newGame(STOMACH); go(s, 'top'); quiet(s); s.cells = []; s.nodes = [];
+    const L = M.VESSELS.left.length;
+    const h = mk(s, 'hpylori', 'left', L * 0.8); h.slow = 0.0001; h.slowT = 99;
+    tick(s, 1); expect(h.hp).toBe(h.maxHp);
+    expect(CONFIG.pathogens.burrower.acidProof).toBe(true);
+  });
+  it('the swarm burrows for 1.6 s in every 5: untouchable, and tunnelling three times as fast', () => {
+    const s = newGame(STOMACH); go(s, 'top'); quiet(s); s.cells = []; s.nodes = [];
+    const b = mk(s, 'burrower', 'left', 100), bw = CONFIG.pathogens.burrower.burrows!;
+    s.waveTime = 0.5; expect(hidden(s, b)).toBe(false);
+    const a = b.s; step(s, 0.1); const outStep = b.s - a;
+    s.waveTime = bw.every - bw.for + 0.2; expect(hidden(s, b)).toBe(true);
+    expect(pulseTargets(s)).not.toContain(b);
+    const c = b.s; step(s, 0.1); expect((b.s - c) / outStep).toBeCloseTo(bw.speed, 1);
   });
 });
 

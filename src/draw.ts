@@ -7,7 +7,7 @@ import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, previewTagBox, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
-import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow } from './organs';
+import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
 export interface View {
@@ -143,6 +143,21 @@ function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: 
     }
     ctx.globalAlpha = 1;
   }
+  const acid = LEVEL.acid;
+  if (acid) {
+    // the acid stretch: a yellow-green wash in the lumen, with bubbles ringed in ink drifting along it
+    const from = ves.length * (1 - acid.fraction);
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(200,210,90,0.5)'; ctx.lineWidth = w * 0.8; ctx.beginPath();
+    for (let d = from; d <= ves.length; d += 8) { const p = pointAt(ves, d); d === from ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); }
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(90,90,20,0.6)'; ctx.lineWidth = 1;
+    for (let d = from + ((t * 18) % 16); d < ves.length; d += 16) {
+      const p = pointAt(ves, d), side = Math.sin(d * 0.37) * w * 0.25;
+      ctx.beginPath(); ctx.arc(p.x - Math.sin(p.angle) * side, p.y + Math.cos(p.angle) * side, 2 + Math.abs(Math.sin(d)) * 2, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
   const filt = LEVEL.filtration;
   if (filt) {
     // the filtered stretch: a pale sieve across the vessel
@@ -243,6 +258,7 @@ function organImages(px: number) {
   else if (LEVEL.id === 'liver') drawLiver(x, c, m.rx, m.ry, 1, 0);
   else if (LEVEL.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
   else if (LEVEL.id === 'marrow') drawMarrow(x, c, m.rx, m.ry, 1, 0);
+  else if (LEVEL.id === 'stomach') drawStomach(x, c, m.rx, m.ry, 1, 0);
   else drawKidney(x, c, m.rx, m.ry, 1, 0);
   // darker organs are lifted to a common lightness, so none is solid cross-hatching
   inkify(img, { px, form: 44, level: 0.3 });
@@ -564,9 +580,10 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
       ctx.globalAlpha = 1; ctx.strokeStyle = INK_RED; ctx.lineWidth = 3.5; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 20;
       ctx.beginPath(); ctx.arc(q.x, q.y, 62, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
       ctx.font = '900 26px Palatino, Georgia, serif'; ctx.textAlign = 'center';
-      const tw = ctx.measureText('HIDING').width;
+      const tag = CONFIG.pathogens[p.type].burrows ? 'BURROWED' : 'HIDING';
+      const tw = ctx.measureText(tag).width;
       inkTag(ctx, q.x - tw / 2 - 12, q.y - 107, tw + 24, 36, WASH.red, 6);
-      ctx.fillStyle = INK_RED; ctx.fillText('HIDING', q.x, q.y - 80);
+      ctx.fillStyle = INK_RED; ctx.fillText(tag, q.x, q.y - 80);
     }
     const wl = wallLeft(p);
     if (wl > 0) {

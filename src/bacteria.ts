@@ -15,6 +15,8 @@ export const BACTERIA_LOOK: Record<BacteriumType, Look> = {
   ecoli: { base: '#78b850', dark: '#3a6a22', light: '#d0eeb0', inner: '#4a7a2a' },
   kpneumo: { base: '#7a90b0', dark: '#34465e', light: '#d4dcec', inner: '#46587a' },
   mtb: { base: '#d0607a', dark: '#7a2038', light: '#f6c8d4', inner: '#9a3050' },
+  hpylori: { base: '#b8a838', dark: '#5e5614', light: '#ece4a8', inner: '#7a7020' },
+  salmonella: { base: '#e0884a', dark: '#8a4418', light: '#f8d4b0', inner: '#a85a28' },
 };
 
 /** A fixed scatter of points (golden-angle spiral) so the inner speckle never shimmers between frames. */
@@ -129,6 +131,20 @@ function drawBody(ctx: CanvasRenderingContext2D, type: BacteriumType, hit: numbe
     // a Gram-negative rod with fine pili (its flagella all round are drawn live)
     pili(ctx, 17, 8, 12);
     rod(ctx, 32, 14, look, hit, false);
+  } else if (type === 'hpylori') {
+    // H. pylori: a curved, slightly spiral rod (its tuft of flagella is drawn live)
+    const curve = () => { ctx.beginPath(); ctx.moveTo(-13, 3); ctx.bezierCurveTo(-6, -8, 4, 8, 13, -3); };
+    ctx.lineCap = 'round';
+    curve(); ctx.strokeStyle = INK; ctx.lineWidth = 11; ctx.stroke();
+    curve(); ctx.strokeStyle = hit > 0 ? '#ffffff' : look.base; ctx.lineWidth = 8; ctx.stroke();
+    if (hit <= 0) {
+      curve(); ctx.strokeStyle = look.light; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.7; ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.fillStyle = look.inner; for (const [x, y] of [[-8, 0], [-2, 0.5], [4, 0.5], [9, -1.5]]) { ctx.beginPath(); ctx.arc(x, y, 1, 0, Math.PI * 2); ctx.fill(); }
+    }
+  } else if (type === 'salmonella') {
+    // Salmonella: a plump Gram-negative rod (its flagella all round are drawn live)
+    pili(ctx, 15, 7, 10);
+    rod(ctx, 28, 13, look, hit, false);
   } else if (type === 'mtb') {
     // M. tuberculosis: slender, slightly bent, beaded rods lying side by side in a cord, inside a waxy coat
     ctx.strokeStyle = 'rgba(120,40,70,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([1.5, 2.5]);
@@ -173,6 +189,8 @@ export function drawBacterium(ctx: CanvasRenderingContext2D, type: BacteriumType
   // flagella beat, so they are drawn live, under the body
   if (type === 'listeria') flagella(ctx, look, false, t, 24, 11);
   else if (type === 'ecoli') flagella(ctx, look, true, t, 32, 14);
+  else if (type === 'salmonella') flagella(ctx, look, true, t, 28, 13);
+  else if (type === 'hpylori') flagella(ctx, look, false, t, 28, 8);
   if (hit > 0 || typeof document === 'undefined') drawBody(ctx, type, hit); // the white hit-flash is rare: draw it directly
   else {
     // pick a sprite resolution from the on-screen size (rounded, so only a few sizes are ever made)

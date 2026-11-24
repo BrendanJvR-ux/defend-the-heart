@@ -6,13 +6,13 @@
 /** Vessel ids are per level ('left', 'portal', 'lowerLeft' …). */
 export type VesselId = string;
 /** The named bacteria. */
-export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb';
-export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb'];
+export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb' | 'hpylori' | 'salmonella';
+export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella'];
 export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'infected' | BossType;
 /** What an IgG antibody recognises: Gram stain, shape and species. */
 export interface Taxon { gram: '+' | '-'; shape: 'coccus' | 'rod'; species: BacteriumType }
 /** One boss per organ, met in that organ's last wave. */
-export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium' | 'granuloma';
+export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium' | 'granuloma' | 'burrower';
 export type NodeType = 'igm' | 'igg' | 'iga' | 'ige';
 
 export interface PathogenStats {
@@ -51,6 +51,11 @@ export interface PathogenStats {
   hides?: { every: number; for: number };
   /** Walled in: takes only `factor` of any damage until antibodies (or the pulse) have struck it `hits` times. */
   walled?: { hits: number; factor: number };
+  /** Burrows into the lining for `for` seconds in every `every`: nothing can target or hit it then, and it
+   *  tunnels on at ×`speed`. */
+  burrows?: { every: number; for: number; speed: number };
+  /** Stomach acid does not harm it. */
+  acidProof?: boolean;
 }
 
 export interface NodeStats {
@@ -139,6 +144,10 @@ export const CONFIG = {
     mtb: { name: 'Mycobacterium tuberculosis', plural: 'M. tuberculosis', short: 'Acid-fast rod, slow and tough', hp: 95, speed: 24, heartDamage: 3, contactDps: 3, bounty: 9, taxon: { gram: '+', shape: 'rod', species: 'mtb' } },
     granuloma: { name: 'Tuberculous granuloma', plural: 'Granulomas', hp: 500, speed: 14, heartDamage: 8, contactDps: 4, bounty: 60, boss: true, taxon: { gram: '+', shape: 'rod', species: 'mtb' },
       walled: { hits: 40, factor: 0.25 }, blurb: 'M. tuberculosis walled in by the body\'s own cells. Every antibody strike chips the wall; until it breaks, everything does a quarter damage. A pulse breaks it at once.' },
+    hpylori: { name: 'Helicobacter pylori', plural: 'H. pylori', short: 'Gram− curved rod, acid-proof', hp: 90, speed: 28, heartDamage: 3, contactDps: 3, bounty: 8, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' } },
+    salmonella: { name: 'Salmonella enterica', plural: 'Salmonella', short: 'Gram− rod, fast, in groups', hp: 55, speed: 46, heartDamage: 2, contactDps: 3, bounty: 6, taxon: { gram: '-', shape: 'rod', species: 'salmonella' } },
+    burrower: { name: 'H. pylori swarm', plural: 'H. pylori swarms', hp: 620, speed: 15, heartDamage: 8, contactDps: 5, bounty: 60, boss: true, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' },
+      burrows: { every: 5, for: 1.6, speed: 3 }, blurb: 'A swarm of H. pylori, untouched by acid. Every few seconds it burrows into the stomach lining, where nothing can touch it, and tunnels on three times as fast.' },
     plasmodium: { name: 'Plasmodium', plural: 'Plasmodia', hp: 560, speed: 16, heartDamage: 8, contactDps: 5, bounty: 60, boss: true,
       hides: { every: 6, for: 2 }, blurb: 'The malaria parasite. Every few seconds it hides inside a red blood cell, where nothing can touch it. Not a bacterium: IgM and IgE, not IgG.' },
   } as Record<PathogenType, PathogenStats>,
@@ -146,7 +155,7 @@ export const CONFIG = {
 
 // ── Levels ──────────────────────────────────────────────────────────────────
 
-export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow';
+export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow' | 'stomach';
 type P = { x: number; y: number };
 
 export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
@@ -177,6 +186,8 @@ export interface LevelDef {
   respawn?: { after: number; cost: number };
   /** Bone marrow: each cleared wave adds `perWave` white cells, up to `max`. */
   cellGrowth?: { perWave: number; max: number };
+  /** Stomach: on the last `fraction` of every vessel, acid costs pathogens `dps` health a second (not the acid-proof). */
+  acid?: { fraction: number; dps: number };
   map: {
     center: P;
     /** Rough organ size, for drawing and keeping build sites off the organ. */
@@ -487,6 +498,53 @@ export const LEVELS: LevelDef[] = [
         groups: [g('mtb', 'bottomLeft', 8, 1, 3), g('saureus', 'topRight', 8, 2, 2.6), g('ecoli', 'bottomRight', 5, 4, 3.2), g('mtb', 'topMid', 5, 6, 3.2), g('hijacker', 'topLeft', 5, 10, 1), g('virus', 'bottomMid', 12, 14, 0.3)] },
       { title: 'Boss: the granuloma', hint: 'A tuberculous granuloma: bacteria walled in by your own cells. Every antibody strike chips the wall; until it breaks, everything does a quarter damage. A pulse breaks it at once.',
         groups: [g('granuloma', 'topLeft', 1, 2, 1), g('mtb', 'bottomRight', 6, 6, 3), g('virus', 'topRight', 10, 12, 0.3)] },
+    ],
+  },
+  {
+    id: 'stomach', title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
+    twist: 'Acid: on the last third of every vessel, pathogens lose 4 health a second. H. pylori is untouched by it.',
+    hp: 24, startEnergy: 230, cells: 2, income: 0.55,
+    acid: { fraction: 0.33, dps: 4 },
+    startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
+    map: {
+      center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      vessels: [
+        { id: 'topLeft', name: 'Upper-left vessel', label: 'Upper left', pts: [{ x: 180, y: -40 }, { x: 240, y: 120 }, { x: 410, y: 200 }],
+          fork: { branches: [
+            { id: 'topLeftOuter', name: 'Upper-left outer branch', label: 'Outer', pts: [{ x: 500, y: 300 }, { x: 628, y: 424 }] },
+            { id: 'topLeftInner', name: 'Upper-left inner branch', label: 'Inner', pts: [{ x: 590, y: 220 }, { x: 706, y: 368 }] },
+          ] } },
+        { id: 'top', name: 'Upper vessel', label: 'Upper', pts: [{ x: 820, y: -40 }, { x: 780, y: 110 }, { x: 810, y: 240 }, { x: 800, y: 350 }] },
+        { id: 'topRight', name: 'Upper-right vessel', label: 'Upper right', pts: [{ x: 1420, y: -40 }, { x: 1360, y: 120 }, { x: 1190, y: 200 }],
+          fork: { branches: [
+            { id: 'topRightOuter', name: 'Upper-right outer branch', label: 'Outer', pts: [{ x: 1100, y: 300 }, { x: 972, y: 424 }] },
+            { id: 'topRightInner', name: 'Upper-right inner branch', label: 'Inner', pts: [{ x: 1010, y: 220 }, { x: 894, y: 368 }] },
+          ] } },
+        { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 500 }, { x: 180, y: 470 }, { x: 400, y: 510 }, { x: 600, y: 500 }] },
+        { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 500 }, { x: 1420, y: 530 }, { x: 1200, y: 490 }, { x: 1000, y: 500 }] },
+        { id: 'bottomLeft', name: 'Lower-left vessel', label: 'Lower left', pts: [{ x: 180, y: 1040 }, { x: 240, y: 880 }, { x: 410, y: 800 }],
+          fork: { branches: [
+            { id: 'bottomLeftOuter', name: 'Lower-left outer branch', label: 'Outer', pts: [{ x: 500, y: 700 }, { x: 628, y: 576 }] },
+            { id: 'bottomLeftInner', name: 'Lower-left inner branch', label: 'Inner', pts: [{ x: 590, y: 780 }, { x: 706, y: 632 }] },
+          ] } },
+        { id: 'bottomRight', name: 'Lower-right vessel', label: 'Lower right', pts: [{ x: 1420, y: 1040 }, { x: 1360, y: 880 }, { x: 1190, y: 800 }],
+          fork: { branches: [
+            { id: 'bottomRightOuter', name: 'Lower-right outer branch', label: 'Outer', pts: [{ x: 1100, y: 700 }, { x: 972, y: 576 }] },
+            { id: 'bottomRightInner', name: 'Lower-right inner branch', label: 'Inner', pts: [{ x: 1010, y: 780 }, { x: 894, y: 632 }] },
+          ] } },
+      ],
+    },
+    waves: [
+      { title: 'Something it ate', hint: 'Salmonella: fast, in groups. The acid on the last third of each vessel wears down everything that gets that far, so slow them before they arrive.',
+        groups: [g('salmonella', 'left', 11, 1, 1.8), g('saureus', 'right', 8, 4, 3), g('virus', 'top', 11, 8, 0.35)] },
+      { title: 'Acid-proof', hint: 'H. pylori shrugs off acid: it must be killed before it reaches the stomach.',
+        groups: [g('hpylori', 'topLeft', 8, 1, 3.2), g('salmonella', 'right', 11, 3, 1.8), g('saureus', 'left', 7, 6, 3), g('virus', 'top', 11, 10, 0.3)] },
+      { title: 'Ulcer', hint: 'H. pylori from both upper sides, hijackers from above.',
+        groups: [g('hpylori', 'topRight', 10, 1, 3), g('hpylori', 'topLeft', 7, 5, 3.2), g('salmonella', 'left', 13, 3, 1.6), g('hijacker', 'top', 6, 9, 1), g('saureus', 'right', 8, 2, 3), g('virus', 'bottomRight', 14, 14, 0.3)] },
+      { title: 'Every side', hint: 'Everything at once. The acid helps against all but H. pylori.',
+        groups: [g('hpylori', 'bottomLeft', 8, 1, 3.2), g('salmonella', 'topRight', 13, 2, 1.6), g('saureus', 'left', 8, 4, 2.8), g('hpylori', 'right', 8, 6, 3), g('hijacker', 'topLeft', 6, 10, 1), g('virus', 'bottomRight', 17, 14, 0.3)] },
+      { title: 'Boss: the burrowing swarm', hint: 'A swarm of H. pylori: acid-proof, and every few seconds it burrows into the lining, where nothing can touch it, and tunnels on three times as fast. Hit it hard while it is out.',
+        groups: [g('burrower', 'topLeft', 1, 2, 1), g('hpylori', 'bottomLeft', 8, 4, 3), g('salmonella', 'bottomRight', 11, 6, 1.6), g('virus', 'right', 14, 12, 0.3)] },
     ],
   },
 ];

@@ -141,8 +141,16 @@ export function filtered(s: State, p: { vessel: VesselId; s: number }): boolean 
   return !!f && p.s >= VESSELS[p.vessel].length * (1 - f.fraction);
 }
 /** Speed multiplier from the organ itself (surges, filtration). */
+/** Stomach: true when a pathogen is in the acid on the last stretch of its vessel. */
+export function inAcid(s: State, p: { vessel: VesselId; s: number }): boolean {
+  const a = LEVELS[s.level].acid;
+  return !!a && p.s >= VESSELS[p.vessel].length * (1 - a.fraction);
+}
+
 export function organFlow(s: State, p: Pathogen): number {
   let k = 1;
+  const b = CONFIG.pathogens[p.type].burrows;
+  if (b && hidden(s, p)) k *= b.speed; // tunnelling through the lining
   if (surging(s)) k *= LEVELS[s.level].surge!.factor;
   if (filtered(s, p)) k *= LEVELS[s.level].filtration!.factor;
   return k;
@@ -449,7 +457,7 @@ function loseCell(s: State) {
 
 /** A hiding boss inside a red blood cell: nothing can target or hit it. */
 export function hidden(s: State, p: Pathogen): boolean {
-  const h = CONFIG.pathogens[p.type].hides;
+  const h = CONFIG.pathogens[p.type].hides ?? CONFIG.pathogens[p.type].burrows;
   return !!h && s.phase === 'combat' && s.waveTime % h.every >= h.every - h.for;
 }
 
@@ -505,6 +513,7 @@ export function leakSummary(s: State): LeakSummary | null {
   if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
   else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`
     + (s.perks.targets.includes(st.taxon.species) ? '' : ` Unlock the ${name} target in Upgrades first: you don't have it yet.`);
+  else if (type === 'burrower') advice = 'The swarm is acid-proof and burrows out of reach every few seconds: put many nodes on its vessel, IgG aimed at H. pylori first, so it is worn down in the moments it is out.';
   else if (type === 'granuloma') advice = 'The granuloma\'s wall soaks up three quarters of every hit until enough antibodies have struck it: build many fast-firing nodes on its vessel, or break it at once with the pulse.';
   else if (type === 'plasmodium') advice = 'Plasmodium is a parasite, not a bacterium: IgM and IgE wear it down, and time the pulse for when it comes out of its red blood cell.';
   else if (st.boss) advice = `${st.name}: IgM and IgE hit it hardest; IgG barely scratches a virus.`;
@@ -548,6 +557,8 @@ export function step(s: State, dtRaw: number) {
     p.s += CONFIG.pathogens[p.type].speed * p.slow * organFlow(s, p) * dt;
     const st = CONFIG.pathogens[p.type];
     if (st.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + st.regen * dt);
+    const acid = LEVELS[s.level].acid;
+    if (acid && !st.acidProof && p.hp > 0 && p.s > 0 && inAcid(s, p)) hurt(s, p, acid.dps * dt);
     if (st.sheds && p.hp > 0 && p.s > 0) {
       p.shedT = (p.shedT ?? st.sheds.every) - dt;
       if (p.shedT <= 0) { p.shedT += st.sheds.every; shed.push([st.sheds.type, p.vessel, Math.max(0, p.s - 6), p.committed]); }

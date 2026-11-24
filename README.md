@@ -1,6 +1,6 @@
 # Defend the Heart
 
-A fixed top-down 2D anatomy tower defence across seven organs. Each organ is the base on its own map, with blood vessels approaching it from different sides. You place lymph nodes beside the vessels between waves. During a wave you open (dilate) one vessel at a time for your white blood cells, paying for it with a scarce gauge of nitric oxide (NO), and once per wave can fire the immune pulse, in which every white cell touching a pathogen gives its life to destroy it. From the brain on, some vessels fork, and pathogens at a fork take the branch you have not opened.
+A fixed top-down 2D anatomy tower defence across eight organs. Each organ is the base on its own map, with blood vessels approaching it from different sides. You place lymph nodes beside the vessels between waves. During a wave you open (dilate) one vessel at a time for your white blood cells, paying for it with a scarce gauge of nitric oxide (NO), and once per wave can fire the immune pulse, in which every white cell touching a pathogen gives its life to destroy it. From the brain on, some vessels fork, and pathogens at a fork take the branch you have not opened.
 
 ## The organs
 
@@ -10,7 +10,7 @@ Clear an organ to unlock the next. The game opens on a **menu**:
 - **New career** starts over at the heart (it asks first if you have progress).
 - **Upgrades** is the gold shop (below).
 - **Tutorial** replays the guided first wave on the heart.
-- **Organs** lists the seven organs: cleared ones show your best health and can be replayed. Starting a different organ while a game is in progress asks first.
+- **Organs** lists the eight organs: cleared ones show your best health and can be replayed. Starting a different organ while a game is in progress asks first.
 
 The **Menu** button in the top bar opens it at any time (the game pauses). Between waves, the **Level** card at the top of the panel also switches organ.
 
@@ -23,6 +23,7 @@ The **Menu** button in the top bar opens it at any time (the game pauses). Betwe
 | 5 | **Kidney** | 8 (three forks) | **Filtration.** On the last 28% of every vessel (the striped stretch) pathogens crawl at ×0.6 speed, so nodes near the kidney get more shots. Hijackers throughout. | 20 | 4 + boss |
 | 6 | **Spleen** | 9 (three forks) | **It remakes white cells.** A white cell that is killed or infected comes back at the spleen 8 s later, and the spleen pays 1 health when it does (a cell lost too late in a wave to come back costs nothing). The bacteria it exists to clear: pneumococci, meningococci, *Klebsiella*. | 22 | 4 + boss |
 | 7 | **Bone marrow** | 10 (four forks) | **It makes white cells.** You start with only 2; every cleared wave adds one more, up to 5 (2, 3, 4, 5, 5 over its five waves). The tuberculosis bone: *M. tuberculosis* arrives here for the first time, with staph and *E. coli*. | 24 | 4 + boss |
+| 8 | **Stomach** | 11 (four forks) | **Acid.** On the last third of every vessel (shown with a yellow-green wash and bubbles), pathogens lose 4 health a second, so whatever gets close is worn down; *H. pylori* and its swarm are acid-proof. New bacteria: *H. pylori* and *Salmonella*. | 24 | 4 + boss |
 
 **Play it:** https://brendanjvr-ux.github.io/defend-the-heart/
 
@@ -57,13 +58,13 @@ Your gold is shown in the top bar. Winning an organ pays gold: **100 × the orga
 | Upgrade | Levels | Gold | Effect |
 |---|---|---|---|
 | IgM / IgG / IgA / IgE damage | 3 each | 80, 160, 240 | +15% damage for every node of that type, per level |
-| IgG target | 1 each | 120 | Aim IgG at *S. pneumoniae*, *Listeria*, *N. meningitidis*, *E. coli*, *Klebsiella* or *M. tuberculosis* (*S. aureus* is always unlocked) |
+| IgG target | 1 each | 120 | Aim IgG at *S. pneumoniae*, *Listeria*, *N. meningitidis*, *E. coli*, *Klebsiella*, *M. tuberculosis*, *H. pylori* or *Salmonella* (*S. aureus* is always unlocked) |
 | Dual-target IgG | 1 | 600 | An IgG node can be aimed at two unlocked targets; each hit uses the better match. A dual node costs 80 energy, or 30 to add a second target to a placed one |
 | More NO | 2 | 100, 200 | +20 NO capacity per level |
 | Extra starting node | 1 | 150 | Every organ starts with one more IgM already placed |
 | Cheaper first node | 1 | 150 | The first node you place in each build phase costs half |
 
-The heart, lungs and brain can be won without upgrades; from the liver on, the right IgG targets and some damage make a real difference: the liver, spleen and bone marrow are lost without them, and the kidney is won on only 6 health. Before you start an organ, the **Organs** list, a message and the build panel name any of its bacteria you have no IgG target for yet; the shop says which organs each bacterium comes in.
+The heart, lungs and brain can be won without upgrades; from the liver on, the right IgG targets and some damage make a real difference: the liver, spleen, bone marrow and stomach are lost without them, and the kidney is won on only 6 health. Before you start an organ, the **Organs** list, a message and the build panel name any of its bacteria you have no IgG target for yet; the shop says which organs each bacterium comes in.
 
 ## Bosses
 
@@ -78,6 +79,7 @@ Every organ ends with a boss wave: one giant pathogen with its own trick, plus a
 | Kidney | **Sepsis hijacker** | A giant hijacker that infects **every** white cell it touches and keeps going. | Nodes, not white cells |
 | Spleen | ***Plasmodium*** (malaria) | A parasite, not a bacterium. Every 6 s it hides inside a red blood cell for 2 s (shown faded, with a turning dashed ring and a HIDING tag): nothing can target or hit it then, and antibodies in flight miss. | IgM, IgE, and a pulse timed for when it shows |
 | Bone marrow | **Tuberculous granuloma** | *M. tuberculosis* walled in by your own cells (drawn with a ring of stone blocks and a "wall" count). Until antibodies have struck it 40 times, everything does a quarter damage to it; white cells' steady fighting doesn't chip the wall. A pulse breaks the wall at once. | Many fast-firing nodes on its vessel, or the pulse; then IgG aimed at *M. tuberculosis* |
+| Stomach | **H. pylori swarm** | A swarm of curved rods in mucus, acid-proof. Every 5 s it burrows into the stomach lining for 1.6 s (shown faded with a BURROWED tag): nothing can target or hit it, and it tunnels on three times as fast. | Many nodes on its vessel, IgG aimed at *H. pylori*, so it is worn down while it is out |
 
 ## The bacteria
 
@@ -92,8 +94,10 @@ There is no armour: every hit lands in full. Instead, each bacterium has a Gram 
 | *Escherichia coli* | − | rod | liver, kidney |
 | *Klebsiella pneumoniae* | − | rod (thick capsule) | lungs, liver, spleen |
 | *Mycobacterium tuberculosis* | acid-fast (counted as +) | rod (beaded, in cords) | bone marrow |
+| *Helicobacter pylori* | − | curved rod (acid-proof) | stomach |
+| *Salmonella enterica* | − | rod (fast, in groups) | stomach |
 
-The first six have 70 health and the same speed; *M. tuberculosis* is tougher (95) and slower; viruses (10 health) are fast and come in groups.
+The first six have 70 health and the same speed; *M. tuberculosis* is tougher (95) and slower, *H. pylori* tougher (90) and untouched by stomach acid, *Salmonella* frailer (55) but much faster; viruses (10 health) are fast and come in groups.
 
 ## How it plays
 
@@ -115,7 +119,7 @@ The first six have 70 health and the same speed; *M. tuberculosis* is tougher (9
 **White cells** have 90 health and fight **everything** they touch at once, 7 damage a second to each, so a cell holds its own against a swarm of viruses.
 7. **Reset.** Cells return home, every route rests, you earn energy and build again. Organ damage persists until restart (the liver regrows a little).
 
-**Pathogens:** the seven bacteria above (slow, tough), viruses (small, fast, in groups), and **hijacker viruses**: if one reaches a white cell it gets inside, the cell is lost, and it becomes an **infected white cell** heading for the organ. The heart's five waves introduce these one at a time; later organs mix them.
+**Pathogens:** the nine bacteria above (slow, tough), viruses (small, fast, in groups), and **hijacker viruses**: if one reaches a white cell it gets inside, the cell is lost, and it becomes an **infected white cell** heading for the organ. The heart's five waves introduce these one at a time; later organs mix them.
 
 ### Controls
 
@@ -137,23 +141,23 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 
 
 - A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG with the unlocked target that does most to that vessel's wave, and builds IgM instead when no target helps; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; fires the pulse only for a boss, or for a pathogen with 40+ health left that is past 85% of the way in):
-  - **without upgrades** wins the heart (20/20), the lungs (10/20), the brain (15/18) and the kidney (6/20), and loses the liver, the spleen and the bone marrow;
-  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 20/20, lungs 10/20 (buying the *S. pneumoniae* target and IgM damage), brain 15/18 (*Listeria* and *N. meningitidis*), liver 13/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 14/20 (two levels of IgM damage and one of IgG), spleen 15/22 (two levels of IgA damage and one of IgG), bone marrow 16/24 (the *M. tuberculosis* target, IgG damage, two levels of IgE damage and more NO). From the liver on it fills only 50%, 59%, 53% and 54% of the build sites.
+  - **without upgrades** wins the heart (20/20), the lungs (10/20), the brain (15/18) and the kidney (6/20), and loses the liver, the spleen, the bone marrow and the stomach;
+  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 20/20, lungs 10/20 (buying the *S. pneumoniae* target and IgM damage), brain 15/18 (*Listeria* and *N. meningitidis*), liver 13/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 14/20 (two levels of IgM damage and one of IgG), spleen 15/22 (two levels of IgA damage and one of IgG), bone marrow 16/24 (the *M. tuberculosis* target, IgG damage, two levels of IgE damage and more NO), stomach 15/24 (the *Salmonella* and *H. pylori* targets, IgE damage and more NO). From the liver on it fills only 50%, 59%, 53%, 54% and 45% of the build sites.
 - **A clumsy new player wins the heart.** A scripted player who builds only IgM on the first free sites in the list, opens a vessel only once a pathogen is 80% of the way in, and never pulses, still clears the heart without losing health. (The **Place by list** order takes each vessel's outermost site first, then the next.)
 - Never building loses every organ, even with every upgrade; white cells alone leak most of the heart's health in wave 1 (it ends on 5/20).
-- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and the bone marrow and finishes every other organ at least 2 health worse (heart 18 against 20, lungs 5 against 10, brain 3 against 15, kidney 8 against 14, spleen 11 against 15). The tests require this on every organ.
+- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and the bone marrow and finishes every other organ at least 2 health worse (heart 18 against 20, lungs 5 against 10, brain 3 against 15, kidney 8 against 14, spleen 11 against 15, stomach 7 against 15). The tests require this on every organ.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
 ### Files
 
 | File | What it is |
 |---|---|
-| `src/config.ts` | All tuning values, and the seven organ levels (maps, twists, waves). |
+| `src/config.ts` | All tuning values, and the eight organ levels (maps, twists, waves). |
 | `src/level.ts` | The loaded organ's routes (forks expanded into two routes sharing a stem) and the build sites beside them (`loadLevel`). Path maths in `src/geometry.ts`. |
 | `src/sim.ts` | State, rules and simulation (no DOM): placement, mid-wave dilation and the NO gauge, forks, waves, immunoglobulins, white cells, infection, the pulse, recall. |
-| `src/bosses.ts` | The seven boss pathogens' drawings, inked a few frames a second. |
-| `src/bacteria.ts` | The seven bacteria's drawings: cell walls, nucleoid and ribosomes, capsules, pili, beating flagella; each still body is drawn and inked once per size and reused. |
-| `src/organs.ts` | The lungs, brain, liver (with the gut), kidney, spleen and bone marrow as anatomy-plate drawings: lobes, fissures and the bronchial tree; gyri, cerebellum and cerebral arteries; hepatic veins and ligaments; cortex, pyramids, hilar vessels and ureter; trabeculae and splenic vessels; a long bone cut open, with its cortex, red marrow, spongy heads and nutrient artery. Each organ (and the heart, drawn in `src/draw.ts` with its coronary vessels) is drawn and inked once into an image and reused every frame. |
+| `src/bosses.ts` | The eight boss pathogens' drawings, inked a few frames a second. |
+| `src/bacteria.ts` | The nine bacteria's drawings: cell walls, nucleoid and ribosomes, capsules, pili, beating flagella; each still body is drawn and inked once per size and reused. |
+| `src/organs.ts` | The lungs, brain, liver (with the gut), kidney, spleen, bone marrow and stomach as anatomy-plate drawings: lobes, fissures and the bronchial tree; gyri, cerebellum and cerebral arteries; hepatic veins and ligaments; cortex, pyramids, hilar vessels and ureter; trabeculae and splenic vessels; a long bone cut open, with its cortex, red marrow, spongy heads and nutrient artery; the stomach with its folds, a pool of acid, the oesophagus, pylorus and duodenum. Each organ (and the heart, drawn in `src/draw.ts` with its coronary vessels) is drawn and inked once into an image and reused every frame. |
 | `src/ink.ts` | The pen-and-ink look: cream paper with faint tissue drawn behind the map, and `inkify`, which turns a colour drawing into ink on paper (colour thinned to a faint wash; shadows hatched, cross-hatched and stippled by how dark they are; edges drawn in as pen lines). It runs once per organ image and per sprite, and the results are kept, never redone every frame. |
 | `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
