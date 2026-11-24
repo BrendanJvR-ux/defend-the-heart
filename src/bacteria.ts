@@ -14,6 +14,7 @@ export const BACTERIA_LOOK: Record<BacteriumType, Look> = {
   nmening: { base: '#e06a78', dark: '#8a2432', light: '#fbd0d6', inner: '#9a3040' },
   ecoli: { base: '#78b850', dark: '#3a6a22', light: '#d0eeb0', inner: '#4a7a2a' },
   kpneumo: { base: '#7a90b0', dark: '#34465e', light: '#d4dcec', inner: '#46587a' },
+  mtb: { base: '#d0607a', dark: '#7a2038', light: '#f6c8d4', inner: '#9a3050' },
 };
 
 /** A fixed scatter of points (golden-angle spiral) so the inner speckle never shimmers between frames. */
@@ -128,6 +129,16 @@ function drawBody(ctx: CanvasRenderingContext2D, type: BacteriumType, hit: numbe
     // a Gram-negative rod with fine pili (its flagella all round are drawn live)
     pili(ctx, 17, 8, 12);
     rod(ctx, 32, 14, look, hit, false);
+  } else if (type === 'mtb') {
+    // M. tuberculosis: slender, slightly bent, beaded rods lying side by side in a cord, inside a waxy coat
+    ctx.strokeStyle = 'rgba(120,40,70,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([1.5, 2.5]);
+    ctx.beginPath(); ctx.ellipse(0, 0, 22, 11, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    for (const [dy, rot, len] of [[-4.5, -0.08, 30], [4.5, 0.05, 34]] as const) {
+      ctx.save(); ctx.translate(0, dy); ctx.rotate(rot);
+      rod(ctx, len, 8, look, hit, true);
+      if (hit <= 0) { ctx.fillStyle = look.dark; for (let k = -len / 2 + 4; k < len / 2 - 2; k += 4.2) { ctx.beginPath(); ctx.arc(k, 0, 1.1, 0, Math.PI * 2); ctx.fill(); } } // beads
+      ctx.restore();
+    }
   } else {
     // Klebsiella: a fat rod inside a thick mucoid capsule
     capsule(ctx, 22, 13.5, 'rgba(214,224,240,0.8)');

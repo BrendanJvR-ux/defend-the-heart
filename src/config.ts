@@ -5,14 +5,14 @@
 
 /** Vessel ids are per level ('left', 'portal', 'lowerLeft' …). */
 export type VesselId = string;
-/** The six named bacteria. */
-export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo';
-export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo'];
+/** The named bacteria. */
+export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb';
+export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb'];
 export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'infected' | BossType;
 /** What an IgG antibody recognises: Gram stain, shape and species. */
 export interface Taxon { gram: '+' | '-'; shape: 'coccus' | 'rod'; species: BacteriumType }
 /** One boss per organ, met in that organ's last wave. */
-export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium';
+export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium' | 'granuloma';
 export type NodeType = 'igm' | 'igg' | 'iga' | 'ige';
 
 export interface PathogenStats {
@@ -49,6 +49,8 @@ export interface PathogenStats {
   infectsMany?: boolean;
   /** Hides inside a red blood cell for `for` seconds in every `every`: nothing can target or hit it then. */
   hides?: { every: number; for: number };
+  /** Walled in: takes only `factor` of any damage until antibodies (or the pulse) have struck it `hits` times. */
+  walled?: { hits: number; factor: number };
 }
 
 export interface NodeStats {
@@ -134,6 +136,9 @@ export const CONFIG = {
       regen: 9, blurb: 'Heals itself as it travels. Damage must outpace its regrowth: IgM and IgE, not IgG.' },
     sepsis: { name: 'Sepsis hijacker', plural: 'Sepsis hijackers', hp: 340, speed: 19, heartDamage: 8, contactDps: 0, bounty: 60, boss: true,
       infects: true, infectsMany: true, blurb: 'A giant hijacker: it infects every white cell it touches and keeps going.' },
+    mtb: { name: 'Mycobacterium tuberculosis', plural: 'M. tuberculosis', short: 'Acid-fast rod, slow and tough', hp: 95, speed: 24, heartDamage: 3, contactDps: 3, bounty: 9, taxon: { gram: '+', shape: 'rod', species: 'mtb' } },
+    granuloma: { name: 'Tuberculous granuloma', plural: 'Granulomas', hp: 500, speed: 14, heartDamage: 8, contactDps: 4, bounty: 60, boss: true, taxon: { gram: '+', shape: 'rod', species: 'mtb' },
+      walled: { hits: 40, factor: 0.25 }, blurb: 'M. tuberculosis walled in by the body\'s own cells. Every antibody strike chips the wall; until it breaks, everything does a quarter damage. A pulse breaks it at once.' },
     plasmodium: { name: 'Plasmodium', plural: 'Plasmodia', hp: 560, speed: 16, heartDamage: 8, contactDps: 5, bounty: 60, boss: true,
       hides: { every: 6, for: 2 }, blurb: 'The malaria parasite. Every few seconds it hides inside a red blood cell, where nothing can touch it. Not a bacterium: IgM and IgE, not IgG.' },
   } as Record<PathogenType, PathogenStats>,
@@ -141,7 +146,7 @@ export const CONFIG = {
 
 // ── Levels ──────────────────────────────────────────────────────────────────
 
-export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen';
+export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow';
 type P = { x: number; y: number };
 
 export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
@@ -170,6 +175,8 @@ export interface LevelDef {
   income?: number;
   /** Spleen: a lost white cell is remade `after` seconds later, costing `cost` organ health. */
   respawn?: { after: number; cost: number };
+  /** Bone marrow: each cleared wave adds `perWave` white cells, up to `max`. */
+  cellGrowth?: { perWave: number; max: number };
   map: {
     center: P;
     /** Rough organ size, for drawing and keeping build sites off the organ. */
@@ -434,6 +441,52 @@ export const LEVELS: LevelDef[] = [
         groups: [g('spneumo', 'right', 8, 1, 2.8), g('nmening', 'left', 8, 3, 2.8), g('kpneumo', 'lowerLeft', 7, 5, 3), g('saureus', 'lowerRight', 6, 2, 3), g('hijacker', 'upper', 5, 10, 1), g('virus', 'lower', 12, 14, 0.3)] },
       { title: 'Boss: malaria', hint: 'Plasmodium, the malaria parasite, climbs from below and hides in red blood cells: nothing can hit it then. IgM and IgE wear it down; IgG barely scratches it.',
         groups: [g('plasmodium', 'lowerLeft', 1, 2, 1), g('spneumo', 'left', 6, 6, 3), g('virus', 'right', 10, 12, 0.3)] },
+    ],
+  },
+  {
+    id: 'marrow', title: 'The Bone Marrow', organ: 'Marrow', tagline: 'Where white cells are born.',
+    twist: 'It makes white cells: you start with 2, and every cleared wave adds one more, up to 5.',
+    hp: 24, startEnergy: 330, cells: 2, income: 0.7,
+    cellGrowth: { perWave: 1, max: 5 },
+    startingNodes: [{ vessel: 'topMid', site: 1, type: 'igm' }, { vessel: 'bottomMid', site: 1, type: 'igm' }],
+    map: {
+      center: { x: 800, y: 480 }, rx: 260, ry: 120, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      vessels: [
+        { id: 'topLeft', name: 'Upper-left vessel', label: 'Upper left', pts: [{ x: 160, y: -40 }, { x: 220, y: 120 }, { x: 400, y: 200 }],
+          fork: { branches: [
+            { id: 'topLeftOuter', name: 'Upper-left outer branch', label: 'Outer', pts: [{ x: 470, y: 300 }, { x: 576, y: 418 }] },
+            { id: 'topLeftInner', name: 'Upper-left inner branch', label: 'Inner', pts: [{ x: 580, y: 240 }, { x: 690, y: 372 }] },
+          ] } },
+        { id: 'topMid', name: 'Upper vessel', label: 'Upper', pts: [{ x: 860, y: -40 }, { x: 900, y: 110 }, { x: 840, y: 240 }, { x: 822, y: 360 }] },
+        { id: 'topRight', name: 'Upper-right vessel', label: 'Upper right', pts: [{ x: 1440, y: -40 }, { x: 1380, y: 120 }, { x: 1200, y: 200 }],
+          fork: { branches: [
+            { id: 'topRightOuter', name: 'Upper-right outer branch', label: 'Outer', pts: [{ x: 1130, y: 300 }, { x: 1024, y: 418 }] },
+            { id: 'topRightInner', name: 'Upper-right inner branch', label: 'Inner', pts: [{ x: 1020, y: 240 }, { x: 910, y: 372 }] },
+          ] } },
+        { id: 'bottomLeft', name: 'Lower-left vessel', label: 'Lower left', pts: [{ x: 160, y: 1040 }, { x: 220, y: 880 }, { x: 400, y: 800 }],
+          fork: { branches: [
+            { id: 'bottomLeftOuter', name: 'Lower-left outer branch', label: 'Outer', pts: [{ x: 470, y: 700 }, { x: 576, y: 542 }] },
+            { id: 'bottomLeftInner', name: 'Lower-left inner branch', label: 'Inner', pts: [{ x: 580, y: 760 }, { x: 690, y: 588 }] },
+          ] } },
+        { id: 'bottomMid', name: 'Lower vessel', label: 'Lower', pts: [{ x: 740, y: 1040 }, { x: 700, y: 890 }, { x: 760, y: 760 }, { x: 778, y: 600 }] },
+        { id: 'bottomRight', name: 'Lower-right vessel', label: 'Lower right', pts: [{ x: 1440, y: 1040 }, { x: 1380, y: 880 }, { x: 1200, y: 800 }],
+          fork: { branches: [
+            { id: 'bottomRightOuter', name: 'Lower-right outer branch', label: 'Outer', pts: [{ x: 1130, y: 700 }, { x: 1024, y: 542 }] },
+            { id: 'bottomRightInner', name: 'Lower-right inner branch', label: 'Inner', pts: [{ x: 1020, y: 760 }, { x: 910, y: 588 }] },
+          ] } },
+      ],
+    },
+    waves: [
+      { title: 'Osteomyelitis', hint: 'Staph has reached the bone. Only two white cells for now: the marrow makes one more after every wave you clear.',
+        groups: [g('saureus', 'topLeft', 8, 1, 2.8), g('saureus', 'bottomRight', 6, 4, 3), g('virus', 'topMid', 8, 8, 0.35)] },
+      { title: 'A slow cough', hint: 'M. tuberculosis: slow, tough and hard to see. Aim IgG at it if you have the target.',
+        groups: [g('mtb', 'topRight', 6, 1, 3.4), g('saureus', 'topLeft', 7, 3, 3), g('ecoli', 'bottomMid', 4, 6, 3), g('virus', 'bottomRight', 8, 10, 0.3)] },
+      { title: 'Seeded in the bone', hint: 'Tuberculosis from both sides, hijackers from below.',
+        groups: [g('mtb', 'topLeft', 7, 1, 3.2), g('mtb', 'bottomRight', 6, 4, 3.2), g('ecoli', 'topMid', 6, 6, 3), g('hijacker', 'bottomMid', 4, 9, 1), g('saureus', 'bottomLeft', 6, 3, 3), g('virus', 'topRight', 10, 14, 0.3)] },
+      { title: 'Every side', hint: 'Five white cells now: spread them where the bacteria are thickest.',
+        groups: [g('mtb', 'bottomLeft', 8, 1, 3), g('saureus', 'topRight', 8, 2, 2.6), g('ecoli', 'bottomRight', 5, 4, 3.2), g('mtb', 'topMid', 5, 6, 3.2), g('hijacker', 'topLeft', 5, 10, 1), g('virus', 'bottomMid', 12, 14, 0.3)] },
+      { title: 'Boss: the granuloma', hint: 'A tuberculous granuloma: bacteria walled in by your own cells. Every antibody strike chips the wall; until it breaks, everything does a quarter damage. A pulse breaks it at once.',
+        groups: [g('granuloma', 'topLeft', 1, 2, 1), g('mtb', 'bottomRight', 6, 6, 3), g('virus', 'topRight', 10, 12, 0.3)] },
     ],
   },
 ];

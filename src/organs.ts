@@ -319,3 +319,63 @@ export function drawSpleen(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry
   shape(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
   ctx.restore();
 }
+
+// ── Bone marrow ─────────────────────────────────────────────────────────────
+/** A long bone cut open along its length: ivory cortex, red marrow in the shaft, spongy bone in each head,
+ *  and a nutrient artery entering through its foramen. */
+export function drawMarrow(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell * rx / 260, swell * ry / 120);
+  const bone = () => {
+    ctx.beginPath();
+    ctx.moveTo(-130, -60); ctx.lineTo(130, -60);
+    ctx.bezierCurveTo(165, -60, 170, -116, 215, -116); ctx.bezierCurveTo(265, -116, 270, -40, 258, 0);
+    ctx.bezierCurveTo(270, 40, 265, 116, 215, 116); ctx.bezierCurveTo(170, 116, 165, 60, 130, 60);
+    ctx.lineTo(-130, 60);
+    ctx.bezierCurveTo(-165, 60, -170, 116, -215, 116); ctx.bezierCurveTo(-265, 116, -270, 40, -258, 0);
+    ctx.bezierCurveTo(-270, -40, -265, -116, -215, -116); ctx.bezierCurveTo(-170, -116, -165, -60, -130, -60);
+    ctx.closePath();
+  };
+  const g = ctx.createLinearGradient(0, -120, 0, 120);
+  g.addColorStop(0, '#f2e8d0'); g.addColorStop(0.6, '#dccbaa'); g.addColorStop(1, '#a8956e');
+  bone(); ctx.fillStyle = g; ctx.fill();
+  if (kick > 0) { bone(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
+  ctx.save(); bone(); ctx.clip();
+  const R = seeded(77);
+  // spongy bone in each head: a net of struts with red marrow between them
+  for (const sx of [-1, 1]) {
+    ctx.fillStyle = '#c86a6e';
+    ctx.beginPath(); ctx.ellipse(sx * 205, 0, 50, 92, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#e8dcc0'; ctx.lineWidth = 3;
+    for (let i = 0; i < 60; i++) {
+      const x = sx * 205 + (R() - 0.5) * 96, y = (R() - 0.5) * 178, a = (R() - 0.5) * 1.6 + (sx > 0 ? 0.3 : -0.3);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (10 + R() * 14), y + Math.sin(a) * (10 + R() * 14)); ctx.stroke();
+    }
+    // the growth plate: a wavy line where the head meets the shaft
+    ctx.strokeStyle = 'rgba(60,40,30,0.55)'; ctx.lineWidth = 2;
+    ctx.beginPath(); for (let y = -88; y <= 88; y += 8) { const x = sx * (152 + Math.sin(y * 0.2) * 4); y === -88 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke();
+  }
+  // the shaft's cortex: longitudinal lamellae; the marrow cavity inside it
+  ctx.strokeStyle = 'rgba(120,100,70,0.45)'; ctx.lineWidth = 1;
+  for (const y0 of [-56, -50, -44, 44, 50, 56]) { ctx.beginPath(); ctx.moveTo(-150, y0 + (R() - 0.5) * 2); ctx.bezierCurveTo(-50, y0 + 2, 50, y0 - 2, 150, y0); ctx.stroke(); }
+  ctx.fillStyle = '#c0505a'; ctx.beginPath(); ctx.roundRect(-152, -38, 304, 76, 30); ctx.fill();
+  // red marrow: blood-forming cells in clusters, and pale fat cells among them
+  for (let i = 0; i < 170; i++) {
+    const x = -146 + R() * 292, y = -34 + R() * 68;
+    ctx.fillStyle = R() < 0.18 ? 'rgba(250,236,190,0.9)' : R() < 0.5 ? 'rgba(130,30,50,0.55)' : 'rgba(230,150,160,0.6)';
+    ctx.beginPath(); ctx.arc(x, y, R() < 0.18 ? 4 : 1.6 + R() * 1.4, 0, Math.PI * 2); ctx.fill();
+  }
+  // a nutrient artery running along the cavity
+  ctx.globalAlpha = 0.7;
+  vesselTree(ctx, -10, -52, 2.0, 50, 3.2, 3, '#8a1e2a', R);
+  vesselTree(ctx, -10, -52, 1.2, 50, 3.2, 3, '#8a1e2a', R);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); ctx.ellipse(-60, -78, 80, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // the nutrient foramen, with its artery entering the bone
+  ctx.strokeStyle = INK; ctx.lineWidth = 8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-10, -60); ctx.quadraticCurveTo(-30, -84, -60, -92); ctx.stroke();
+  ctx.strokeStyle = '#b8433a'; ctx.lineWidth = 4.5; ctx.stroke();
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-10, -60, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+  bone(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
+  ctx.restore();
+}

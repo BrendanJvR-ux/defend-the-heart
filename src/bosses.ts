@@ -23,7 +23,38 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
 function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const flash = hit > 0;
-  if (type === 'plasmodium') {
+  if (type === 'granuloma') {
+    // a tuberculous granuloma: a cheesy (caseous) core full of acid-fast rods, ringed by a Langhans giant cell
+    // with its horseshoe of nuclei, palisades of epithelioid cells, and a cuff of small dark lymphocytes
+    aura(ctx, 34, t, 'rgba(150,70,60,0.35)');
+    ctx.rotate(angle * 0.15 + t * 0.1);
+    const R = 36;
+    ctx.fillStyle = flash ? '#ffffff' : '#c8a098'; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
+    // the lymphocyte cuff
+    ctx.fillStyle = '#4a3a6a';
+    for (let i = 0; i < 46; i++) { const a = i * 2.39996, r = R - 3 - (i % 3) * 1.6; ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 1.5, 0, Math.PI * 2); ctx.fill(); }
+    // epithelioid cells: long pale cells standing like a palisade around the core
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2;
+      ctx.save(); ctx.rotate(a); ctx.translate(24, 0);
+      ctx.fillStyle = flash ? '#ffffff' : '#ecc8bc'; ctx.strokeStyle = INK; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.ellipse(0, 0, 6.5, 2.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#7a4a6a'; ctx.beginPath(); ctx.ellipse(0.5, 0, 2.4, 1.1, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    // the caseous core
+    const cg = ctx.createRadialGradient(-3, -3, 2, 0, 0, 17);
+    cg.addColorStop(0, '#fbf0d0'); cg.addColorStop(1, '#e8d49a');
+    ctx.fillStyle = flash ? '#ffffff' : cg; ctx.beginPath(); ctx.arc(0, 0, 16.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.2; ctx.stroke();
+    // a Langhans giant cell: nuclei in a horseshoe
+    ctx.fillStyle = '#5a3a7a';
+    for (let i = 0; i < 9; i++) { const a = 2.2 + i * 0.26; ctx.beginPath(); ctx.ellipse(Math.cos(a) * 11, Math.sin(a) * 11, 2, 1.4, a, 0, Math.PI * 2); ctx.fill(); }
+    // acid-fast rods: small red-pink strokes scattered in the core
+    ctx.strokeStyle = '#c0405a'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+    for (let i = 0; i < 12; i++) { const a = i * 1.7, r = 3 + (i % 4) * 2.2, x = Math.cos(a) * r, y = Math.sin(a) * r; ctx.beginPath(); ctx.moveTo(x - 2.4, y - 0.8); ctx.lineTo(x + 2.4, y + 0.8); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.strokeStyle = INK; ctx.lineWidth = 2.4; ctx.stroke();
+  } else if (type === 'plasmodium') {
     // malaria: an infected red blood cell, its rim scalloped (crenated) and stippled with Maurer's dots,
     // the parasite inside as a ring form with a chromatin dot, and a second, younger ring
     aura(ctx, 32, t, 'rgba(160,40,90,0.35)');

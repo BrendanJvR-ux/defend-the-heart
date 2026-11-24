@@ -11,6 +11,8 @@ export interface Pathogen {
   id: number; type: PathogenType; vessel: VesselId; committed: boolean; s: number; hp: number; maxHp: number; hit: number; side: number; wob: number;
   /** IgA: speed multiplier and how long it lasts. */
   slow: number; slowT: number;
+  /** A walled boss: antibody strikes its wall has taken. */
+  wallHits?: number;
   /** Bosses that shed: seconds until the next one. */
   shedT?: number;
 }
@@ -321,7 +323,8 @@ export function startWave(s: State): boolean {
   for (const n of s.nodes) n.cd = 0.3;
   const L = VESSELS[v].length;
   s.cells = [];
-  for (let i = 0; i < LEVELS[s.level].cells; i++) {
+  const grow = LEVELS[s.level].cellGrowth, cells = grow ? Math.min(grow.max, LEVELS[s.level].cells + grow.perWave * (s.wave - 1)) : LEVELS[s.level].cells;
+  for (let i = 0; i < cells; i++) {
     s.cells.push({ id: s.nextId++, vessel: v, s: L, hp: CONFIG.whiteCell.hp, maxHp: CONFIG.whiteCell.hp, hit: 0, side: (i % 2 ? 1 : -1) * 11, targetId: null, mode: 'home', infected: false });
   }
   s.message = '';
@@ -370,6 +373,8 @@ export function firePulse(s: State): number {
     // the cell bursts in a splash of ink; the pathogen it struck is crossed out
     s.rings.push({ x: q.x, y: q.y, r: 44, t: 0, dur: 0.9, kind: 'sacrifice' });
     s.rings.push({ x: tq.x, y: tq.y, r: boss ? 46 : 24, t: 0, dur: 0.9, kind: 'struck' });
+    const wall = CONFIG.pathogens[target.type].walled;
+    if (wall && (target.wallHits ?? 0) < wall.hits) { target.wallHits = wall.hits; wallBroken(s, target); } // the pulse breaks a wall at once
     hurt(s, target, boss ? target.maxHp * CONFIG.immunePulse.bossShare : target.hp);
     cell.hp = 0;
     s.floaters.push({ x: q.x, y: q.y - 34, text: 'Gave its life', t: 0, color: '#1e5a78' });
@@ -381,9 +386,26 @@ export function firePulse(s: State): number {
 
 // ── Simulation ──────────────────────────────────────────────────────────────
 
-/** Damage a pathogen. */
-export function hurt(s: State, p: Pathogen, dmg: number) {
+/** How many more antibody strikes a walled boss's wall can take (0: broken, or no wall). */
+export function wallLeft(p: Pathogen): number {
+  const w = CONFIG.pathogens[p.type].walled;
+  return w ? Math.max(0, w.hits - (p.wallHits ?? 0)) : 0;
+}
+
+function wallBroken(s: State, p: Pathogen) {
+  const q = pathogenPos(p);
+  s.rings.push({ x: q.x, y: q.y, r: 80, t: 0, dur: 0.9, kind: 'pop' });
+  s.floaters.push({ x: q.x, y: q.y - 70, text: 'The wall is broken!', t: 0, color: '#6e2622' });
+}
+
+/** Damage a pathogen. `struck`: an antibody hit (it chips a walled boss's wall); white cells' steady fighting is not. */
+export function hurt(s: State, p: Pathogen, dmg: number, struck = false) {
   if (p.hp <= 0) return;
+  const wall = CONFIG.pathogens[p.type].walled;
+  if (wall && (p.wallHits ?? 0) < wall.hits) {
+    dmg *= wall.factor;
+    if (struck) { p.wallHits = (p.wallHits ?? 0) + 1; if (p.wallHits >= wall.hits) wallBroken(s, p); }
+  }
   p.hp -= dmg;
   p.hit = 0.15;
   if (p.hp <= 0) {
@@ -483,6 +505,7 @@ export function leakSummary(s: State): LeakSummary | null {
   if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
   else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`
     + (s.perks.targets.includes(st.taxon.species) ? '' : ` Unlock the ${name} target in Upgrades first: you don't have it yet.`);
+  else if (type === 'granuloma') advice = 'The granuloma\'s wall soaks up three quarters of every hit until enough antibodies have struck it: build many fast-firing nodes on its vessel, or break it at once with the pulse.';
   else if (type === 'plasmodium') advice = 'Plasmodium is a parasite, not a bacterium: IgM and IgE wear it down, and time the pulse for when it comes out of its red blood cell.';
   else if (st.boss) advice = `${st.name}: IgM and IgE hit it hardest; IgG barely scratches a virus.`;
   else if (type === 'virus') advice = 'Viruses are fast and come in groups: an IgA node slows them so your other nodes can land their hits.';
@@ -563,7 +586,7 @@ export function step(s: State, dtRaw: number) {
         if (m >= 2.5) s.floaters.push({ x: q.x, y: q.y - 26, text: `${Math.round(dmg)}`, t: 0, color: '#1e5fa8', size: 22 });
         else if (m <= 0.5) s.floaters.push({ x: q.x, y: q.y - 22, text: `${dmg}`, t: 0, color: 'rgba(90,80,75,0.8)', size: 14 });
       }
-      hurt(s, p, dmg);
+      hurt(s, p, dmg, true);
       if (st.slow && !CONFIG.pathogens[p.type].slowImmune) { p.slow = Math.min(p.slow, st.slow); p.slowT = st.slowSeconds ?? 2; }
     }
   }

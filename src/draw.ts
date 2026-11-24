@@ -3,11 +3,11 @@ import { CONFIG, type BacteriumType, type BossType, type NodeType, type Pathogen
 import { drawBoss } from './bosses';
 import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec, type Vessel } from './level';
 import { drawBacterium } from './bacteria';
-import { hidden } from './sim';
+import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, previewTagBox, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
-import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut } from './organs';
+import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
 export interface View {
@@ -242,6 +242,7 @@ function organImages(px: number) {
   else if (LEVEL.id === 'brain') drawBrain(x, c, m.rx, m.ry, 1, 0);
   else if (LEVEL.id === 'liver') drawLiver(x, c, m.rx, m.ry, 1, 0);
   else if (LEVEL.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
+  else if (LEVEL.id === 'marrow') drawMarrow(x, c, m.rx, m.ry, 1, 0);
   else drawKidney(x, c, m.rx, m.ry, 1, 0);
   // darker organs are lifted to a common lightness, so none is solid cross-hatching
   inkify(img, { px, form: 44, level: 0.3 });
@@ -566,6 +567,23 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
       const tw = ctx.measureText('HIDING').width;
       inkTag(ctx, q.x - tw / 2 - 12, q.y - 107, tw + 24, 36, WASH.red, 6);
       ctx.fillStyle = INK_RED; ctx.fillText('HIDING', q.x, q.y - 80);
+    }
+    const wl = wallLeft(p);
+    if (wl > 0) {
+      // the granuloma's wall: a ring of stone blocks, one fewer for each share of the strikes it has taken
+      const total = CONFIG.pathogens[p.type].walled!.hits, n = 20, standing = Math.ceil((n * wl) / total);
+      ctx.save();
+      for (let i = 0; i < standing; i++) {
+        const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+        ctx.save(); ctx.translate(q.x + Math.cos(a) * 55, q.y + Math.sin(a) * 55); ctx.rotate(a + Math.PI / 2);
+        ctx.beginPath(); ctx.roundRect(-7.5, -5, 15, 10, 2.5);
+        ctx.fillStyle = '#e4d6b8'; ctx.fill();
+        const hp = hatchPattern(ctx); if (hp) { ctx.fillStyle = hp; ctx.globalAlpha = 0.4; ctx.fill(); ctx.globalAlpha = 1; }
+        ctx.strokeStyle = INKC; ctx.lineWidth = 1.4; ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+      inkText(ctx, `wall ${wl}`, q.x, q.y + 86, INK_RED, 18);
     }
     if (CONFIG.pathogens[p.type].boss) bar(ctx, q.x, q.y - 66, 80, p.hp / p.maxHp, WASH.red);
     else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, CONFIG.pathogens[p.type].taxon || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, WASH.red);
