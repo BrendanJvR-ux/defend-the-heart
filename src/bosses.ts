@@ -1,6 +1,7 @@
 // The six boss pathogens, one per organ. Drawn at about three times a normal pathogen's size,
 // each with a pulsing aura so it reads as a boss at a glance.
 import type { BossType } from './config';
+import { inkSprite } from './ink';
 
 const INK = '#2a1e18';
 
@@ -11,7 +12,15 @@ function aura(ctx: CanvasRenderingContext2D, r: number, t: number, col: string) 
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 1.6 * k, 0, Math.PI * 2); ctx.fill();
 }
 
+/** A boss, inked. Its drawing moves, so frames are inked at eight a second (at most 2 pixels a unit) and kept a while. */
 export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  const tq = Math.round(t * 8) / 8, aq = Math.round(angle / (Math.PI / 16)) * (Math.PI / 16);
+  inkSprite(ctx, `boss:${type}:${hit > 0 ? 'hit' : ''}:${tq}:${aq}`, 66, (c) => drawBossColour(c, type, 0, 0, aq, hit, 1, tq), { gap: 2.2, lw: 0.36, wash: 0.5 }, 2);
+  ctx.restore();
+}
+
+function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const flash = hit > 0;
   if (type === 'plasmodium') {

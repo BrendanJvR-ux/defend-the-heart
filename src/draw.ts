@@ -8,6 +8,7 @@ import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, previewTagBox, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut } from './organs';
+import { inkify, inkSprite, paper, hatchPattern } from './ink';
 
 export interface View {
   hoverVessel: VesselId | null;
@@ -48,24 +49,20 @@ function background(): HTMLCanvasElement {
   bg.width = W * 2; bg.height = H * 2;
   const ctx = bg.getContext('2d')!;
   ctx.scale(2, 2);
-  ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H);
-  let seed = 3; const R = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  for (let i = 0; i < 1500; i++) {
-    const x = R() * W, y = R() * H;
-    ctx.strokeStyle = 'rgba(170,110,95,0.16)'; ctx.lineWidth = 0.8;
-    ctx.beginPath(); ctx.arc(x, y, 7 + R() * 5, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = 'rgba(120,80,140,0.22)'; ctx.beginPath(); ctx.arc(x + (R() - 0.5) * 4, y + (R() - 0.5) * 4, 1.6, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(170,110,95,0.14)'; ctx.lineWidth = 1;
-  for (let i = 0; i < 160; i++) { const x = R() * W, y = R() * H; ctx.beginPath(); ctx.moveTo(x, y); ctx.bezierCurveTo(x + 40, y - 10, x + 80, y + 12, x + 130, y); ctx.stroke(); }
+  paper(ctx, W, H, 3);
+  // a faint warm wash where the organ sits
   const g = ctx.createRadialGradient(HEART.x, HEART.y, 60, HEART.x, HEART.y, 420 + Math.max(LEVEL.map.rx, LEVEL.map.ry));
-  g.addColorStop(0, 'rgba(230,170,150,0.35)'); g.addColorStop(1, 'rgba(230,170,150,0)');
+  g.addColorStop(0, 'rgba(230,170,150,0.18)'); g.addColorStop(1, 'rgba(230,170,150,0)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  const v = ctx.createRadialGradient(W / 2, H / 2, 380, W / 2, H / 2, 980);
-  v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(90,50,30,0.22)');
-  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.strokeRect(10, 10, W - 20, H - 20);
-  if (LEVEL.id === 'liver') drawGut(ctx);
+  ctx.lineWidth = 0.8; ctx.strokeRect(15, 15, W - 30, H - 30);
+  if (LEVEL.id === 'liver') {
+    // the gut, inked on its own image so the paper behind stays as it is
+    const gut = document.createElement('canvas'); gut.width = 640; gut.height = 240;
+    const x = gut.getContext('2d', { willReadFrequently: true })!; x.scale(2, 2); x.translate(0, -880); drawGut(x);
+    inkify(gut, { px: 2 });
+    ctx.drawImage(gut, 0, 880, 320, 120);
+  }
   return bg;
 }
 
@@ -84,14 +81,17 @@ function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: 
   const ves = VESSELS[v], w = vesselWidth(s, v), open = s.width[v];
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (view.hoverVessel === v && s.phase === 'combat') { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; smooth(ctx, ves.pts); ctx.stroke(); }
+  // pen-and-ink: a firm outline, a pale rose wash, the walls hatched, a paler lumen down the middle
   ctx.strokeStyle = C.ink; ctx.lineWidth = w + 14; smooth(ctx, ves.pts); ctx.stroke();
-  ctx.strokeStyle = C.wall; ctx.lineWidth = w + 11; smooth(ctx, ves.pts); ctx.stroke();
-  ctx.strokeStyle = C.wallLight; ctx.lineWidth = w + 3; smooth(ctx, ves.pts); ctx.stroke();
-  ctx.strokeStyle = C.lumenDeep; ctx.lineWidth = w; smooth(ctx, ves.pts); ctx.stroke();
-  ctx.strokeStyle = C.lumen; ctx.lineWidth = w * 0.7; smooth(ctx, ves.pts); ctx.stroke();
+  ctx.strokeStyle = '#e6c2b6'; ctx.lineWidth = w + 9.5; smooth(ctx, ves.pts); ctx.stroke();
+  const hp = hatchPattern(ctx);
+  if (hp) { ctx.globalAlpha = 0.6; ctx.strokeStyle = hp; ctx.lineWidth = w + 9.5; smooth(ctx, ves.pts); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.strokeStyle = 'rgba(35,26,20,0.55)'; ctx.lineWidth = w + 1.2; smooth(ctx, ves.pts); ctx.stroke();
+  ctx.strokeStyle = '#efd2c6'; ctx.lineWidth = w; smooth(ctx, ves.pts); ctx.stroke();
+  ctx.strokeStyle = '#f2ddd2'; ctx.lineWidth = w * 0.55; smooth(ctx, ves.pts); ctx.stroke();
   if (open > 0.02) {
     ctx.globalAlpha = Math.min(1, open * 1.4) * 0.85;
-    ctx.strokeStyle = '#ffd8d0'; ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(35,26,20,0.5)'; ctx.lineWidth = 1.6;
     const step = 46, off = (t * 70) % step;
     for (let d = off; d < ves.length; d += step) {
       const p = pointAt(ves, d), a = p.angle, sz = w * 0.28;
@@ -112,11 +112,12 @@ function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: 
       ctx.beginPath(); ctx.moveTo(p.x - nx, p.y - ny); ctx.lineTo(p.x + nx, p.y + ny); ctx.stroke();
     }
   }
-  ctx.fillStyle = 'rgba(240,120,110,0.35)';
+  // red cells drifting with the blood: a rose wash ringed in fine ink
+  ctx.fillStyle = 'rgba(200,90,90,0.35)'; ctx.strokeStyle = 'rgba(35,26,20,0.55)'; ctx.lineWidth = 0.8;
   for (let i = 0; i < 12; i++) {
     const d = ((flowT * 40 + i * 71) % ves.length);
     const p = pointAt(ves, d), side = ((i * 37) % 9 - 4) * (w / 12);
-    ctx.beginPath(); ctx.ellipse(p.x - Math.sin(p.angle) * side, p.y + Math.cos(p.angle) * side, 4.5, 3, p.angle, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(p.x - Math.sin(p.angle) * side, p.y + Math.cos(p.angle) * side, 4.5, 3, p.angle, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   ctx.restore();
 }
@@ -128,9 +129,12 @@ function drawJunction(ctx: CanvasRenderingContext2D, s: State, v: VesselId) {
   const w = Math.max(vesselWidth(s, v), vesselWidth(s, sib));
   ctx.save();
   ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(q.x, q.y, w / 2 + 9, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = C.wall; ctx.beginPath(); ctx.arc(q.x, q.y, w / 2 + 6, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = C.lumenDeep; ctx.beginPath(); ctx.arc(q.x, q.y, w / 2, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = C.lumen; ctx.beginPath(); ctx.arc(q.x, q.y, w * 0.35, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e6c2b6'; ctx.beginPath(); ctx.arc(q.x, q.y, w / 2 + 6.5, 0, Math.PI * 2); ctx.fill();
+  const hp = hatchPattern(ctx);
+  if (hp) { ctx.globalAlpha = 0.45; ctx.fillStyle = hp; ctx.fill(); ctx.globalAlpha = 1; }
+  ctx.fillStyle = 'rgba(35,26,20,0.55)'; ctx.beginPath(); ctx.arc(q.x, q.y, w / 2 + 0.6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#efd2c6'; ctx.beginPath(); ctx.arc(q.x, q.y, w / 2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#f2ddd2'; ctx.beginPath(); ctx.arc(q.x, q.y, w * 0.28, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
@@ -199,6 +203,8 @@ function organImages(px: number) {
   else if (LEVEL.id === 'liver') drawLiver(x, c, m.rx, m.ry, 1, 0);
   else if (LEVEL.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
   else drawKidney(x, c, m.rx, m.ry, 1, 0);
+  // darker organs are lifted to a common lightness, so none is solid cross-hatching
+  inkify(img, { px, form: 44, level: 0.3 });
   // a red copy of the same shape, laid over it when the organ is hit
   const red = document.createElement('canvas'); red.width = red.height = size;
   const r = red.getContext('2d')!; r.drawImage(img, 0, 0); r.globalCompositeOperation = 'source-atop'; r.fillStyle = 'rgb(255,60,50)'; r.fillRect(0, 0, size, size);
@@ -269,23 +275,28 @@ function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
 
 /** A lymph node in its type colour, with a letter badge (M / G / A). */
 export function drawNodeIcon(ctx: CanvasRenderingContext2D, type: NodeType, x: number, y: number, k = 1, flash = 0) {
-  const col = NODE_COLORS[type];
   ctx.save(); ctx.translate(x, y); ctx.scale(k * (1 + flash * 0.12), k * (1 + flash * 0.12));
+  inkSprite(ctx, `node:${type}`, 46, (c) => nodeBody(c, type), { gap: 2.4, lw: 0.38, wash: 0.55 });
+  // the letter is set after inking, so it stays crisp
+  ctx.fillStyle = NODE_COLORS[type].dark; ctx.font = 'italic 900 17px Palatino, Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(type === 'igm' ? 'M' : type === 'igg' ? 'G' : type === 'iga' ? 'A' : 'E', 0, 3);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+function nodeBody(ctx: CanvasRenderingContext2D, type: NodeType) {
+  const col = NODE_COLORS[type];
   const bean = () => { ctx.beginPath(); ctx.moveTo(-38, 0); ctx.bezierCurveTo(-44, -36, 44, -36, 40, 0); ctx.bezierCurveTo(36, 28, 6, 14, 0, 20); ctx.bezierCurveTo(-10, 28, -36, 24, -38, 0); ctx.closePath(); };
   const g = ctx.createRadialGradient(-12, -12, 4, 0, 0, 44); g.addColorStop(0, col.light); g.addColorStop(1, col.base);
   bean(); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2.6; ctx.stroke();
   for (let i = 0; i < 5; i++) { const a = Math.PI + (i / 4) * Math.PI; ctx.fillStyle = col.dark; ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(Math.cos(a) * 26, -4 + Math.sin(a) * 15, 6, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
   ctx.fillStyle = '#ffffff'; ctx.strokeStyle = C.ink; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(0, 2, 13, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = col.dark; ctx.font = '900 16px Palatino, Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(type === 'igm' ? 'M' : type === 'igg' ? 'G' : type === 'iga' ? 'A' : 'E', 0, 3);
   if (type === 'ige') {
     // a heavy hitter that burns out: spark ticks around the badge
     ctx.strokeStyle = col.dark; ctx.lineWidth = 2.4;
     for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2 + Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 15, 2 + Math.sin(a) * 15); ctx.lineTo(Math.cos(a) * 21, 2 + Math.sin(a) * 21); ctx.stroke(); }
   }
-  ctx.textBaseline = 'alphabetic';
-  ctx.restore();
 }
 
 function drawSites(ctx: CanvasRenderingContext2D, s: State, view: View, t: number) {
@@ -318,10 +329,22 @@ function drawSites(ctx: CanvasRenderingContext2D, s: State, view: View, t: numbe
 
 export function drawPathogen(ctx: CanvasRenderingContext2D, type: PathogenType, x: number, y: number, angle: number, hit: number, scale = 1, t = 0) {
   if (CONFIG.pathogens[type].boss) { drawBoss(ctx, type as BossType, x, y, angle, hit, scale, t); return; }
+  if (CONFIG.pathogens[type].taxon) { drawBacterium(ctx, type as BacteriumType, x, y, angle, hit, scale, t); return; }
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
-  if (CONFIG.pathogens[type].taxon) {
-    ctx.restore(); drawBacterium(ctx, type as BacteriumType, x, y, angle, hit, scale, t); return;
-  } else if (type === 'virus') {
+  const h = hit > 0 ? 'hit' : '';
+  if (type === 'virus') inkSprite(ctx, `virus${h}`, 17, (c) => drawSmall(c, type, hit, 0), { gap: 1.8, lw: 0.3, wash: 0.5 });
+  else if (type === 'hijacker') { ctx.rotate(t * 2); inkSprite(ctx, `hijacker${h}`, 21, (c) => drawSmall(c, type, hit, 0), { gap: 1.8, lw: 0.3, wash: 0.5 }); }
+  else {
+    // the membrane ripples: a few dozen frames of it, inked once each
+    const step = Math.PI / 24, tq = Math.round((((t % Math.PI) + Math.PI) % Math.PI) / step) % 24;
+    inkSprite(ctx, `infected${h}:${tq}`, 20, (c) => drawSmall(c, type, hit, tq * step), { gap: 1.8, lw: 0.3, wash: 0.5 });
+  }
+  ctx.restore();
+}
+
+/** A virus, hijacker or infected cell at the origin, in colour (inked by the caller). */
+function drawSmall(ctx: CanvasRenderingContext2D, type: PathogenType, hit: number, t: number) {
+  if (type === 'virus') {
     // a virion: a faceted icosahedral capsid with glycoprotein spikes, each tipped with a knob
     ctx.strokeStyle = C.ink; ctx.lineWidth = 1.3;
     for (let i = 0; i < 12; i++) {
@@ -373,21 +396,26 @@ export function drawPathogen(ctx: CanvasRenderingContext2D, type: PathogenType, 
     }
     ctx.fillStyle = '#ff2a2a'; ctx.beginPath(); ctx.arc(-3, -9, 1.9, 0, Math.PI * 2); ctx.arc(4, -9, 1.9, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.restore();
 }
 
 export function drawWhiteCell(ctx: CanvasRenderingContext2D, x: number, y: number, hit: number, t: number, scale = 1) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+  // a soft blue halo so the player's cells stand out, then the cell itself, inked (its membrane ripples: 12 frames)
   const halo = ctx.createRadialGradient(0, 0, 10, 0, 0, 30);
-  halo.addColorStop(0, 'rgba(255,255,255,0.9)'); halo.addColorStop(1, 'rgba(120,210,240,0)');
+  halo.addColorStop(0, 'rgba(190,225,245,0.55)'); halo.addColorStop(1, 'rgba(160,210,240,0)');
   ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill();
+  const step = Math.PI / 24, tq = Math.round((((t % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2)) / step) % 12;
+  inkSprite(ctx, `cell${hit > 0 ? 'hit' : ''}:${tq}`, 19, (c) => cellBody(c, hit, tq * step), { gap: 1.8, lw: 0.3, wash: 0.6, tone: -0.1 });
+  ctx.restore();
+}
+
+function cellBody(ctx: CanvasRenderingContext2D, hit: number, t: number) {
   ctx.beginPath();
   for (let i = 0; i <= 18; i++) { const a = (i / 18) * Math.PI * 2; const r = 15 + Math.sin(a * 3 + t * 4) * 1.2; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
   ctx.closePath();
-  ctx.fillStyle = hit > 0 ? '#ffe0e0' : C.cell; ctx.fill(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2.4; ctx.stroke();
+  ctx.fillStyle = hit > 0 ? '#ffc8c8' : '#c4dcee'; ctx.fill(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2.4; ctx.stroke();
   ctx.fillStyle = C.nucleus;
   for (const [dx, dy] of [[-5, -3], [1, 4], [6, -3]]) { ctx.beginPath(); ctx.arc(dx, dy, 4.4, 0, Math.PI * 2); ctx.fill(); }
-  ctx.restore();
 }
 
 /** An immunoglobulin in flight: IgM a five-armed pentamer, IgG a single Y, IgA a paired dimer. */

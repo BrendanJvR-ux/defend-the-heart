@@ -2,6 +2,7 @@
 // Each reads by shape first (clusters, chains, bean pairs, rods), colour second; up close they show
 // a cell-wall rim, the nucleoid and ribosomes inside, capsules, pili and beating flagella.
 import type { BacteriumType } from './config';
+import { inkify } from './ink';
 
 const INK = '#2a1e18';
 
@@ -69,8 +70,8 @@ function rod(ctx: CanvasRenderingContext2D, len: number, thick: number, look: Lo
 }
 
 /** Flagella that beat: a sine wave travelling down each one. `around` = all over (peritrichous), else one tail. */
-function flagella(ctx: CanvasRenderingContext2D, look: Look, around: boolean, t: number, len: number, thick: number) {
-  ctx.strokeStyle = look.dark; ctx.lineWidth = 1.1; ctx.lineCap = 'round';
+function flagella(ctx: CanvasRenderingContext2D, _look: Look, around: boolean, t: number, len: number, thick: number) {
+  ctx.strokeStyle = INK; ctx.globalAlpha = 0.8; ctx.lineWidth = 1; ctx.lineCap = 'round';
   const roots: [number, number, number][] = around
     ? [[-len * 0.35, -thick / 2, -Math.PI / 2], [len * 0.05, -thick / 2, -Math.PI / 2], [len * 0.35, -thick / 2, -Math.PI / 2],
        [-len * 0.3, thick / 2, Math.PI / 2], [len * 0.1, thick / 2, Math.PI / 2], [len * 0.38, thick / 2, Math.PI / 2], [-len / 2, 0, Math.PI]]
@@ -81,6 +82,7 @@ function flagella(ctx: CanvasRenderingContext2D, look: Look, around: boolean, t:
     for (let i = 1; i <= 8; i++) { const u = i / 8, w = Math.sin(u * 7 - t * 14 + x0) * 2.2 * u; ctx.lineTo(x0 + dx * L * u + nx * w, y0 + dy * L * u + ny * w); }
     ctx.stroke();
   }
+  ctx.globalAlpha = 1;
 }
 
 /** Short straight pili bristling from a Gram-negative's surface. */
@@ -148,6 +150,7 @@ function sprite(type: BacteriumType, px: number): HTMLCanvasElement {
     c.width = Math.ceil(HALF_W * 2 * px); c.height = Math.ceil(HALF_H * 2 * px);
     const x = c.getContext('2d')!; x.scale(px, px); x.translate(HALF_W, HALF_H);
     drawBody(x, type, 0);
+    inkify(c, { px, gap: 1.9, lw: 0.32, wash: 0.5 });
     SPRITES.set(key, c);
   }
   return c;
