@@ -9,6 +9,7 @@ Clear an organ to unlock the next. The game opens on a **menu**:
 - **Continue** picks up your game where you left it: the organ, the wave, your nodes (with their IgG targets and IgE waves left), energy, organ health and NO. It is saved in your browser at the start of every build phase, so leaving mid-wave brings you back to that wave's build phase. Losing an organ ends that run.
 - **New career** starts over at the heart (it asks first if you have progress).
 - **Upgrades** is the gold shop (below).
+- **Endless** plays any organ you have cleared with no last wave (see below), and shows your leaderboard for each.
 - **Tutorial** replays the guided first wave on the heart.
 - **Organs** lists the nine organs: cleared ones show your best health and can be replayed. Starting a different organ while a game is in progress asks first.
 
@@ -43,6 +44,10 @@ Everything is drawn like a pen-and-ink plate with faint watercolour:
 - **The panel, top bar and menus** are paper plates on a faintly cross-hatched table: a double ink rule with slightly uneven, hand-drawn corners; buttons with an ink offset shadow; the selected organ, primary buttons, the open vessel, the pulse button and the gauges in faint washes with pen hatching instead of solid colour; italic serif headings.
 
 Inking is a pass over pixels, so it is run once per organ image and per sprite and the results are kept: a frame takes about as long to draw as before. The next organ is inked in idle time after a win (and the saved organ while the menu is up), so it opens without a pause; a boss's animation loops, so each of its 64 frames is inked once and reused.
+
+## Endless mode and your leaderboard
+
+Once you've cleared an organ, **Endless** in the menu lets you play it again with no last wave. Its waves come round again and again, each time with **12% more pathogens** in every group and **6% more health per wave** already fought. Its boss comes **every fifth wave**, up every vessel. Everything else is as in the career: your upgrades, its twist, borrowing targets, the pulse. A run ends only when the organ falls. It pays **5 gold for every wave cleared**, and goes on that organ's **leaderboard**: your ten best runs (waves held, and the date), kept in this browser with your career. The end screen says where the run placed ("A new best!", or #3 on the board). The leaderboard is personal to this device, not shared between players.
 
 ## When an organ falls
 
@@ -168,7 +173,7 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 |---|---|
 | `src/config.ts` | All tuning values, and the nine organ levels (maps, twists, waves). |
 | `src/level.ts` | The loaded organ's routes (forks expanded into two routes sharing a stem) and the build sites beside them (`loadLevel`). Path maths in `src/geometry.ts`. |
-| `src/sim.ts` | State, rules and simulation (no DOM): placement, mid-wave dilation and the NO gauge, forks, waves, immunoglobulins, white cells, infection, the pulse, recall. |
+| `src/sim.ts` | State, rules and simulation (no DOM): endless waves (`endlessWave`), placement, mid-wave dilation and the NO gauge, forks, waves, immunoglobulins, white cells, infection, the pulse, recall. |
 | `src/bosses.ts` | The nine boss pathogens' drawings. Each boss's animation loops every 4π seconds, so its 64 inked frames are made once and reused; the boss is turned to face its way and hits flash over it. |
 | `src/bacteria.ts` | The ten bacteria's drawings: cell walls, nucleoid and ribosomes, capsules, pili, beating flagella; each still body is drawn and inked once per size and reused. |
 | `src/organs.ts` | The lungs, brain, liver (with the gut), kidney, spleen, bone marrow, stomach and lymph node as anatomy-plate drawings: lobes, fissures and the bronchial tree; gyri, cerebellum and cerebral arteries; hepatic veins and ligaments; cortex, pyramids, hilar vessels and ureter; a tilted crimson spleen with a deeply notched border and a cut face speckled with white pulp, unlike the kidney's bean; a long bone cut open, with its cortex, red marrow, spongy heads and nutrient artery; the stomach with its folds, a pool of acid, the oesophagus, pylorus and duodenum; the lymph node with its follicles, medulla, afferent lymphatics and hilum. Each organ (and the heart, drawn in `src/draw.ts` with its coronary vessels) is drawn and inked once into an image and reused every frame. |
@@ -176,7 +181,7 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 | `src/ink.ts` | The pen-and-ink look: cream paper with faint tissue drawn behind the map, and `inkify`, which turns a colour drawing into ink on paper (colour thinned to a faint wash; shadows hatched, cross-hatched and stippled by how dark they are; edges drawn in as pen lines). It runs once per organ image and per sprite, and the results are kept, never redone every frame. |
 | `src/labels.ts` | Where the vessel names go: each name is placed clear of the build sites, the organ, the corners and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
-| `src/career.ts` | The career and its save (no DOM): gold, the upgrade shop and what upgrades do in play, organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |
+| `src/career.ts` | The career and its save (no DOM): the endless leaderboard (best ten runs per organ), gold, the upgrade shop and what upgrades do in play, organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |
 | `src/tutorial.ts` | The heart's guided first wave (no DOM): its steps, when each is done, when time holds, what the callout says and points at. |
 | `src/style.css` | The panel, top bar, menus and popovers in the ink style: paper plates, ink rules, washes and hatching (CSS variables at the top). |
 | `src/inspect.ts` | The pathogen under a click, and its details card. |

@@ -4,12 +4,12 @@ import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, type Box } from '../src/labels';
 import { organCacheKey, organImageScale } from '../src/organCache';
-import { NO_PERKS, perksOf, freshCareer, type Perks } from '../src/career';
+import { NO_PERKS, perksOf, freshCareer, snapshot, type Perks } from '../src/career';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
   newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, pathogenPos,
-  placeNode, buildCheck, nodeAt, hurt, hidden, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
+  placeNode, buildCheck, endlessWave, waveSpawns, resumeGame, nodeAt, hurt, hidden, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
 } from '../src/sim';
 
 import {
@@ -943,6 +943,31 @@ describe('Defend the Heart: the bone marrow', () => {
     expect(firePulse(s)).toBe(1);
     expect(b.wallHits).toBe(CONFIG.pathogens.granuloma.walled!.hits);
     expect(b.hp).toBeCloseTo(b.maxHp * (2 / 3), 5);
+  });
+});
+
+describe('Defend the Heart: endless mode', () => {
+  it('waves come round again, every group larger each time; the boss every fifth wave', () => {
+    const L = LEVELS[1], E = CONFIG.endless;
+    const w1 = endlessWave(1, 1), w5 = endlessWave(1, 5), w6 = endlessWave(1, 6);
+    expect(w1.groups.map((g) => g.count)).toEqual(L.waves[0].groups.map((g) => g.count));
+    expect(w5.groups.some((g) => CONFIG.pathogens[g.type].boss)).toBe(true);
+    // wave 6 is the organ's first wave again, every group larger
+    w6.groups.forEach((g, i) => expect(g.count).toBe(Math.max(1, Math.round(L.waves[(6 - 1) % (L.waves.length - 1)].groups[i].count * (1 + E.countGrowth * 5)))));
+    expect(waveSpawns(5, 1, true).filter((x) => CONFIG.pathogens[x.type].boss).length).toBe(L.map.vessels.length); // up every vessel
+  });
+  it('never ends in victory: after the organ\'s last wave the next endless wave comes, its pathogens tougher', () => {
+    const s = newGame(0, NO_PERKS, undefined, true);
+    for (let w = 1; w <= LEVELS[0].waves.length + 1; w++) { startWave(s); quiet(s); finishWave(s); }
+    expect(s.phase).toBe('prep'); expect(s.wave).toBe(LEVELS[0].waves.length + 2);
+    startWave(s); tick(s, 4);
+    const p = s.pathogens.find((x) => !CONFIG.pathogens[x.type].boss)!;
+    expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (1 + CONFIG.endless.hpGrowth * (s.wave - 1))));
+  });
+  it('an endless run is saved and continued as endless', () => {
+    const s = newGame(2, NO_PERKS, undefined, true); s.wave = 9;
+    const r = resumeGame(snapshot(s));
+    expect(r.endless).toBe(true); expect(r.wave).toBe(9);
   });
 });
 

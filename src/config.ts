@@ -120,6 +120,10 @@ export const CONFIG = {
   iggMatch: { species: 3, shape: 2.5, gram: 2, unrelated: 0.5, nonBacterium: 0.25 },
   /** Energy to re-aim a placed IgG node between waves. */
   iggRetarget: 20,
+  /** Endless mode on a cleared organ: its waves come round again, each time with `countGrowth` more pathogens in
+   *  every group and `hpGrowth` more health per wave already fought; its boss comes every `bossEvery` waves. A run
+   *  pays `goldPerWave` for every wave cleared; each organ keeps your best `boardSize` runs. */
+  endless: { countGrowth: 0.12, hpGrowth: 0.06, bossEvery: 5, goldPerWave: 5, boardSize: 10 },
   /** The last wave sends its boss up every vessel, a few seconds apart; each has this share of the boss's health. */
   bossEveryVessel: { gap: 3, hpShare: 0.45 },
   /** At most this many IgG nodes may be aimed at any one bacterium on an organ (a dual node counts for both). */

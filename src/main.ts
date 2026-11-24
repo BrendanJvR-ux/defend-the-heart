@@ -7,7 +7,7 @@ import {
   aliveCells, wave, resumeGame, leakSummary, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
   hasTarget, borrowTarget, selectableTargets, aimedAt, openCost, pathogenPos,
 } from './sim';
-import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, type Career, type KV, type UpgradeId } from './career';
+import { loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
 import { unlockAudio, isMuted, setMuted } from './sound';
 import { playSounds } from './soundEvents';
@@ -261,7 +261,7 @@ function pulse() {
   lastSig = '';
 }
 
-function restart() { const sp = s.speed, borrowed = s.borrowed; s = newGame(s.level, perksOf(career)); s.borrowed = borrowed; lastPhase = ''; spentToasted = 0; if (tut) { wantTutorial = true; maybeTutorial(); } s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
+function restart() { const sp = s.speed, borrowed = s.borrowed; s = newGame(s.level, perksOf(career), undefined, s.endless); s.borrowed = borrowed; lastPhase = ''; spentToasted = 0; if (tut) { wantTutorial = true; maybeTutorial(); } s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
 /** A run worth asking about before it is thrown away: past the first wave, or with nodes built. */
 const runInProgress = () => (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.phase !== 'prep' || s.energy !== levelDef(s).startEnergy);
 // ── The guided first wave on the heart ─────────────────────────────────────
@@ -310,6 +310,16 @@ function renderCoach() {
   } else { coachEl.style.left = '12px'; coachEl.style.top = `${Math.max(6, fh - ch - 12)}px`; }
 }
 
+/** Endless mode on a cleared organ: its waves come round again, stronger each time, until it falls. */
+function playEndless(i: number, confirmed = false) {
+  if (!career.cleared[i]) { toast('Clear this organ first to play it endlessly.'); return; }
+  if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: i, endless: true }); return; }
+  const sp = s.speed; s = newGame(i, perksOf(career), undefined, true); s.speed = sp;
+  closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = ''; spentToasted = 0; gameShown = true; s.paused = false; pausedBeforeMenu = false;
+  const best = career.endless[LEVELS[i].id]?.[0]?.waves;
+  toast(`Endless: the ${organTitle(i).toLowerCase()}. Waves keep coming, stronger each time${best != null ? `; your best is ${best} waves` : ''}.`);
+}
+
 function playLevel(i: number, confirmed = false) {
   if (i >= unlocked) { toast('Clear the previous organ to unlock this one.'); return; }
   if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: i }); return; }
@@ -333,7 +343,7 @@ function autosave() {
 }
 
 // ── The menu ────────────────────────────────────────────────────────────────
-type MenuPage = { page: 'main' } | { page: 'organs' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'switch'; level: number };
+type MenuPage = { page: 'main' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'switch'; level: number; endless?: boolean };
 let menuPage: MenuPage | null = null;
 let pausedBeforeMenu = false;
 function openMenu(p: MenuPage = { page: 'main' }) {
@@ -353,9 +363,10 @@ function renderMenu() {
     h = `<h2>Defend the Heart</h2><p class="kicker">An anatomy tower defence</p>
       <p class="sub">${cleared ? `${cleared} of ${LEVELS.length} organs cleared.` : 'Five organs to defend, from the heart to the kidney.'}</p>
       <div class="menuButtons">
-        ${run ? `<button data-menu="continue" class="primary">Continue<small>${esc(organTitle(run.level))} · wave ${run.wave} of ${LEVELS[run.level].waves.length}</small></button>` : ''}
+        ${run ? `<button data-menu="continue" class="primary">Continue<small>${esc(organTitle(run.level))} · ${run.endless ? `endless, wave ${run.wave}` : `wave ${run.wave} of ${LEVELS[run.level].waves.length}`}</small></button>` : ''}
         <button data-menu="new" ${run ? '' : 'class="primary"'}>New career</button>
         <button data-menu="organs">Organs<small>${unlocked} unlocked</small></button>
+        <button data-menu="endless" ${cleared ? '' : 'disabled'}>Endless<small>${cleared ? 'cleared organs, waves without end · your leaderboard' : 'clear an organ first'}</small></button>
         <button data-menu="tutorial">Tutorial<small>a guided first wave on the heart</small></button>
         <button data-menu="shop">Upgrades<small>${career.gold} gold</small></button>
         ${gameShown ? '<button data-menu="close">Back to the game</button>' : ''}
@@ -363,6 +374,16 @@ function renderMenu() {
   } else if (menuPage.page === 'organs') {
     h = `<h2>Organs</h2><p class="sub">Clear an organ to unlock the next. Cleared organs can be replayed.</p>
       <div class="menuButtons">${LEVELS.map((l, i) => `<button data-menu="level" data-level="${i}" ${i < unlocked ? '' : 'disabled'}>${i + 1}. ${esc(organTitle(i))}<small>${i >= unlocked ? 'locked' : career.cleared[i] ? `cleared · best ${career.best[i]}/${l.hp}` : esc(l.tagline)}${i < unlocked && missingTargets(i, perksOf(career)).length ? `<br><b class="needs">no IgG target yet for ${missingTargets(i, perksOf(career)).map((b) => CONFIG.pathogens[b].plural).join(', ')}</b>` : ''}</small></button>`).join('')}</div>
+      <p><button data-menu="back">Back</button></p>`;
+  } else if (menuPage.page === 'endless') {
+    const E = CONFIG.endless;
+    h = `<h2>Endless</h2><p class="sub">A cleared organ, its waves coming round again and again: ${Math.round(E.countGrowth * 100)}% more pathogens and ${Math.round(E.hpGrowth * 100)}% more health each wave, a boss up every vessel every ${E.bossEvery} waves. Hold out as long as you can: ${E.goldPerWave} gold a wave cleared, and your ${E.boardSize} best runs on each organ are kept below.</p>
+      <div class="endlessList">${LEVELS.map((l, i) => {
+        const board = career.endless[l.id] ?? [], open = career.cleared[i];
+        return `<section class="card"><h3>${i + 1}. ${esc(organTitle(i))} <span class="count">${board.length ? `best ${board[0].waves} waves` : open ? 'no runs yet' : 'locked'}</span></h3>
+          ${board.length ? `<ol class="board">${board.map((r, k) => `<li><b>${r.waves}</b> wave${r.waves === 1 ? '' : 's'} <small>${esc(r.date)}</small>${k === 0 ? ' <span class="bossTag">BEST</span>' : ''}</li>`).join('')}</ol>` : ''}
+          <button data-menu="playEndless" data-level="${i}" ${open ? '' : 'disabled'}>${open ? 'Play endless' : 'Clear it first'}</button></section>`;
+      }).join('')}</div>
       <p><button data-menu="back">Back</button></p>`;
   } else if (menuPage.page === 'shop') {
     const row = (id: UpgradeId, iconHtml = '', extra = '') => {
@@ -383,8 +404,10 @@ function renderMenu() {
     h = `<h2>Start over?</h2><p>Your cleared organs${career.gold ? ', gold' : ''} and the game in progress will be lost.</p>
       <div class="menuButtons"><button data-menu="newYes" class="primary danger">Start a new career</button><button data-menu="back">Keep my career</button></div>`;
   } else {
-    const L = levelDef(s), same = menuPage.level === s.level;
-    h = same
+    const L = levelDef(s), same = menuPage.level === s.level && !menuPage.endless && !s.endless;
+    if (menuPage.endless) h = `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).</p>
+      <div class="menuButtons"><button data-menu="switchEndless" data-level="${menuPage.level}" class="primary">Play the ${esc(organTitle(menuPage.level).toLowerCase())} endlessly</button><button data-menu="close">Stay</button></div>`;
+    else h = same
       ? `<h2>Start the ${esc(L.organ.toLowerCase())} again?</h2><p>This ends your run at wave ${s.wave}.</p>
       <div class="menuButtons"><button data-menu="switchYes" data-level="${menuPage.level}">Start again from wave 1</button><button data-menu="close" class="primary">Carry on at wave ${s.wave}</button></div>`
       : `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).</p>
@@ -422,6 +445,7 @@ overlay.addEventListener('click', (e) => {
   if (a?.dataset.act === 'level') playLevel(Number(a.dataset.level));
   if (a?.dataset.act === 'resume') { s.paused = false; lastSig = ''; }
   if (a?.dataset.act === 'shop') openMenu({ page: 'shop' });
+  if (a?.dataset.act === 'endlessBoard') openMenu({ page: 'endless' });
 });
 $('btnMenu').addEventListener('click', () => (menuPage ? closeMenu() : openMenu()));
 menuEl.addEventListener('click', (e) => {
@@ -434,6 +458,9 @@ menuEl.addEventListener('click', (e) => {
   } else if (a === 'new') { if (careerStarted()) openMenu({ page: 'confirmNew' }); else startCareer(); }
   else if (a === 'newYes') startCareer();
   else if (a === 'organs') openMenu({ page: 'organs' });
+  else if (a === 'endless') openMenu({ page: 'endless' });
+  else if (a === 'playEndless') playEndless(Number(el.dataset.level));
+  else if (a === 'switchEndless') playEndless(Number(el.dataset.level), true);
   else if (a === 'shop') openMenu({ page: 'shop' });
   else if (a === 'buy') {
     const id = el.dataset.up as UpgradeId, r = buy(career, id);
@@ -544,7 +571,7 @@ function renderPanel() {
       ${(() => { const miss = missingTargets(s.level, s.perks).filter((b) => !s.borrowed.includes(b)); return miss.length ? `<p class="notice">Bacteria here you have no IgG target for: ${bugNames(miss)}. An IgG aimed at something else hits them at only ×0.5 to ×2. <button data-act="shop">Upgrades (${career.gold} gold)</button></p>
         <details class="borrow"><summary>Borrow a target for this organ · ${CONFIG.borrowTargetGold} gold each</summary><div class="flist">${miss.map((b) => `<button data-act="borrow" data-target="${b}" ${career.gold >= CONFIG.borrowTargetGold ? '' : 'disabled'}><i>${esc(CONFIG.pathogens[b].plural)}</i></button>`).join('')}</div></details>` : ''; })()}
       ${s.borrowed.length ? `<p class="hint small">Borrowed for this organ: ${bugNames(s.borrowed)}. At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium.</p>` : `<p class="hint small">At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium on an organ.</p>`}
-      <h2><small>Prepare · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>
+      <h2><small>Prepare · ${s.endless ? `endless, wave ${s.wave}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2>
       <p class="hint">What comes, and up which vessels, you will see once the wave begins: build for anything.</p>
       ${s.message ? `<p class="notice">${esc(s.message)}</p>` : ''}
       ${lastWaveHtml()}
@@ -564,7 +591,7 @@ function renderPanel() {
     const openNames = s.open.map((v) => esc(vesselName(v).toLowerCase()));
     const where = s.open.length ? (out ? `Patrolling the ${openNames.join(' and the ')}${s.open.length > 1 ? `, split ${s.open.length} ways` : ''}.` : `Heading home before setting out along the ${openNames.join(' and the ')}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
     const noLow = s.no < openNeed() && !s.open.length;
-    h = `<h2><small>Defend · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
+    h = `<h2><small>Defend · ${s.endless ? `endless, wave ${s.wave}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
       <section class="card"><h3>Dilate <span class="count"><span data-no>${Math.floor(s.no)}</span> / ${s.perks.noMax} NO</span></h3>
         <p class="nogauge ${noLow ? 'low' : ''}" role="img" aria-label="NO ${Math.floor(s.no)} of ${s.perks.noMax}${noLow ? ', too low to open a vessel' : ''}"><i data-nobar style="width:${(s.no / s.perks.noMax) * 100}%"></i></p>${noLow ? '<p class="hint small needs">NO is too low to open a vessel: it refills while every vessel is closed.</p>' : ''}
         <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? `open · key ${i + 1} closes` : `resting · key ${i + 1}`}</small></button>`).join('')}</div>
@@ -593,7 +620,7 @@ function renderHud() {
   document.title = `Defend the ${organTitle(s.level)}`;
   $('hp').textContent = `${s.heartHp}/${levelDef(s).hp}`;
   $('hpbar').style.width = `${(s.heartHp / levelDef(s).hp) * 100}%`;
-  $('wave').textContent = `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)}`;
+  $('wave').textContent = s.endless ? `${s.wave} · endless` : `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)}`;
   $('energy').textContent = String(s.energy);
   $('gold').textContent = String(career.gold);
   $('cells').textContent = s.phase === 'combat' || s.phase === 'recall' ? `${aliveCells(s).length}/${levelDef(s).cells}` : `${levelDef(s).cells} ready`;
@@ -636,6 +663,14 @@ function renderOverlay() {
     const next = s.level + 1 < LEVELS.length ? s.level + 1 : -1;
     overlay.hidden = false; overlay.className = 'victory';
     overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>Unlocked: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : '<p><b>Every organ is safe.</b> The whole body has been defended.</p><button data-act="restart" class="primary">Play again</button>'}</div>`;
+  } else if (s.phase === 'defeat' && s.endless) {
+    // an endless run ends here: how far it got, and where that puts it on the board
+    const waves = Math.max(0, s.wave - 1), board = career.endless[L.id] ?? [];
+    overlay.hidden = false; overlay.className = 'defeat';
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Endless · the ${esc(org)}</p><h2>${waves} wave${waves === 1 ? '' : 's'} held</h2>
+      <p>${lastPlace === 1 ? '<b>A new best!</b>' : lastPlace ? `<b>#${lastPlace}</b> on your ${esc(org)} board (best: ${board[0]?.waves ?? waves} waves).` : `Not in your top ${CONFIG.endless.boardSize} (best: ${board[0]?.waves ?? 0} waves).`}</p>
+      ${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all</p>` : ''}${defeatAdvice()}
+      <button data-act="restart" class="primary">Again</button> <button data-act="endlessBoard">Leaderboard</button></div>`;
   } else if (s.phase === 'defeat') {
     overlay.hidden = false; overlay.className = 'defeat';
     overlay.innerHTML = `<div class="plate"><p class="kicker">Wave ${s.wave}</p><h2>The ${esc(L.organ.toLowerCase())} has failed</h2>${defeatAdvice()}<button data-act="restart" class="primary">Restart</button></div>`;

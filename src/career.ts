@@ -94,6 +94,8 @@ export interface RunSave {
   borrowed?: BacteriumType[];
   /** Liver: where the gallbladder's bile fell (it has burst if any). */
   bile?: { x: number; y: number }[];
+  /** An endless run (on a cleared organ), not the organ's own waves. */
+  endless?: boolean;
   /** Saved since every vessel started with a free IgM (older saves get theirs when they are continued). */
   freeNodes?: boolean;
 }
@@ -113,7 +115,13 @@ export interface Career {
   tutorialSeen: boolean;
   /** One-time tips already shown (each new rule is explained once, the first time it matters). */
   tips: string[];
+  /** Endless mode: your best runs on each organ (by organ id), most waves first. */
+  endless: Record<string, EndlessRun[]>;
 }
+
+/** One endless run on the leaderboard: waves cleared, the organ health left when it fell (always 0) is not kept,
+ *  but the date is, so a board reads as a history. */
+export interface EndlessRun { waves: number; date: string }
 
 /** Where things are kept. localStorage, or a stand-in in tests. */
 export interface KV { get(k: string): string | null; set(k: string, v: string): void }
@@ -124,7 +132,7 @@ export const BACKUP_KEY = 'dth-career-unreadable';
 
 export function freshCareer(): Career {
   const n = LEVELS.length;
-  return { version: 1, gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null, tutorialSeen: false, tips: [] };
+  return { version: 1, gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null, tutorialSeen: false, tips: [], endless: {} };
 }
 
 const safeGet = (kv: KV, k: string) => { try { return kv.get(k); } catch { return null; } };
@@ -175,6 +183,13 @@ function parse(raw: string): Career | null {
   // older saves had no flag: a player who has cleared an organ has no need of the tutorial
   c.tutorialSeen = typeof o.tutorialSeen === 'boolean' ? o.tutorialSeen : c.cleared.some(Boolean);
   c.tips = Array.isArray(o.tips) ? o.tips.filter((x): x is string => typeof x === 'string').slice(0, 50) : [];
+  // endless boards: only known organs, whole non-negative wave counts, a date string, at most a board's worth each
+  if (o.endless && typeof o.endless === 'object') for (const L of LEVELS) {
+    const runs = (o.endless as Record<string, unknown>)[L.id];
+    if (!Array.isArray(runs)) continue;
+    c.endless[L.id] = runs.filter((r): r is EndlessRun => !!r && Number.isInteger((r as EndlessRun).waves) && (r as EndlessRun).waves >= 0 && typeof (r as EndlessRun).date === 'string')
+      .map((r) => ({ waves: r.waves, date: r.date.slice(0, 10) })).sort((a, b) => b.waves - a.waves).slice(0, CONFIG.endless.boardSize);
+  }
   return c;
 }
 
@@ -201,12 +216,35 @@ export function snapshot(s: State): RunSave {
     borrowed: [...s.borrowed],
     bile: s.bile.map((p) => ({ x: p.x, y: p.y })),
     freeNodes: true,
+    endless: s.endless || undefined,
   };
 }
 
-/** An organ was won or lost: record it, pay gold for a win and end the run. Returns the gold paid. */
-export function onOrganEnd(c: Career, s: State): number {
+/** Put an endless run on its organ's board (kept to the best `boardSize`). Returns its place (1 = best), or 0 if it
+ *  didn't make the board. */
+export function recordEndless(c: Career, level: number, waves: number, date: string): number {
+  const id = LEVELS[level].id, run = { waves, date: date.slice(0, 10) };
+  // a stable sort with the new run last: on a tie, the earlier run stays ahead
+  const board = [...(c.endless[id] ?? []), run].sort((a, b) => b.waves - a.waves);
+  c.endless[id] = board.slice(0, CONFIG.endless.boardSize);
+  return c.endless[id].indexOf(run) + 1;
+}
+
+/** Where the last endless run placed on its board (1 = best, 0 = off it), for the end screen. */
+export let lastPlace = 0;
+
+/** An organ was won or lost: record it, pay gold for a win and end the run. Returns the gold paid. An endless run
+ *  only ends in defeat: it goes on the leaderboard and pays a little gold for every wave cleared. */
+export function onOrganEnd(c: Career, s: State, date = new Date().toISOString()): number {
   let paid = 0;
+  if (s.endless) {
+    const waves = Math.max(0, s.wave - 1);
+    lastPlace = recordEndless(c, s.level, waves, date);
+    paid = waves * CONFIG.endless.goldPerWave;
+    c.gold += paid;
+    c.run = null;
+    return paid;
+  }
   if (s.phase === 'victory') {
     paid = goldFor(s.level, s.heartHp, !c.cleared[s.level]);
     c.gold += paid;

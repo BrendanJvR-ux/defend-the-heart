@@ -1,9 +1,9 @@
 import { entryOf, ENTRY_IDS } from '../src/level';
 import { describe, it, expect } from 'vitest';
-import { LEVELS } from '../src/config';
+import { CONFIG, LEVELS } from '../src/config';
 import * as M from '../src/level';
 import { newGame, placeNode, nodeAt, startWave, step, resumeGame, type State } from '../src/sim';
-import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, organBacteria, missingTargets, type KV } from '../src/career';
+import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, organBacteria, missingTargets, recordEndless, type KV } from '../src/career';
 
 /** An in-memory store standing in for localStorage. */
 function memory(init: Record<string, string> = {}): KV & { data: Record<string, string> } {
@@ -225,6 +225,31 @@ describe('Career: a sixth organ', () => {
     const c = loadCareer(kv);
     expect(c.cleared).toEqual([true, true, true, true, true, false, false, false, false]); expect(unlockedCount(c)).toBe(6);
     c.cleared[5] = true; expect(unlockedCount(c)).toBe(7);
+  });
+});
+
+describe('Career: endless leaderboard', () => {
+  it('keeps the best ten runs per organ, most waves first; an equal later run goes below; reports the place', () => {
+    const c = freshCareer();
+    const places = [5, 9, 3, 9].map((w, i) => recordEndless(c, 1, w, `2026-11-0${i + 1}T10:00:00Z`));
+    expect(places).toEqual([1, 1, 3, 2]);
+    expect(c.endless.lungs.map((r) => r.waves)).toEqual([9, 9, 5, 3]);
+    expect(c.endless.lungs[0].date).toBe('2026-11-02');
+    for (let i = 0; i < 12; i++) recordEndless(c, 1, 20 + i, '2026-11-20');
+    expect(c.endless.lungs.length).toBe(10);
+    expect(recordEndless(c, 1, 1, '2026-11-21')).toBe(0); // off the board
+  });
+  it('an endless run that falls goes on the board and pays gold per wave cleared, without clearing anything', () => {
+    const c = freshCareer(); const s = newGame(1, undefined, undefined, true); s.wave = 8; s.phase = 'defeat';
+    const paid = onOrganEnd(c, s, '2026-11-24T09:00:00Z');
+    expect(paid).toBe(7 * CONFIG.endless.goldPerWave); expect(c.gold).toBe(paid);
+    expect(c.endless.lungs).toEqual([{ waves: 7, date: '2026-11-24' }]);
+    expect(c.cleared[1]).toBe(false); expect(c.run).toBeNull();
+  });
+  it('a saved board is read back, junk dropped', () => {
+    const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, endless: { lungs: [{ waves: 4, date: '2026-11-01' }, { waves: -2, date: 'x' }, { waves: 1.5, date: 'y' }, 'junk'], nowhere: [{ waves: 3, date: 'z' }] } }) });
+    const c = loadCareer(kv);
+    expect(c.endless).toEqual({ lungs: [{ waves: 4, date: '2026-11-01' }] });
   });
 });
 

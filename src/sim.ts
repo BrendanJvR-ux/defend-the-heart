@@ -1,5 +1,5 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
-import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
+import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId, type WaveDef, type WaveGroup } from './config';
 import { NO_PERKS, type Perks, type RunSave } from './career';
 import { VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, nearestOnVessel, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
@@ -36,6 +36,8 @@ export interface Spawn { type: PathogenType; vessel: VesselId; at: number }
 export interface State {
   /** Index into LEVELS: which organ is being defended. */
   level: number;
+  /** Endless mode: the organ's waves come round again, ever stronger, until it falls. */
+  endless: boolean;
   /** IgG targets borrowed for this organ only (bought with gold; gone when the organ ends). */
   borrowed: BacteriumType[];
   /** Liver: where the gallbladder's bile destroyed lymph nodes (empty until it bursts; it bursts once). */
@@ -92,12 +94,12 @@ export interface State {
 const zeroWidths = () => Object.fromEntries(VESSEL_IDS.map((v) => [v, 0])) as Record<VesselId, number>;
 
 /** A fresh game on the given organ (default: the one already loaded). Loads that organ's map. */
-export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 + level): State {
+export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 + level, endless = false): State {
   loadLevel(level);
   const L = LEVELS[level];
   const s: State = {
     level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, open: [], no: perks.noMax, noOuts: 0,
-    perks, borrowed: [], bile: [], waveLog: null, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
+    perks, endless, borrowed: [], bile: [], waveLog: null, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
@@ -134,9 +136,9 @@ function giveFreeNodes(s: State) {
  *  organ no longer has are dropped; an organ that does not exist starts a fresh heart. */
 export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
   if (!(run.level >= 0 && run.level < LEVELS.length)) return newGame(0, perks);
-  const s = newGame(run.level, perks);
+  const s = newGame(run.level, perks, undefined, !!run.endless);
   const L = LEVELS[run.level];
-  s.wave = Math.max(1, Math.min(L.waves.length, Math.floor(run.wave)));
+  s.wave = Math.max(1, s.endless ? Math.floor(run.wave) : Math.min(L.waves.length, Math.floor(run.wave)));
   s.heartHp = Math.max(1, Math.min(L.hp, run.heartHp));
   s.energy = Math.max(0, Math.floor(run.energy));
   s.no = Math.max(0, Math.min(perks.noMax, run.no));
@@ -157,8 +159,19 @@ export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
 }
 
 export const levelDef = (s: State): LevelDef => LEVELS[s.level];
-export const totalWaves = (s: State) => LEVELS[s.level].waves.length;
-export const wave = (s: State) => LEVELS[s.level].waves[s.wave - 1];
+export const totalWaves = (s: State) => (s.endless ? Infinity : LEVELS[s.level].waves.length);
+export const wave = (s: State) => (s.endless ? endlessWave(s.level, s.wave) : LEVELS[s.level].waves[s.wave - 1]);
+
+/** Endless wave n on an organ: its ordinary waves in turn, every group a little larger each time round; every
+ *  `bossEvery`th wave is its boss wave (the boss up every vessel), escorts scaled the same way. */
+export function endlessWave(level: number, n: number): WaveDef {
+  const L = LEVELS[level], E = CONFIG.endless, k = 1 + E.countGrowth * (n - 1);
+  const boss = n % E.bossEvery === 0, base = boss ? L.waves[L.waves.length - 1] : L.waves[(n - 1) % (L.waves.length - 1)];
+  const groups: WaveGroup[] = base.groups.map((g) => ({ ...g, count: CONFIG.pathogens[g.type].boss ? g.count : Math.max(1, Math.round(g.count * k)) }));
+  return { title: `Endless wave ${n}: ${base.title.replace(/^Boss: /, 'boss, ')}`, hint: base.hint, groups };
+}
+/** Does wave n of this game send its boss up every vessel? */
+const bossWave = (level: number, n: number, endless: boolean) => (endless ? n % CONFIG.endless.bossEvery === 0 : n === LEVELS[level].waves.length);
 /** Lungs: true while the lungs are inhaling and the blood surges. */
 export function surging(s: State): boolean {
   const sg = LEVELS[s.level].surge;
@@ -394,12 +407,12 @@ function deployHome(s: State) {
   }
 }
 
-export function waveSpawns(n: number, level = LEVEL_INDEX): Spawn[] {
-  const out: Spawn[] = [], L = LEVELS[level];
-  for (const g of L.waves[n - 1].groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval });
-  // the last wave's boss comes up every vessel, one after another
-  if (n === L.waves.length) {
-    for (const g of L.waves[n - 1].groups.filter((x) => CONFIG.pathogens[x.type].boss)) {
+export function waveSpawns(n: number, level = LEVEL_INDEX, endless = false): Spawn[] {
+  const out: Spawn[] = [], L = LEVELS[level], def = endless ? endlessWave(level, n) : L.waves[n - 1];
+  for (const g of def.groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval });
+  // a boss wave sends its boss up every vessel, one after another
+  if (bossWave(level, n, endless)) {
+    for (const g of def.groups.filter((x) => CONFIG.pathogens[x.type].boss)) {
       L.map.vessels.filter((v) => v.id !== g.vessel).forEach((v, k) => out.push({ type: g.type, vessel: routesOf(v.id)[0], at: g.start + (k + 1) * CONFIG.bossEveryVessel.gap }));
     }
   }
@@ -412,7 +425,7 @@ export function startWave(s: State): boolean {
   s.phase = 'combat';
   s.open = [];
   s.waveTime = 0;
-  s.spawns = waveSpawns(s.wave, s.level);
+  s.spawns = waveSpawns(s.wave, s.level, s.endless);
   // what this wave brings, by vessel and kind: shown once it is over
   const came: { entry: VesselId; type: PathogenType; n: number }[] = [];
   for (const sp of s.spawns) {
@@ -536,6 +549,7 @@ function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pa
   const grow = LEVELS[s.level].waveHpGrowth;
   let hp = grow ? Math.round(st.hp * (1 + grow * (s.wave - 1))) : st.hp;
   if (st.boss) hp = Math.round(hp * CONFIG.bossEveryVessel.hpShare); // one comes up every vessel
+  if (s.endless) hp = Math.round(hp * (1 + CONFIG.endless.hpGrowth * (s.wave - 1))); // endless waves grow tougher
   const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp, maxHp: hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
   // announce the first boss of the wave only (the others follow up the other vessels)
@@ -850,7 +864,7 @@ function recall(s: State, dt: number) {
       s.floaters.push({ x: site.x, y: site.y - 34, text: 'IgE spent', t: 0, color: '#6a1e4a' });
     }
     s.nodes = s.nodes.filter((x) => !s.spent.some((sp) => sp.site === x.site));
-    if (s.wave >= totalWaves(s)) { s.phase = 'victory'; return; }
+    if (!s.endless && s.wave >= totalWaves(s)) { s.phase = 'victory'; return; }
     const bonus = Math.round(CONFIG.waveClearEnergy(s.wave) * (LEVELS[s.level].income ?? 1));
     s.energy += bonus;
     s.no = Math.min(s.perks.noMax, s.no + CONFIG.no.waveTopUp);
