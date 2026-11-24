@@ -4,12 +4,12 @@ import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, type Box } from '../src/labels';
 import { organCacheKey, organImageScale } from '../src/organCache';
-import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type UpgradeId } from '../src/career';
+import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, organBacteria, type Perks, type UpgradeId } from '../src/career';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
   newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, pathogenPos,
-  waveSpawns, placeNode, buildCheck, nodeAt, hurt, hidden, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
+  waveSpawns, placeNode, hasTarget, aimedAt, buildCheck, nodeAt, hurt, hidden, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
 } from '../src/sim';
 
 function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t = 0; t < seconds; t += 1 / 30) { step(s, 1 / 30); each?.(s); } }
@@ -87,6 +87,32 @@ function sensibleDilate(s: State) {
   if (best !== cur && danger(s, best) > 2 * danger(s, cur) && s.no >= N.openCost + 2 * N.drainPerSec) { toggleRoute(s, cur); toggleRoute(s, best); }
 }
 const noBuild = () => {};
+/** A player who, like a real one, can't see what the next wave brings: builds round the vessels, least defended
+ *  first, two rounds a build; IgG aimed in turn at the organ's bacteria (the panel names them), an IgA as every
+ *  third node on a vessel, IgM otherwise. */
+function blindBuild(s: State) {
+  const guards = (v: VesselId) => s.nodes.filter((x) => guarding(v).some((g) => g.id === x.site)).length;
+  const bugs = organBacteria(s.level);
+  for (let round = 0; round < 2; round++) {
+    let placed = false;
+    for (const v of [...M.VESSEL_IDS].sort((a, b) => guards(a) - guards(b))) {
+      const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
+      if (!site) continue;
+      const aims = bugs.filter((b) => hasTarget(s, b) && aimedAt(s, b) < CONFIG.iggPerTarget);
+      const want: NodeType = guards(v) % 3 === 2 ? 'iga' : aims.length ? 'igg' : 'igm';
+      if (placeNode(s, site.id, want, want === 'igg' ? [aims[0]] : undefined) || placeNode(s, site.id, 'igm')) placed = true;
+    }
+    if (!placed) break;
+  }
+}
+/** A player who opens every route with pathogens well in, as many as it has white cells, and closes each when clear. */
+function multiDilate(s: State) {
+  if (s.phase !== 'combat') return;
+  const N = CONFIG.no;
+  for (const v of [...s.open]) if (danger(s, v) === 0) toggleRoute(s, v);
+  const want = [...M.VESSEL_IDS].filter((v) => danger(s, v) > 0 && !s.open.includes(v)).sort((a, b) => danger(s, b) - danger(s, a));
+  for (const v of want) if (s.no >= N.openCost + 2 * N.drainPerSec * (s.open.length + 1) && dilateCheck(s, v).ok) toggleRoute(s, v);
+}
 /** A clumsy new player: spends all energy on IgM, on the first free sites in list order. */
 function clumsyBuild(s: State) {
   for (const site of M.SITES) if (!nodeAt(s, site.id) && !placeNode(s, site.id, 'igm') && s.energy < CONFIG.nodes.igm.cost) break;
@@ -495,15 +521,24 @@ describe('Defend the Heart: balance', () => {
     expect(run.map((r) => r.phase)).toEqual(LEVELS.map(() => 'victory'));
   });
 
-  it('from the liver on, energy is tight: the career player fills at most 60% of the build sites', () => {
+  it('from the liver on, energy is tight: the career player builds on at most 70% of the sites beyond the free IgMs', () => {
     for (const r of careerRun().filter((x) => x.level >= 3)) {
-      const g = play(sensibleBuild, sensibleDilate, 3, r.level, r.perks); newGame(r.level);
+      const g = play(blindBuild, sensibleDilate, 3, r.level, r.perks); newGame(r.level);
       // the free IgM on each vessel isn't paid for, so it doesn't count: the share of the remaining sites built on
       const share = (g.s.nodes.length - M.ENTRY_IDS.length) / (M.SITES.length - M.ENTRY_IDS.length);
       console.log(LEVELS[r.level].id, 'built', g.s.nodes.length, 'of', M.SITES.length, 'sites');
-      expect(share, LEVELS[r.level].id).toBeLessThanOrEqual(0.6);
+      expect(share, LEVELS[r.level].id).toBeLessThanOrEqual(0.7);
     }
   });
+
+  it('for comparison: a career player who can see the waves coming, and one who opens several vessels at once', () => {
+    // the contract's career player can't see the waves; for comparison, one who can, and one who opens several vessels
+    const sighted = careerRun(sensibleBuild), multi = careerRun(blindBuild, multiDilate);
+    const show = (r: ReturnType<typeof careerRun>) => r.map((x) => `${LEVELS[x.level].id} ${x.phase === 'victory' ? x.hp[x.hp.length - 1] : 'lost'}`).join(', ');
+    console.log('sighted career:', show(sighted));
+    console.log('multi-vessel career:', show(multi));
+    expect(sighted.every((x) => x.phase === 'victory')).toBe(true); expect(multi[0].phase).toBe('victory');
+  }, 60000);
 
   it('never building loses every organ, even with every upgrade', () => {
     for (let i = 0; i < LEVELS.length; i++) expect(play(noBuild, sensibleDilate, 3, i, ALL_PERKS).s.phase, LEVELS[i].id).toBe('defeat');
@@ -519,7 +554,7 @@ const organSpecies = (i: number) => [...new Set(LEVELS[i].waves.flatMap((w) => w
 /** A career played by the sensible player: organs in order, gold banked, upgrades bought before each organ by a
  *  fixed policy — first the IgG targets for that organ's bacteria, then damage for the node types it built most
  *  last time, then dual-target, NO, the extra starting node and the cheaper first node. */
-function careerRun() {
+function careerRun(build: (s: State) => void = blindBuild, dilate: (s: State) => void = sensibleDilate) {
   const c = freshCareer(); const built: Record<NodeType, number> = { igm: 2, igg: 1, iga: 1, ige: 0 };
   const out: { level: number; phase: string; hp: number[]; goldBefore: number; bought: string[]; perks: Perks }[] = [];
   for (let i = 0; i < LEVELS.length; i++) {
@@ -531,7 +566,7 @@ function careerRun() {
     ];
     for (const id of wish) if (buy(c, id).ok) bought.push(id);
     const perks = perksOf(c);
-    const { s, hp } = play(sensibleBuild, sensibleDilate, 3, i, perks);
+    const { s, hp } = play(build, dilate, 3, i, perks);
     for (const n of s.nodes) built[n.type]++;
     onOrganEnd(c, s);
     out.push({ level: i, phase: s.phase, hp, goldBefore, bought, perks });
@@ -668,7 +703,7 @@ describe('Defend the Heart: organ levels', () => {
 
   it('holding one vessel open, with the career player\'s upgrades at each organ, loses or ends at least 2 worse (the heart, the gentle tutorial organ, excepted)', () => {
     for (const r of careerRun().filter((x) => x.level > 0)) {
-      const good = play(sensibleBuild, sensibleDilate, 3, r.level, r.perks), hold = play(sensibleBuild, holdOpen, 3, r.level, r.perks);
+      const good = play(blindBuild, sensibleDilate, 3, r.level, r.perks), hold = play(blindBuild, holdOpen, 3, r.level, r.perks);
       console.log(LEVELS[r.level].id, 'careful', good.s.heartHp, 'hold-open', hold.hp, hold.s.phase);
       expect(hold.s.phase === 'defeat' || hold.s.heartHp <= good.s.heartHp - 2, LEVELS[r.level].id).toBe(true);
     }

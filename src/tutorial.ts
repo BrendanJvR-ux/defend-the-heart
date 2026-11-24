@@ -73,17 +73,17 @@ export function tutorialTarget(t: Tutorial, s: State): TutTarget | null {
 /** The callout's words for each step. */
 export function tutorialText(t: Tutorial, s: State): { title: string; body: string; button?: string } | null {
   switch (t.step) {
-    case 'welcome': return { title: 'Defend the heart', body: 'Pathogens travel up the vessels towards the heart. Every one that reaches it costs health. Stop them.', button: 'Next' };
-    case 'build': return { title: 'Place a lymph node', body: 'Click the + marked here, beside the left vessel, and choose IgM. Lymph nodes fire antibodies at pathogens on their vessel.' };
+    case 'welcome': return { title: 'Defend the heart', body: 'Pathogens travel up the vessels towards the heart. Every one that reaches it costs health. Stop them. You won\'t see what is coming until a wave starts.', button: 'Next' };
+    case 'build': return { title: 'Place a lymph node', body: 'Every vessel starts with one free IgM lymph node. Add another: click the + marked here, beside the left vessel, and choose IgM. Lymph nodes fire antibodies at pathogens on their vessel.' };
     case 'start': return { title: 'Start the wave', body: 'Press Start wave when you are ready. You can build more between waves.' };
     case 'open': return tutorialHolds(t, s)
       ? { title: 'Open the vessel', body: 'The bacteria are on their way in. Click the left vessel to open it: your white cells go out along it to fight. (Time waits for you.)' }
       : { title: 'Watch them come', body: 'Bacteria are coming up the left vessel. When they are a third of the way in, you will open it for your white cells.' };
-    case 'no': return { title: 'NO keeps it open', body: 'Holding a vessel open uses NO (the bar under the heart and in the panel). Click the vessel again to close it when it is clear, and NO refills.', button: 'Got it' };
+    case 'no': return { title: 'NO keeps it open', body: 'Holding a vessel open uses NO (the bar under the heart and in the panel). Click the vessel again to close it when it is clear, and NO refills. Later you can open more than one vessel: your white cells split between them, and each drains NO.', button: 'Got it' };
     case 'pulse': return tutorialHolds(t, s)
       ? { title: 'Fire the immune pulse', body: 'A white cell is touching a pathogen. Press Immune pulse (or Space): each white cell touching a pathogen destroys it, and dies doing it (you get it back next wave). Once per wave, so later on, save it for something tough. (Time waits for you.)' }
       : { title: 'The immune pulse', body: 'Once per wave, each white cell can give its life to destroy the pathogen it is touching. Wait until a pathogen reaches them.' };
-    case 'done': return { title: 'You have the basics', body: 'Clear the wave. Between waves, place more nodes; wave 3 shows you IgG, which hits a chosen bacterium three times as hard.', button: 'Close' };
+    case 'done': return { title: 'You have the basics', body: 'Clear the wave. Between waves, place more nodes; wave 3 shows you IgG, which hits a chosen bacterium three times as hard (at most two IgG per bacterium). Click any pathogen to see what it is.', button: 'Close' };
     default: return null;
   }
 }

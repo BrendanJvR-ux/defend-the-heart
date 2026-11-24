@@ -613,8 +613,10 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
       ctx.font = '900 26px Palatino, Georgia, serif'; ctx.textAlign = 'center';
       const tag = CONFIG.pathogens[p.type].burrows ? 'BURROWED' : 'HIDING';
       const tw = ctx.measureText(tag).width;
-      inkTag(ctx, q.x - tw / 2 - 12, q.y - 107, tw + 24, 36, WASH.red, 6);
-      ctx.fillStyle = INK_RED; ctx.fillText(tag, q.x, q.y - 80);
+      // above the boss, or below it when it is near the top edge (where the boss banner is)
+      const ty = q.y - 107 < 96 ? q.y + 72 : q.y - 107;
+      inkTag(ctx, q.x - tw / 2 - 12, ty, tw + 24, 36, WASH.red, 6);
+      ctx.fillStyle = INK_RED; ctx.fillText(tag, q.x, ty + 27);
     }
     const wl = wallLeft(p);
     if (wl > 0) {

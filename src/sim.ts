@@ -518,7 +518,8 @@ function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pa
   if (st.boss) hp = Math.round(hp * CONFIG.bossEveryVessel.hpShare); // one comes up every vessel
   const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp, maxHp: hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
-  if (st.boss) {
+  // announce the first boss of the wave only (the others follow up the other vessels)
+  if (st.boss && s.pathogens.filter((x) => CONFIG.pathogens[x.type].boss).length === 1) {
     const m = pointAt(VESSELS[vessel], 90);
     s.floaters.push({ x: Math.max(160, Math.min(1440, m.x)), y: Math.max(80, m.y - 40), text: `Boss: ${st.name}!`, t: 0, color: '#8a1e24' });
   }
