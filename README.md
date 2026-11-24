@@ -29,6 +29,17 @@ It began as a conversion of [The Last Ward: Siege of Goosebridge](https://github
 
 **Run it locally:** `npm install`, then `npm run dev`, and open http://localhost:5173/. Tests: `npm test`.
 
+## The look
+
+Everything is drawn like a pen-and-ink plate with faint watercolour:
+
+- **The map** is cream paper with faint washes of rose, blue-grey, ochre, sage and pink, and tissue sketched lightly in ink behind it all: loose cells with stippled nuclei, drifting fibres, and small capillaries branching in from the edges like roots. A double ink rule frames it.
+- **Organs, pathogens, bosses, white cells and lymph nodes** are drawn in colour, then inked: the colour thinned to a faint wash, the shadows hatched, cross-hatched and stippled by how dark they are, edges drawn in as single pen lines, and a hatched band along each organ's shaded (lower-right) side so it reads as rounded. Darker organs are lifted to a common lightness, so none turns into solid cross-hatching. Each colour still tells the pathogens and node types apart.
+- **Vessels** have a firm ink outline, a pale rose wash, hatched walls and red cells ringed in fine ink.
+- **The panel, top bar and menus** are paper plates on a faintly cross-hatched table: a double ink rule with slightly uneven, hand-drawn corners; buttons with an ink offset shadow; the selected organ, primary buttons, the open vessel, the pulse button and the gauges in faint washes with pen hatching instead of solid colour; italic serif headings.
+
+Inking is a pass over pixels, so it is run once per organ image and per sprite and the results are kept: a frame takes about as long to draw as before. Opening an organ pauses briefly (up to about half a second) while its image is inked; a boss, which moves, is re-inked eight times a second.
+
 ## When an organ falls
 
 The defeat screen says where the damage came from (how much came up the worst vessel and which pathogen did the most harm, or, on the spleen, how much went on remaking lost white cells) and suggests the counter: an IgG aimed at that bacterium (saying so, with an **Upgrades** button, when that target hasn't been bought yet), IgA for fast viruses, IgM and IgE for viral bosses, or keeping white cells away from hijackers.
@@ -134,14 +145,15 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 | `src/config.ts` | All tuning values, and the six organ levels (maps, twists, waves). |
 | `src/level.ts` | The loaded organ's routes (forks expanded into two routes sharing a stem) and the build sites beside them (`loadLevel`). Path maths in `src/geometry.ts`. |
 | `src/sim.ts` | State, rules and simulation (no DOM): placement, mid-wave dilation and the NO gauge, forks, waves, immunoglobulins, white cells, infection, the pulse, recall. |
-| `src/bosses.ts` | The six boss pathogens' drawings. |
-| `src/bacteria.ts` | The six bacteria's drawings: cell walls, nucleoid and ribosomes, capsules, pili, beating flagella; each still body is drawn once per size and reused. |
-| `src/organs.ts` | The lungs, brain, liver (with the gut), kidney and spleen as anatomy-plate drawings: lobes, fissures and the bronchial tree; gyri, cerebellum and cerebral arteries; hepatic veins and ligaments; cortex, pyramids, hilar vessels and ureter; trabeculae and splenic vessels. Each organ (and the heart, drawn in `src/draw.ts` with its coronary vessels) is drawn once into an image and reused every frame. |
+| `src/bosses.ts` | The six boss pathogens' drawings, inked a few frames a second. |
+| `src/bacteria.ts` | The six bacteria's drawings: cell walls, nucleoid and ribosomes, capsules, pili, beating flagella; each still body is drawn and inked once per size and reused. |
+| `src/organs.ts` | The lungs, brain, liver (with the gut), kidney and spleen as anatomy-plate drawings: lobes, fissures and the bronchial tree; gyri, cerebellum and cerebral arteries; hepatic veins and ligaments; cortex, pyramids, hilar vessels and ureter; trabeculae and splenic vessels. Each organ (and the heart, drawn in `src/draw.ts` with its coronary vessels) is drawn and inked once into an image and reused every frame. |
 | `src/ink.ts` | The pen-and-ink look: cream paper with faint tissue drawn behind the map, and `inkify`, which turns a colour drawing into ink on paper (colour thinned to a faint wash; shadows hatched, cross-hatched and stippled by how dark they are; edges drawn in as pen lines). It runs once per organ image and per sprite, and the results are kept, never redone every frame. |
 | `src/labels.ts` | Where the vessel names and next-wave tags go: each name is placed clear of the build sites, the organ, the tags and the other names. |
 | `src/draw.ts` | Rendering: vessels with dilation, flow, breathing surges and filtration, the heart, organ health beads, sites and nodes, antibodies (IgM pentamer, IgG Y, IgA dimer), pathogens, effects. |
 | `src/career.ts` | The career and its save (no DOM): gold, the upgrade shop and what upgrades do in play, organs cleared, best health, the game in progress, a versioned `localStorage` entry with old-save migration; an unreadable save is kept aside, never lost. |
 | `src/tutorial.ts` | The heart's guided first wave (no DOM): its steps, when each is done, when time holds, what the callout says and points at. |
+| `src/style.css` | The panel, top bar, menus and popovers in the ink style: paper plates, ink rules, washes and hatching (CSS variables at the top). |
 | `src/main.ts` | HUD, panel, the menu, the tutorial's callout, autosave, build popover and IgG target picker, mouse / touch / keyboard input, overlays. |
 | `tests/tutorial.test.ts` | The tutorial played through on the real simulation: every step in order, the holds, skipping the pulse if the wave ends, the saved seen flag. |
 | `tests/career.test.ts` | The save (fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing), gold, the shop and upgrade effects. |
