@@ -1,7 +1,7 @@
 // Drawing for Defend the Heart: a stylised anatomy plate, kept calm so the white cells stand out.
 import { CONFIG, type BacteriumType, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
 import { drawBoss } from './bosses';
-import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec } from './level';
+import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec, type Vessel } from './level';
 import { drawBacterium } from './bacteria';
 import { hidden } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
@@ -66,10 +66,11 @@ function background(): HTMLCanvasElement {
   return bg;
 }
 
-function smooth(ctx: CanvasRenderingContext2D, pts: Vec[], r = 70) {
-  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length - 1; i++) ctx.arcTo(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y, r);
-  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+/** A vessel's winding course, as a path. */
+function course(ctx: CanvasRenderingContext2D, v: Vessel) {
+  ctx.beginPath(); ctx.moveTo(v.cx[0], v.cy[0]);
+  for (let i = 2; i < v.cx.length; i += 2) ctx.lineTo(v.cx[i], v.cy[i]);
+  ctx.lineTo(v.cx[v.cx.length - 1], v.cy[v.cy.length - 1]);
 }
 
 export function vesselWidth(s: State, v: VesselId) {
@@ -80,15 +81,15 @@ export function vesselWidth(s: State, v: VesselId) {
 function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: View, t: number, flowT: number) {
   const ves = VESSELS[v], w = vesselWidth(s, v), open = s.width[v];
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (view.hoverVessel === v && s.phase === 'combat') { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; smooth(ctx, ves.pts); ctx.stroke(); }
+  if (view.hoverVessel === v && s.phase === 'combat') { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; course(ctx, ves); ctx.stroke(); }
   // pen-and-ink: a firm outline, a pale rose wash, the walls hatched, a paler lumen down the middle
-  ctx.strokeStyle = C.ink; ctx.lineWidth = w + 14; smooth(ctx, ves.pts); ctx.stroke();
-  ctx.strokeStyle = '#e6c2b6'; ctx.lineWidth = w + 9.5; smooth(ctx, ves.pts); ctx.stroke();
+  ctx.strokeStyle = C.ink; ctx.lineWidth = w + 14; course(ctx, ves); ctx.stroke();
+  ctx.strokeStyle = '#e6c2b6'; ctx.lineWidth = w + 9.5; course(ctx, ves); ctx.stroke();
   const hp = hatchPattern(ctx);
-  if (hp) { ctx.globalAlpha = 0.6; ctx.strokeStyle = hp; ctx.lineWidth = w + 9.5; smooth(ctx, ves.pts); ctx.stroke(); ctx.globalAlpha = 1; }
-  ctx.strokeStyle = 'rgba(35,26,20,0.55)'; ctx.lineWidth = w + 1.2; smooth(ctx, ves.pts); ctx.stroke();
-  ctx.strokeStyle = '#efd2c6'; ctx.lineWidth = w; smooth(ctx, ves.pts); ctx.stroke();
-  ctx.strokeStyle = '#f2ddd2'; ctx.lineWidth = w * 0.55; smooth(ctx, ves.pts); ctx.stroke();
+  if (hp) { ctx.globalAlpha = 0.6; ctx.strokeStyle = hp; ctx.lineWidth = w + 9.5; course(ctx, ves); ctx.stroke(); ctx.globalAlpha = 1; }
+  ctx.strokeStyle = 'rgba(35,26,20,0.55)'; ctx.lineWidth = w + 1.2; course(ctx, ves); ctx.stroke();
+  ctx.strokeStyle = '#efd2c6'; ctx.lineWidth = w; course(ctx, ves); ctx.stroke();
+  ctx.strokeStyle = '#f2ddd2'; ctx.lineWidth = w * 0.55; course(ctx, ves); ctx.stroke();
   if (open > 0.02) {
     ctx.globalAlpha = Math.min(1, open * 1.4) * 0.85;
     ctx.strokeStyle = 'rgba(35,26,20,0.5)'; ctx.lineWidth = 1.6;

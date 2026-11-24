@@ -9,7 +9,13 @@ import { LEVELS, type LevelDef, type VesselId } from './config';
 export const W = 1600;
 export const H = 1000;
 
-export interface Vessel { id: VesselId; name: string; label: string; pts: Vec[]; cum: number[]; length: number }
+/** A route: its corner points (`pts`, `cum`, `length` measure distance along it), and the winding course
+ *  everything actually follows, sampled every `STEP` units (`cx`, `cy`, `ca`). */
+export interface Vessel { id: VesselId; name: string; label: string; pts: Vec[]; cum: number[]; length: number; cx: Float32Array; cy: Float32Array; ca: Float32Array; fork: number; forkPt: Vec }
+
+// The vessels wind: corners are rounded off, and a gentle meander (two waves of different length) runs
+// along each one, the same along both branches' shared stem, fading out where the vessel meets the organ.
+const STEP = 4, ROUND = 24, MEANDER = 9, FADE = 80;
 
 /** A place a lymph node can stand: beside one section of one vessel, guarding that vessel. */
 export interface Site { id: string; vessel: VesselId; index: number; x: number; y: number; anchor: Vec; stem: boolean }
@@ -44,14 +50,44 @@ export const routeAtStem = (entry: VesselId, dilated: VesselId | null): VesselId
   dilated && entryOf(dilated) === entry ? dilated : routesOf(entry)[0];
 export let SITES: Site[] = [];
 
-function build(def: { id: VesselId; name: string; label: string; pts: Vec[] }): Vessel {
+function build(def: { id: VesselId; name: string; label: string; pts: Vec[] }, entry: VesselId = def.id, fork = Infinity): Vessel {
   const cum = [0];
   for (let i = 1; i < def.pts.length; i++) cum.push(cum[i - 1] + dist(def.pts[i - 1], def.pts[i]));
-  return { ...def, cum, length: cum[cum.length - 1] };
+  const path = { pts: def.pts, cum, length: cum[cum.length - 1] };
+  const n = Math.floor(path.length / STEP) + 2;
+  const cx = new Float32Array(n), cy = new Float32Array(n), ca = new Float32Array(n);
+  // the meander's phase comes from the entry vessel, so a forked vessel's two routes share one stem
+  let phase = 0; for (const ch of entry) phase = (phase * 31 + ch.charCodeAt(0)) % 997;
+  phase = (phase / 997) * Math.PI * 2;
+  // corners rounded: the average of the corner path around a point; on a shared stem, only the stem's own
+  // points count, so both branches' stems come out exactly the same
+  const centre = (d: number, lim: number) => {
+    let x = 0, y = 0;
+    for (const k of [-1, -0.5, 0, 0.5, 1]) { const q = pathPointAt(path, Math.min(lim, d + k * ROUND)); x += q.x; y += q.y; }
+    return { x: x / 5, y: y / 5 };
+  };
+  const at = (d: number) => {
+    const lim = d <= fork ? fork : Infinity;
+    const a = centre(d - 6, lim), b = centre(Math.min(lim, d + 6), lim), m = centre(d, lim);
+    const ang = Math.atan2(b.y - a.y, b.x - a.x);
+    const k = MEANDER * Math.min(1, (path.length - d) / FADE) * (0.65 * Math.sin(d / 27 + phase) + 0.35 * Math.sin(d / 15.5 + phase * 2));
+    return { x: m.x - Math.sin(ang) * k, y: m.y + Math.cos(ang) * k };
+  };
+  for (let i = 0; i < n; i++) { const q = at(Math.min(path.length, i * STEP)); cx[i] = q.x; cy[i] = q.y; }
+  // the fork point itself, so a point on the stem never blends with either branch
+  const forkPt = isFinite(fork) ? at(fork) : { x: 0, y: 0 };
+  for (let i = 0; i < n; i++) { const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1); ca[i] = Math.atan2(cy[b] - cy[a], cx[b] - cx[a]); }
+  return { ...def, cum, length: path.length, cx, cy, ca, fork, forkPt };
 }
 
+/** Where on a route's winding course a point `s` along it lies, and which way the vessel runs there. */
 export function pointAt(v: Vessel, s: number): Vec & { angle: number } {
-  return pathPointAt(v, s);
+  const c = Math.max(0, Math.min(v.length, s)), u = c / STEP, i = Math.min(v.cx.length - 2, Math.floor(u)), t = u - i;
+  if (c <= v.fork && (i + 1) * STEP > v.fork) {
+    const k = (c - i * STEP) / (v.fork - i * STEP || 1);
+    return { x: v.cx[i] + (v.forkPt.x - v.cx[i]) * k, y: v.cy[i] + (v.forkPt.y - v.cy[i]) * k, angle: v.ca[i] };
+  }
+  return { x: v.cx[i] + (v.cx[i + 1] - v.cx[i]) * t, y: v.cy[i] + (v.cy[i + 1] - v.cy[i]) * t, angle: t < 0.5 ? v.ca[i] : v.ca[i + 1] };
 }
 
 export function nearestOnVessel(v: Vessel, p: Vec): { s: number; d: number } {
@@ -81,7 +117,7 @@ function makeSites(): Site[] {
       const d = ves.length * f, stem = isFinite(forkAt(v)) && d < forkAt(v);
       // a stem site is shared by both branches: only the first branch makes it
       if (stem && !first) return;
-      const a = pointAt(ves, d);
+      const a = pathPointAt(ves, d), on = pointAt(ves, d);
       // try both sides; keep the one with the most room from the organ and other vessels, inside the map
       let best: Site | null = null, bestScore = -Infinity;
       for (const side of [1, -1]) {
@@ -93,7 +129,7 @@ function makeSites(): Site[] {
           for (const o of VESSEL_IDS) clear = Math.min(clear, nearestOnVessel(VESSELS[o], p).d - (entryOf(o) === entryOf(v) ? 50 : 70));
           for (const s of out) clear = Math.min(clear, dist(p, s) - 64);
           const score = clear - Math.abs(extra) * 0.5;
-          if (clear > 0 && score > bestScore) { bestScore = score; best = { id: `${v}-${index}`, vessel: v, index, x: p.x, y: p.y, anchor: { x: a.x, y: a.y }, stem }; }
+          if (clear > 0 && score > bestScore) { bestScore = score; best = { id: `${v}-${index}`, vessel: v, index, x: p.x, y: p.y, anchor: { x: on.x, y: on.y }, stem }; }
         }
       }
       if (best) out.push(best);
@@ -116,7 +152,7 @@ export function loadLevel(index: number) {
     const stem = build(v);
     ROUTES_OF[v.id] = v.fork.branches.map((b) => b.id);
     for (const b of v.fork.branches) {
-      VESSELS[b.id] = build({ id: b.id, name: b.name, label: b.label, pts: [...v.pts, ...b.pts] });
+      VESSELS[b.id] = build({ id: b.id, name: b.name, label: b.label, pts: [...v.pts, ...b.pts] }, v.id, stem.length);
       VESSEL_IDS.push(b.id); ENTRY_OF[b.id] = v.id; FORK_AT[b.id] = stem.length;
     }
   }
