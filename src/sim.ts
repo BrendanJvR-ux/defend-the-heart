@@ -21,7 +21,7 @@ export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number
  *  `wavesFought`: cleared waves since it was placed (IgE burns out). */
 export interface LymphNode { id: number; site: string; vessel: VesselId; type: NodeType; cd: number; flash: number; targets: BacteriumType[]; wavesFought: number }
 export interface Shot { type: NodeType; targets: BacteriumType[]; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
-export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' }
+export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' | 'sacrifice' | 'struck' }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number }
 export interface Spawn { type: PathogenType; vessel: VesselId; at: number }
 
@@ -366,11 +366,13 @@ export function firePulse(s: State): number {
   s.pulsesLeft -= 1;
   const pairs = pulsePairs(s);
   for (const { cell, target } of pairs) {
-    const q = cellPos(cell);
-    s.rings.push({ x: q.x, y: q.y, r: 46, t: 0, dur: CONFIG.immunePulse.ringSeconds, kind: 'pulse' });
-    hurt(s, target, CONFIG.pathogens[target.type].boss ? target.maxHp * CONFIG.immunePulse.bossShare : target.hp);
+    const q = cellPos(cell), tq = pathogenPos(target), boss = !!CONFIG.pathogens[target.type].boss;
+    // the cell bursts in a splash of ink; the pathogen it struck is crossed out
+    s.rings.push({ x: q.x, y: q.y, r: 44, t: 0, dur: 0.9, kind: 'sacrifice' });
+    s.rings.push({ x: tq.x, y: tq.y, r: boss ? 46 : 24, t: 0, dur: 0.9, kind: 'struck' });
+    hurt(s, target, boss ? target.maxHp * CONFIG.immunePulse.bossShare : target.hp);
     cell.hp = 0;
-    s.floaters.push({ x: q.x, y: q.y - 24, text: 'White cell gave its life', t: 0, color: '#1e6a8a' });
+    s.floaters.push({ x: q.x, y: q.y - 34, text: 'Gave its life', t: 0, color: '#1e5a78' });
     loseCell(s);
   }
   s.lastPulseHits = pairs.length;

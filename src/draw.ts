@@ -8,7 +8,7 @@ import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, previewTagBox, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut } from './organs';
-import { inkify, inkSprite, paper, hatchPattern } from './ink';
+import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
 export interface View {
   hoverVessel: VesselId | null;
@@ -76,6 +76,45 @@ function course(ctx: CanvasRenderingContext2D, v: Vessel) {
 export function vesselWidth(s: State, v: VesselId) {
   const k = s.width[v], e = k * k * (3 - 2 * k);
   return CONFIG.vesselRestWidth + (CONFIG.vesselDilatedWidth - CONFIG.vesselRestWidth) * e;
+}
+
+// ── Ink overlays: tags, bars and beads drawn as pen on paper with faint washes, to match the map ──
+const WASH = { red: '#dc9a8e', blue: '#a8d4e6', gold: '#ecd38e', green: '#bcd6a8', violet: '#c8b4dc' };
+const INKC = '#231a14', PAPERC = '#f2e9d4', INK_RED = '#6e2622', INK_BLUE = '#1e5a78';
+
+/** A paper slip with a firm ink rule, a fine second rule inside it and a small offset shadow. */
+function inkTag(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, wash: string | null = null, r = 6) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(35,26,20,0.22)'; ctx.beginPath(); ctx.roundRect(x + 2.5, y + 3, w, h, r); ctx.fill();
+  ctx.fillStyle = PAPERC; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+  if (wash) {
+    ctx.fillStyle = wash; ctx.globalAlpha = 0.55; ctx.fill(); ctx.globalAlpha = 1;
+    const hp = hatchPattern(ctx); if (hp) { ctx.fillStyle = hp; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; }
+  }
+  ctx.strokeStyle = INKC; ctx.lineWidth = 1.8; ctx.stroke();
+  ctx.strokeStyle = 'rgba(35,26,20,0.45)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.roundRect(x + 3, y + 3, w - 6, h - 6, Math.max(1, r - 3)); ctx.stroke();
+  ctx.restore();
+}
+
+/** A gauge: paper, a hatched wash filled to `frac`, ink outline and an ink line at the level. */
+function inkBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, frac: number, wash: string) {
+  const f = Math.max(0, Math.min(1, frac));
+  ctx.save();
+  ctx.fillStyle = PAPERC; ctx.fillRect(x, y, w, h);
+  if (f > 0) {
+    ctx.fillStyle = wash; ctx.fillRect(x, y, w * f, h);
+    const hp = hatchPattern(ctx); if (hp) { ctx.fillStyle = hp; ctx.globalAlpha = 0.45; ctx.fillRect(x, y, w * f, h); ctx.globalAlpha = 1; }
+    ctx.strokeStyle = INKC; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x + w * f, y); ctx.lineTo(x + w * f, y + h); ctx.stroke();
+  }
+  ctx.strokeStyle = INKC; ctx.lineWidth = h > 6 ? 1.5 : 1.1; ctx.strokeRect(x, y, w, h);
+  ctx.restore();
+}
+
+/** Floating words in ink, with a paper edge so they read over anything. */
+function inkText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, col: string, size = 24) {
+  ctx.save(); ctx.font = `italic 700 ${size}px Palatino, Georgia, serif`; ctx.textAlign = 'center';
+  ctx.lineJoin = 'round'; ctx.strokeStyle = PAPERC; ctx.lineWidth = 5; ctx.strokeText(text, x, y);
+  ctx.fillStyle = col; ctx.fillText(text, x, y); ctx.restore();
 }
 
 function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: View, t: number, flowT: number) {
@@ -232,9 +271,13 @@ function drawHealthBeads(ctx: CanvasRenderingContext2D, s: State) {
   for (let i = 0; i < n; i++) {
     const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
     const x = HEART.x + Math.cos(a) * rx, y = HEART.y + 4 + Math.sin(a) * ry;
-    ctx.fillStyle = 'rgba(244,234,216,0.9)'; ctx.beginPath(); ctx.arc(x, y, 9.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = i < s.heartHp ? '#d8343a' : 'rgba(60,40,40,0.2)';
-    ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+    // a bead of health: a hatched rose wash ringed in ink; a lost one is an empty pen circle
+    ctx.fillStyle = PAPERC; ctx.beginPath(); ctx.arc(x, y, 8.5, 0, Math.PI * 2); ctx.fill();
+    if (i < s.heartHp) {
+      ctx.fillStyle = WASH.red; ctx.fill();
+      const hp = hatchPattern(ctx); if (hp) { ctx.fillStyle = hp; ctx.globalAlpha = 0.55; ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.strokeStyle = INKC; ctx.lineWidth = 1.6; ctx.stroke();
+    } else { ctx.strokeStyle = 'rgba(35,26,20,0.4)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]); }
   }
 }
 
@@ -266,11 +309,10 @@ function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
   const low = s.no < openNeed() && !s.dilated, k = s.no / s.perks.noMax;
   ctx.save();
   ctx.globalAlpha = low ? 0.55 + 0.45 * Math.abs(Math.sin(t * 5)) : 1;
-  ctx.fillStyle = 'rgba(244,234,216,0.92)'; ctx.beginPath(); ctx.roundRect(HEART.x - w / 2 - 44, y - 13, w + 96, 26, 13); ctx.fill();
-  ctx.fillStyle = '#1e6a8a'; ctx.font = '700 16px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('NO', HEART.x - w / 2 - 34, y + 6);
-  ctx.fillStyle = 'rgba(30,20,20,0.25)'; ctx.fillRect(HEART.x - w / 2, y - 5, w, 10);
-  ctx.fillStyle = low ? '#c8402a' : '#4ab8d8'; ctx.fillRect(HEART.x - w / 2, y - 5, w * Math.max(0, k), 10);
-  ctx.fillStyle = '#2a1e18'; ctx.fillText(String(Math.floor(s.no)), HEART.x + w / 2 + 8, y + 6);
+  inkTag(ctx, HEART.x - w / 2 - 44, y - 14, w + 96, 28, null, 8);
+  ctx.fillStyle = INK_BLUE; ctx.font = 'italic 700 16px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('NO', HEART.x - w / 2 - 34, y + 6);
+  inkBar(ctx, HEART.x - w / 2, y - 5, w, 10, k, low ? WASH.red : WASH.blue);
+  ctx.fillStyle = INKC; ctx.font = '700 16px Palatino, Georgia, serif'; ctx.fillText(String(Math.floor(s.no)), HEART.x + w / 2 + 8, y + 6);
   ctx.restore();
 }
 
@@ -423,24 +465,31 @@ function cellBody(ctx: CanvasRenderingContext2D, hit: number, t: number) {
 function drawAntibody(ctx: CanvasRenderingContext2D, type: NodeType, x: number, y: number, a: number) {
   const col = NODE_COLORS[type];
   ctx.save(); ctx.translate(x, y); ctx.rotate(a + Math.PI / 2);
-  ctx.strokeStyle = col.dark; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
-  const Y = (rot: number, k: number) => { ctx.save(); ctx.rotate(rot); ctx.scale(k, k); ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, 0); ctx.lineTo(-4, -5); ctx.moveTo(0, 0); ctx.lineTo(4, -5); ctx.stroke(); ctx.restore(); };
-  if (type === 'igm') { for (let i = 0; i < 5; i++) Y((i / 5) * Math.PI * 2, 0.9); ctx.fillStyle = col.base; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill(); }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // each Y in pen, with a thin line of its node's colour down the middle
+  const Y = (rot: number, k: number) => {
+    ctx.save(); ctx.rotate(rot); ctx.scale(k, k);
+    const path = () => { ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, 0); ctx.lineTo(-4, -5); ctx.moveTo(0, 0); ctx.lineTo(4, -5); };
+    const lw = ctx.lineWidth; ctx.strokeStyle = INKC; path(); ctx.stroke();
+    ctx.strokeStyle = col.base; ctx.lineWidth = lw * 0.4; path(); ctx.stroke(); ctx.lineWidth = lw;
+    ctx.restore();
+  };
+  ctx.lineWidth = 2.6;
+  if (type === 'igm') { for (let i = 0; i < 5; i++) Y((i / 5) * Math.PI * 2, 0.9); ctx.fillStyle = col.light; ctx.strokeStyle = INKC; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   else if (type === 'igg') { ctx.lineWidth = 3; Y(0, 1.3); }
   else if (type === 'ige') {
     // IgE: a heavy, long-stemmed Y in a glow, like a harpoon
-    const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 16); g.addColorStop(0, 'rgba(240,160,210,0.8)'); g.addColorStop(1, 'rgba(240,160,210,0)');
+    const g = ctx.createRadialGradient(0, 0, 1, 0, 0, 16); g.addColorStop(0, 'rgba(240,180,215,0.5)'); g.addColorStop(1, 'rgba(240,180,215,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = col.dark; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(0, 14); ctx.lineTo(0, 0); ctx.stroke();
+    ctx.strokeStyle = INKC; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(0, 14); ctx.lineTo(0, 0); ctx.stroke();
     Y(0, 1.7);
   }
-  else { Y(-0.5, 1); Y(Math.PI - 0.5, 1); ctx.fillStyle = col.base; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, Math.PI * 2); ctx.fill(); }
+  else { Y(-0.5, 1); Y(Math.PI - 0.5, 1); ctx.fillStyle = col.light; ctx.strokeStyle = INKC; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   ctx.restore();
 }
 
 function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, frac: number, col: string) {
-  ctx.fillStyle = 'rgba(30,20,20,0.6)'; ctx.fillRect(x - w / 2, y, w, 4);
-  ctx.fillStyle = col; ctx.fillRect(x - w / 2, y, w * Math.max(0, frac), 4);
+  inkBar(ctx, x - w / 2, y, w, 5, frac, col);
 }
 
 /** Next-wave preview: a small tag at each vessel's mouth with what is coming up it. */
@@ -454,9 +503,9 @@ function drawPreview(ctx: CanvasRenderingContext2D, s: State) {
     for (const m of mine) counts.set(m.type, (counts.get(m.type) ?? 0) + 1);
     const w = 70 + counts.size * 86;
     const { x: bx, y: by } = previewTagBox(e, w);
-    ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.strokeStyle = '#c8402a'; ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.roundRect(bx, by, w, 48, 10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#c8402a'; ctx.font = '900 22px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('IN', bx + 12, by + 32);
+    inkTag(ctx, bx, by, w, 48, null, 8);
+    ctx.fillStyle = INK_RED; ctx.font = 'italic 900 22px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('IN', bx + 14, by + 32);
+    ctx.strokeStyle = 'rgba(35,26,20,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bx + 52, by + 9); ctx.lineTo(bx + 52, by + 39); ctx.stroke();
     let x = bx + 70;
     for (const [type, n] of counts) {
       drawPathogen(ctx, type, x, by + 24, 0, 0, CONFIG.pathogens[type].boss ? 0.42 : CONFIG.pathogens[type].taxon ? 1 : 1.2);
@@ -479,15 +528,17 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   // vessel names, laid out once per organ to clear the sites, the organ, the next-wave tags and each other
   ctx.font = '700 24px Palatino, Georgia, serif'; ctx.textAlign = 'center';
   if (labelCache.level !== LEVEL) labelCache = { level: LEVEL, labels: layoutLabels((text) => ctx.measureText(text).width) };
+  const avoid: { x: number; y: number; w: number; h: number }[] = [];
   for (const { v, lx, ly, text, branch } of labelCache.labels) {
     ctx.font = '700 24px Palatino, Georgia, serif';
     const tw = ctx.measureText(text).width;
+    avoid.push({ x: lx - tw / 2 - 10, y: ly - 23, w: tw + 20, h: s.dilated === v ? 66 : 32 });
     ctx.fillStyle = 'rgba(244,234,216,0.9)'; ctx.fillRect(lx - tw / 2 - 10, ly - 23, tw + 20, 32);
     ctx.fillStyle = C.ink; ctx.fillText(text, lx, ly);
     // the DILATED tag goes on the open route's own label: a branch's, or an unforked vessel's
     if (s.dilated === v && (branch || routesOf(entryOf(v)).length === 1)) {
-      ctx.fillStyle = C.pulse; ctx.beginPath(); ctx.roundRect(lx - 58, ly + 14, 116, 28, 14); ctx.fill();
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 17px Palatino, Georgia, serif'; ctx.fillText('DILATED', lx, ly + 34);
+      inkTag(ctx, lx - 58, ly + 13, 116, 30, WASH.blue, 8);
+      ctx.fillStyle = INK_BLUE; ctx.font = 'italic 700 17px Palatino, Georgia, serif'; ctx.fillText('DILATED', lx, ly + 34);
     }
   }
   drawSites(ctx, s, view, t);
@@ -499,37 +550,36 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   for (const p of s.pathogens) {
     const q = pathogenPos(p);
     if (eligible.has(p.id) && (view.touch || view.showPulseRadius)) {
-      ctx.strokeStyle = 'rgba(74,184,216,0.95)'; ctx.lineWidth = 2.4; ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = INK_BLUE; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
       ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.pathogens[p.type].boss ? 62 : CONFIG.pathogens[p.type].taxon ? 30 : 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
-    if (p.slowT > 0) { ctx.fillStyle = 'rgba(74,184,138,0.35)'; ctx.beginPath(); ctx.arc(q.x, q.y, 22, 0, Math.PI * 2); ctx.fill(); }
+    if (p.slowT > 0) { ctx.fillStyle = 'rgba(160,200,140,0.35)'; ctx.beginPath(); ctx.arc(q.x, q.y, 22, 0, Math.PI * 2); ctx.fill(); }
     // a boss hiding in a red blood cell is shown faded, with a dashed ring: nothing can touch it now
     const hide = hidden(s, p);
     if (hide) ctx.globalAlpha = 0.45;
     drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, CONFIG.pathogens[p.type].boss ? 1.2 : p.type === 'infected' ? 1.35 : 1.4, t + p.id);
     if (hide) {
       // a thick dashed ring that slowly turns, and a HIDING tag: nothing can hit it until it shows again
-      ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(200,50,60,0.95)'; ctx.lineWidth = 6; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 20;
+      ctx.globalAlpha = 1; ctx.strokeStyle = INK_RED; ctx.lineWidth = 3.5; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 20;
       ctx.beginPath(); ctx.arc(q.x, q.y, 62, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
       ctx.font = '900 26px Palatino, Georgia, serif'; ctx.textAlign = 'center';
       const tw = ctx.measureText('HIDING').width;
-      ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.beginPath(); ctx.roundRect(q.x - tw / 2 - 10, q.y - 106, tw + 20, 34, 8); ctx.fill();
-      ctx.strokeStyle = 'rgba(200,50,60,0.95)'; ctx.lineWidth = 2.5; ctx.stroke();
-      ctx.fillStyle = '#8a1e24'; ctx.fillText('HIDING', q.x, q.y - 80);
+      inkTag(ctx, q.x - tw / 2 - 12, q.y - 107, tw + 24, 36, WASH.red, 6);
+      ctx.fillStyle = INK_RED; ctx.fillText('HIDING', q.x, q.y - 80);
     }
-    if (CONFIG.pathogens[p.type].boss) bar(ctx, q.x, q.y - 66, 80, p.hp / p.maxHp, '#c8402a');
-    else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, CONFIG.pathogens[p.type].taxon || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, '#c8402a');
+    if (CONFIG.pathogens[p.type].boss) bar(ctx, q.x, q.y - 66, 80, p.hp / p.maxHp, WASH.red);
+    else if (p.hp < p.maxHp) bar(ctx, q.x, q.y - 30, CONFIG.pathogens[p.type].taxon || p.type === 'infected' ? 40 : 26, p.hp / p.maxHp, WASH.red);
   }
 
   for (const c of s.cells) {
     if (c.hp <= 0 || c.infected || c.mode === 'home') continue;
     const q = cellPos(c);
     if (view.showPulseRadius && s.phase === 'combat' && s.pulsesLeft > 0) {
-      ctx.fillStyle = 'rgba(74,184,216,0.12)'; ctx.strokeStyle = C.pulse; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+      ctx.fillStyle = 'rgba(168,212,230,0.25)'; ctx.strokeStyle = INK_BLUE; ctx.lineWidth = 1.6; ctx.setLineDash([6, 5]);
       ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.whiteCell.attackRange + 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
     }
     drawWhiteCell(ctx, q.x, q.y, c.hit, t + c.id, 1.45);
-    bar(ctx, q.x, q.y - 38, 40, c.hp / c.maxHp, '#4ab8d8');
+    bar(ctx, q.x, q.y - 38, 40, c.hp / c.maxHp, WASH.blue);
   }
 
   if (view.coachAt) {
@@ -542,28 +592,56 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     const k = r.t / r.dur;
     ctx.save();
     if (r.kind === 'pulse') {
-      ctx.strokeStyle = `rgba(74,184,216,${1 - k})`; ctx.lineWidth = 5;
+      ctx.strokeStyle = `rgba(30,90,120,${1 - k})`; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.2 + 0.8 * k), 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = `rgba(160,230,250,${0.25 * (1 - k)})`; ctx.fill();
+      ctx.fillStyle = `rgba(168,212,230,${0.3 * (1 - k)})`; ctx.fill();
+    } else if (r.kind === 'sacrifice') {
+      // the cell bursts: ink spatters outward, blots land and fade
+      const R = seeded(Math.round(r.x * 7 + r.y * 13)), e = 1 - Math.pow(1 - Math.min(1, k * 1.6), 3);
+      ctx.globalAlpha = 1 - k; ctx.strokeStyle = INKC; ctx.fillStyle = INKC; ctx.lineCap = 'round';
+      for (let i = 0; i < 14; i++) {
+        const a = R() * Math.PI * 2, len = r.r * (0.5 + R() * 0.7), w = 1.3 + R() * 2;
+        ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(r.x + Math.cos(a) * len * 0.25 * e, r.y + Math.sin(a) * len * 0.25 * e); ctx.lineTo(r.x + Math.cos(a) * len * e, r.y + Math.sin(a) * len * e); ctx.stroke();
+        ctx.beginPath(); ctx.arc(r.x + Math.cos(a) * len * e * 1.08, r.y + Math.sin(a) * len * e * 1.08, w * 1.3, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = WASH.blue; ctx.globalAlpha = 0.6 * (1 - k); ctx.beginPath(); ctx.arc(r.x, r.y, r.r * 0.6 * e, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = INKC; ctx.globalAlpha = 0.8 * (1 - k); ctx.beginPath(); ctx.arc(r.x, r.y, 5 * (1 - e * 0.6), 0, Math.PI * 2); ctx.fill();
+    } else if (r.kind === 'struck') {
+      // the struck pathogen crossed out with two quick pen strokes
+      const a = Math.min(1, k * 3), b = Math.min(1, Math.max(0, k * 3 - 1)), z = r.r;
+      ctx.globalAlpha = k < 0.7 ? 1 : (1 - k) / 0.3; ctx.strokeStyle = INK_RED; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(r.x - z, r.y - z); ctx.lineTo(r.x - z + 2 * z * a, r.y - z + 2 * z * a); ctx.stroke();
+      if (b > 0) { ctx.beginPath(); ctx.moveTo(r.x + z, r.y - z); ctx.lineTo(r.x + z - 2 * z * b, r.y - z + 2 * z * b); ctx.stroke(); }
     } else if (r.kind === 'heart') {
-      ctx.strokeStyle = `rgba(216,52,58,${0.8 * (1 - k)})`; ctx.lineWidth = 6;
+      ctx.strokeStyle = `rgba(110,38,34,${0.8 * (1 - k)})`; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.8 + 0.4 * k), 0, Math.PI * 2); ctx.stroke();
     } else if (r.kind === 'cellDown' || r.kind === 'infect') {
-      ctx.strokeStyle = r.kind === 'infect' ? `rgba(138,42,184,${1 - k})` : `rgba(200,64,42,${1 - k})`; ctx.lineWidth = 4;
+      ctx.strokeStyle = r.kind === 'infect' ? `rgba(90,40,120,${1 - k})` : `rgba(110,38,34,${1 - k})`; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.5 + k), 0, Math.PI * 2); ctx.stroke();
     } else if (r.kind === 'build') {
-      ctx.strokeStyle = `rgba(42,30,24,${1 - k})`; ctx.lineWidth = 3;
+      ctx.strokeStyle = `rgba(35,26,20,${1 - k})`; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.6 + k), 0, Math.PI * 2); ctx.stroke();
     } else {
-      ctx.fillStyle = `rgba(255,240,200,${0.7 * (1 - k)})`;
+      ctx.fillStyle = `rgba(35,26,20,${0.6 * (1 - k)})`;
       for (let i = 0; i < 6; i++) { const a = i * 1.05; ctx.beginPath(); ctx.arc(r.x + Math.cos(a) * r.r * k, r.y + Math.sin(a) * r.r * k, 2.4, 0, Math.PI * 2); ctx.fill(); }
     }
     ctx.restore();
   }
+  // floating words: in ink, nudged up until they clear the vessel names and each other
+  ctx.font = 'italic 700 24px Palatino, Georgia, serif';
   for (const f of s.floaters) {
+    const size = f.size ?? 24;
+    ctx.font = `italic 700 ${size}px Palatino, Georgia, serif`;
+    const tw = ctx.measureText(f.text).width;
+    let y = f.y - f.t * 30;
+    for (let tries = 0; tries < 8; tries++) {
+      const hit = avoid.find((b) => f.x + tw / 2 > b.x && f.x - tw / 2 < b.x + b.w && y > b.y && y - 24 < b.y + b.h);
+      if (!hit) break;
+      y = hit.y - 4;
+    }
+    avoid.push({ x: f.x - tw / 2, y: y - 24, w: tw, h: 30 });
     ctx.globalAlpha = Math.max(0, 1 - f.t / 1.4);
-    ctx.fillStyle = f.color; ctx.font = '700 28px Palatino, Georgia, serif'; ctx.textAlign = 'center';
-    ctx.fillText(f.text, f.x, f.y - f.t * 30);
+    inkText(ctx, f.text, f.x, y, f.color, size);
     ctx.globalAlpha = 1;
   }
   drawPreview(ctx, s);
@@ -577,15 +655,12 @@ function drawBossBanner(ctx: CanvasRenderingContext2D, s: State) {
   const st = CONFIG.pathogens[b.type];
   const w = 460, x = W / 2 - w / 2, y = 22;
   ctx.save();
-  ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.strokeStyle = '#8a1e24'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.roundRect(x, y, w, 64, 12); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#8a1e24'; ctx.font = '900 15px Palatino, Georgia, serif'; ctx.textAlign = 'left';
+  inkTag(ctx, x, y, w, 64, null, 8);
+  ctx.fillStyle = INK_RED; ctx.font = '900 15px Palatino, Georgia, serif'; ctx.textAlign = 'left';
   ctx.fillText('BOSS', x + 18, y + 25);
-  ctx.fillStyle = C.ink; ctx.font = '700 22px Palatino, Georgia, serif'; ctx.fillText(st.name, x + 70, y + 26);
+  ctx.fillStyle = C.ink; ctx.font = 'italic 700 22px Palatino, Georgia, serif'; ctx.fillText(st.name, x + 70, y + 26);
   ctx.textAlign = 'right'; ctx.font = '700 16px Palatino, Georgia, serif'; ctx.fillStyle = 'rgba(42,30,24,0.7)';
   ctx.fillText(`${Math.ceil(b.hp)} / ${b.maxHp}`, x + w - 18, y + 25);
-  ctx.fillStyle = 'rgba(30,20,20,0.6)'; ctx.fillRect(x + 18, y + 38, w - 36, 12);
-  const gr = ctx.createLinearGradient(0, y + 38, 0, y + 50); gr.addColorStop(0, '#e0564e'); gr.addColorStop(1, '#7a1e24');
-  ctx.fillStyle = gr; ctx.fillRect(x + 18, y + 38, (w - 36) * Math.max(0, b.hp / b.maxHp), 12);
+  inkBar(ctx, x + 18, y + 38, w - 36, 12, b.hp / b.maxHp, WASH.red);
   ctx.restore();
 }

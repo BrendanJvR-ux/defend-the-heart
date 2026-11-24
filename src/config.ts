@@ -320,7 +320,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave.',
-    hp: 24, startEnergy: 160, cells: 2, regenPerWave: 3, income: 0.75,
+    hp: 24, startEnergy: 140, cells: 2, regenPerWave: 3, income: 0.7,
     startingNodes: [{ vessel: 'portalLeft', site: 0, type: 'igm' }, { vessel: 'arteryLower', site: 1, type: 'igm' }],
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
@@ -356,7 +356,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. The hardest waves.',
-    hp: 20, startEnergy: 295, cells: 2, income: 0.7,
+    hp: 20, startEnergy: 330, cells: 2, income: 0.7,
     filtration: { fraction: 0.28, factor: 0.6 },
     startingNodes: [{ vessel: 'leftUpper', site: 2, type: 'igm' }, { vessel: 'rightUpper', site: 2, type: 'igm' }],
     map: {
