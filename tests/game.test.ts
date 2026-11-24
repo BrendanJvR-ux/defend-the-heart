@@ -946,6 +946,17 @@ describe('Defend the Heart: the bone marrow', () => {
   });
 });
 
+describe('Defend the Heart: the kidney', () => {
+  it('pathogens come tougher each wave: health ×(1 + 0.2 × waves before)', () => {
+    const K = LEVELS.findIndex((l) => l.id === 'kidney');
+    for (const w of [1, 3, 5]) {
+      const s = newGame(K); s.wave = w; startWave(s); tick(s, 4);
+      const p = s.pathogens.find((x) => !CONFIG.pathogens[x.type].boss)!; // as the wave spawns it
+      expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (1 + LEVELS[K].waveHpGrowth! * (w - 1))));
+    }
+  });
+});
+
 describe('Defend the Heart: the lymph node', () => {
   const NODE = LEVELS.findIndex((l) => l.id === 'lymphnode');
   it('every pathogen reaching the node weakens the lymph nodes on its vessel by 10%, down to half; a new wave restores them', () => {

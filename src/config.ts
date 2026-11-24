@@ -393,8 +393,8 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
-    twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 15% tougher.',
-    hp: 20, startEnergy: 380, cells: 2, income: 0.7, waveHpGrowth: 0.15,
+    twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 20% tougher.',
+    hp: 20, startEnergy: 380, cells: 2, income: 0.7, waveHpGrowth: 0.2,
     filtration: { fraction: 0.28, factor: 0.6 },
     map: {
       center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
