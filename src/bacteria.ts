@@ -17,6 +17,7 @@ export const BACTERIA_LOOK: Record<BacteriumType, Look> = {
   mtb: { base: '#d0607a', dark: '#7a2038', light: '#f6c8d4', inner: '#9a3050' },
   hpylori: { base: '#b8a838', dark: '#5e5614', light: '#ece4a8', inner: '#7a7020' },
   salmonella: { base: '#e0884a', dark: '#8a4418', light: '#f8d4b0', inner: '#a85a28' },
+  spyogenes: { base: '#d85a5a', dark: '#7a1e1e', light: '#f8c8c0', inner: '#9a2a2a' },
 };
 
 /** A fixed scatter of points (golden-angle spiral) so the inner speckle never shimmers between frames. */
@@ -131,6 +132,9 @@ function drawBody(ctx: CanvasRenderingContext2D, type: BacteriumType, hit: numbe
     // a Gram-negative rod with fine pili (its flagella all round are drawn live)
     pili(ctx, 17, 8, 12);
     rod(ctx, 32, 14, look, hit, false);
+  } else if (type === 'spyogenes') {
+    // S. pyogenes: a long, gently curving chain of small cocci
+    for (let i = 0; i < 6; i++) { const x = -19 + i * 7.6, y = Math.sin(i * 0.9) * 3; coccus(ctx, x, y, 4, 4.3, look, hit, true); }
   } else if (type === 'hpylori') {
     // H. pylori: a curved, slightly spiral rod (its tuft of flagella is drawn live)
     const curve = () => { ctx.beginPath(); ctx.moveTo(-13, 3); ctx.bezierCurveTo(-6, -8, 4, 8, 13, -3); };

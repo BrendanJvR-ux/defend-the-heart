@@ -443,3 +443,59 @@ export function drawStomach(ctx: CanvasRenderingContext2D, c: Vec, rx: number, r
   shape(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
   ctx.restore();
 }
+
+// ── Lymph node ──────────────────────────────────────────────────────────────
+/** A lymph node cut open: a bean in a thin capsule, follicles with pale germinal centres in its cortex, cords and
+ *  sinuses in its medulla, afferent lymphatics with their valves along its convex border, and the artery, vein and
+ *  efferent lymphatic at its hilum. */
+export function drawLymphNode(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell);
+  const R = seeded(53);
+  const bean = () => {
+    ctx.beginPath();
+    ctx.moveTo(rx * 0.1, -ry);
+    ctx.bezierCurveTo(rx * 0.75, -ry * 1.02, rx * 1.05, -ry * 0.45, rx * 1.0, 0);
+    ctx.bezierCurveTo(rx * 1.02, ry * 0.5, rx * 0.7, ry * 1.02, rx * 0.05, ry);
+    ctx.bezierCurveTo(-rx * 0.6, ry * 1.0, -rx * 1.0, ry * 0.55, -rx * 0.98, ry * 0.25);
+    // the hilum: a notch on the left
+    ctx.bezierCurveTo(-rx * 0.7, ry * 0.15, -rx * 0.7, -ry * 0.15, -rx * 0.98, -ry * 0.25);
+    ctx.bezierCurveTo(-rx * 1.0, -ry * 0.6, -rx * 0.55, -ry * 1.0, rx * 0.1, -ry);
+    ctx.closePath();
+  };
+  // afferent lymphatics arriving on the convex border, each with a small valve
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 7; i++) {
+    const a = -1.25 + i * 0.42, x0 = Math.cos(a) * rx * 0.98, y0 = Math.sin(a) * ry * 0.98, x1 = Math.cos(a) * rx * 1.25, y1 = Math.sin(a) * ry * 1.25;
+    ctx.strokeStyle = INK; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.strokeStyle = '#e8e0c0'; ctx.lineWidth = 4.5; ctx.stroke();
+    const vx = (x0 + x1) / 2, vy = (y0 + y1) / 2;
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(vx - Math.sin(a) * 4, vy + Math.cos(a) * 4); ctx.lineTo(vx + Math.cos(a) * 4, vy + Math.sin(a) * 4); ctx.lineTo(vx + Math.sin(a) * 4, vy - Math.cos(a) * 4); ctx.stroke();
+  }
+  const g = ctx.createRadialGradient(rx * 0.2, -ry * 0.3, 10, 0, 0, rx * 1.1);
+  g.addColorStop(0, '#f0d0c0'); g.addColorStop(0.6, '#d8a890'); g.addColorStop(1, '#a8705a');
+  bean(); ctx.fillStyle = g; ctx.fill();
+  if (kick > 0) { bean(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
+  ctx.save(); bean(); ctx.clip();
+  // the medulla: a paler core of cords and sinuses opening towards the hilum
+  ctx.fillStyle = 'rgba(245,225,210,0.75)'; ctx.beginPath(); ctx.ellipse(-rx * 0.25, 0, rx * 0.5, ry * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(150,80,70,0.55)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 12; i++) { const a = -1.3 + i * 0.24; ctx.beginPath(); ctx.moveTo(-rx * 0.75, 0); ctx.quadraticCurveTo(-rx * 0.3 + Math.cos(a) * rx * 0.2, Math.sin(a) * ry * 0.3, -rx * 0.25 + Math.cos(a) * rx * 0.5, Math.sin(a) * ry * 0.45); ctx.stroke(); }
+  // the cortex: a ring of follicles, each with a pale germinal centre
+  for (let i = 0; i < 13; i++) {
+    const a = -1.45 + i * 0.245, x = Math.cos(a) * rx * 0.72, y = Math.sin(a) * ry * 0.72, rr = 20 + R() * 6;
+    ctx.fillStyle = 'rgba(120,60,90,0.55)'; ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(250,235,220,0.85)'; ctx.beginPath(); ctx.arc(x + Math.cos(a) * 4, y + Math.sin(a) * 4, rr * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(90,40,70,0.6)';
+    for (let k = 0; k < 10; k++) { const b = R() * Math.PI * 2, d = rr * (0.6 + R() * 0.35); ctx.beginPath(); ctx.arc(x + Math.cos(b) * d, y + Math.sin(b) * d, 1.3, 0, Math.PI * 2); ctx.fill(); }
+  }
+  // the subcapsular sinus: a thin pale channel just inside the capsule
+  bean(); ctx.strokeStyle = 'rgba(250,240,225,0.8)'; ctx.lineWidth = 9; ctx.stroke();
+  ctx.restore();
+  // at the hilum: artery, vein and the efferent lymphatic leaving
+  for (const [col, dy, w] of [['#b8433a', -16, 7], ['#4a6aa8', 0, 7], ['#e8e0c0', 16, 6]] as const) {
+    ctx.strokeStyle = INK; ctx.lineWidth = w + 4; ctx.beginPath(); ctx.moveTo(-rx * 0.8, dy * 0.6); ctx.quadraticCurveTo(-rx * 1.05, dy * 1.4, -rx * 1.25, dy * 2.2); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke();
+  }
+  bean(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
+  ctx.restore();
+}

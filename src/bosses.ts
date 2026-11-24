@@ -28,7 +28,26 @@ export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: numbe
 function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const flash = hit > 0;
-  if (type === 'burrower') {
+  if (type === 'hiv') {
+    // HIV: a round virion studded with knobbed spikes (gp120), a cone-shaped capsid inside holding its RNA
+    aura(ctx, 32, t, 'rgba(110,60,150,0.4)');
+    ctx.rotate(t * 0.5);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * 28, Math.sin(a) * 28); ctx.lineTo(Math.cos(a) * 36, Math.sin(a) * 36); ctx.stroke();
+      ctx.fillStyle = flash ? '#ffffff' : '#c8a0e0'; ctx.beginPath(); ctx.arc(Math.cos(a) * 38, Math.sin(a) * 38, 3.6, 0, Math.PI * 2); ctx.fill(); ctx.lineWidth = 1.2; ctx.stroke();
+    }
+    const g = ctx.createRadialGradient(-8, -8, 3, 0, 0, 30); g.addColorStop(0, '#ecdcf6'); g.addColorStop(0.7, '#a880c8'); g.addColorStop(1, '#5a3a7a');
+    ctx.fillStyle = flash ? '#ffffff' : g; ctx.beginPath(); ctx.arc(0, 0, 29, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.4; ctx.stroke();
+    // the matrix just inside the envelope
+    ctx.strokeStyle = 'rgba(60,30,90,0.5)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    // the cone-shaped capsid, and two strands of RNA within it
+    ctx.beginPath(); ctx.moveTo(-14, -6); ctx.lineTo(13, -11); ctx.lineTo(15, 9); ctx.lineTo(-14, 5); ctx.closePath();
+    ctx.fillStyle = flash ? '#ffffff' : '#e8c46a'; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1.8; ctx.stroke();
+    ctx.strokeStyle = '#8a2a4a'; ctx.lineWidth = 1.4;
+    for (const dy of [-2, 2]) { ctx.beginPath(); for (let x = -10; x <= 11; x += 1.5) { const y = dy + Math.sin(x * 0.9 + dy) * 1.5; x === -10 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); } ctx.stroke(); }
+  } else if (type === 'burrower') {
     // an H. pylori swarm: curved rods crowded in a blob of mucus, a drill-like spiral at its front
     aura(ctx, 34, t, 'rgba(160,150,50,0.35)');
     ctx.rotate(angle);

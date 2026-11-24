@@ -6,13 +6,13 @@
 /** Vessel ids are per level ('left', 'portal', 'lowerLeft' …). */
 export type VesselId = string;
 /** The named bacteria. */
-export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb' | 'hpylori' | 'salmonella';
-export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella'];
+export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb' | 'hpylori' | 'salmonella' | 'spyogenes';
+export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella', 'spyogenes'];
 export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'infected' | BossType;
 /** What an IgG antibody recognises: Gram stain, shape and species. */
 export interface Taxon { gram: '+' | '-'; shape: 'coccus' | 'rod'; species: BacteriumType }
 /** One boss per organ, met in that organ's last wave. */
-export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium' | 'granuloma' | 'burrower';
+export type BossType = 'colony' | 'flu' | 'meningo' | 'hepatitis' | 'sepsis' | 'plasmodium' | 'granuloma' | 'burrower' | 'hiv';
 export type NodeType = 'igm' | 'igg' | 'iga' | 'ige';
 
 export interface PathogenStats {
@@ -56,6 +56,10 @@ export interface PathogenStats {
   burrows?: { every: number; for: number; speed: number };
   /** Stomach acid does not harm it: it feeds on it, regaining that much health instead. */
   acidProof?: boolean;
+  /** White cells can't touch it (nor it them): they neither fight it nor strike it with the pulse. */
+  ignoresCells?: boolean;
+  /** Every lymph node guarding its route is switched off, for the rest of the wave, as it passes. */
+  switchesOffNodes?: boolean;
 }
 
 export interface NodeStats {
@@ -154,6 +158,9 @@ export const CONFIG = {
     salmonella: { name: 'Salmonella enterica', plural: 'Salmonella', short: 'Gram− rod, fast, in groups', hp: 55, speed: 46, heartDamage: 2, contactDps: 3, bounty: 6, taxon: { gram: '-', shape: 'rod', species: 'salmonella' } },
     burrower: { name: 'H. pylori swarm', plural: 'H. pylori swarms', hp: 620, speed: 15, heartDamage: 8, contactDps: 5, bounty: 60, boss: true, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' },
       burrows: { every: 5, for: 1.6, speed: 3 }, blurb: 'A swarm of H. pylori, untouched by acid. Every few seconds it burrows into the stomach lining, where nothing can touch it, and tunnels on three times as fast.' },
+    spyogenes: { name: 'Streptococcus pyogenes', plural: 'S. pyogenes', short: 'Gram+ coccus, in long chains', hp: 75, speed: 32, heartDamage: 3, contactDps: 4, bounty: 8, taxon: { gram: '+', shape: 'coccus', species: 'spyogenes' } },
+    hiv: { name: 'HIV', plural: 'HIV', hp: 460, speed: 18, heartDamage: 8, contactDps: 0, bounty: 60, boss: true, ignoresCells: true, switchesOffNodes: true,
+      blurb: 'The virus that attacks the immune system itself. White cells can\'t touch it, and every lymph node it passes is switched off for the rest of the wave. Kill it before it gets far: IgM and IgE.' },
     plasmodium: { name: 'Plasmodium', plural: 'Plasmodia', hp: 560, speed: 16, heartDamage: 8, contactDps: 5, bounty: 60, boss: true,
       hides: { every: 6, for: 2 }, blurb: 'The malaria parasite. Every few seconds it hides inside a red blood cell, where nothing can touch it. Not a bacterium: IgM and IgE, not IgG.' },
   } as Record<PathogenType, PathogenStats>,
@@ -161,7 +168,7 @@ export const CONFIG = {
 
 // ── Levels ──────────────────────────────────────────────────────────────────
 
-export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow' | 'stomach';
+export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow' | 'stomach' | 'lymphnode';
 type P = { x: number; y: number };
 
 export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
@@ -198,6 +205,9 @@ export interface LevelDef {
   /** Liver: when its health first falls to `at` (a share of full health) or below, the gallbladder bursts and
    *  bile destroys `nodes` lymph nodes at random. */
   gallbladder?: { at: number; nodes: number };
+  /** Lymph node: every pathogen that reaches the organ weakens the lymph nodes guarding its route by `per` (a share of
+   *  their damage), down to `min`, until the wave ends. */
+  weakens?: { per: number; min: number };
   /** Kidney: pathogens grow tougher every wave: health ×(1 + `waveHpGrowth` × waves before this one). */
   waveHpGrowth?: number;
   map: {
@@ -549,6 +559,56 @@ export const LEVELS: LevelDef[] = [
         groups: [g('hpylori', 'bottomLeft', 8, 1, 3.2), g('salmonella', 'topRight', 13, 2, 1.6), g('saureus', 'left', 8, 4, 2.8), g('hpylori', 'right', 8, 6, 3), g('hijacker', 'topLeft', 6, 10, 1), g('virus', 'bottomRight', 17, 14, 0.3)] },
       { title: 'Boss: the burrowing swarm', hint: 'A swarm of H. pylori: acid-proof, and every few seconds it burrows into the lining, where nothing can touch it, and tunnels on three times as fast. Hit it hard while it is out.',
         groups: [g('burrower', 'topLeft', 1, 2, 1), g('hpylori', 'bottomLeft', 8, 4, 3), g('salmonella', 'bottomRight', 11, 6, 1.6), g('virus', 'right', 14, 12, 0.3)] },
+    ],
+  },
+  {
+    id: 'lymphnode', title: 'The Lymph Node', organ: 'Node', tagline: 'The finale: your own defences are the target.',
+    twist: 'Every pathogen that reaches the node weakens the lymph nodes guarding its vessel by 10% until the wave ends. The boss, HIV, switches off every lymph node it passes.',
+    hp: 26, startEnergy: 120, cells: 3, income: 0.6,
+    weakens: { per: 0.1, min: 0.5 },
+    map: {
+      center: { x: 800, y: 500 }, rx: 190, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      vessels: [
+        { id: 'topLeft', name: 'Upper-left vessel', label: 'Upper left', pts: [{ x: 180, y: -40 }, { x: 240, y: 120 }, { x: 410, y: 200 }],
+          fork: { branches: [
+            { id: 'topLeftOuter', name: 'Upper-left outer branch', label: 'Outer', pts: [{ x: 500, y: 300 }, { x: 636, y: 425 }] },
+            { id: 'topLeftInner', name: 'Upper-left inner branch', label: 'Inner', pts: [{ x: 590, y: 220 }, { x: 712, y: 368 }] },
+          ] } },
+        { id: 'top', name: 'Upper vessel', label: 'Upper', pts: [{ x: 820, y: -40 }, { x: 780, y: 110 }, { x: 810, y: 240 }, { x: 800, y: 350 }] },
+        { id: 'topRight', name: 'Upper-right vessel', label: 'Upper right', pts: [{ x: 1420, y: -40 }, { x: 1360, y: 120 }, { x: 1190, y: 200 }],
+          fork: { branches: [
+            { id: 'topRightOuter', name: 'Upper-right outer branch', label: 'Outer', pts: [{ x: 1100, y: 300 }, { x: 964, y: 425 }] },
+            { id: 'topRightInner', name: 'Upper-right inner branch', label: 'Inner', pts: [{ x: 1010, y: 220 }, { x: 888, y: 368 }] },
+          ] } },
+        { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 500 }, { x: 160, y: 470 }, { x: 330, y: 500 }],
+          fork: { branches: [
+            { id: 'leftUpper', name: 'Left upper branch', label: 'Upper', pts: [{ x: 470, y: 450 }, { x: 612, y: 468 }] },
+            { id: 'leftLower', name: 'Left lower branch', label: 'Lower', pts: [{ x: 470, y: 560 }, { x: 612, y: 532 }] },
+          ] } },
+        { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 500 }, { x: 1440, y: 470 }, { x: 1270, y: 500 }],
+          fork: { branches: [
+            { id: 'rightUpper', name: 'Right upper branch', label: 'Upper', pts: [{ x: 1130, y: 450 }, { x: 988, y: 468 }] },
+            { id: 'rightLower', name: 'Right lower branch', label: 'Lower', pts: [{ x: 1130, y: 560 }, { x: 988, y: 532 }] },
+          ] } },
+        { id: 'bottomLeft', name: 'Lower-left vessel', label: 'Lower left', pts: [{ x: 180, y: 1040 }, { x: 240, y: 880 }, { x: 410, y: 800 }],
+          fork: { branches: [
+            { id: 'bottomLeftOuter', name: 'Lower-left outer branch', label: 'Outer', pts: [{ x: 500, y: 700 }, { x: 636, y: 575 }] },
+            { id: 'bottomLeftInner', name: 'Lower-left inner branch', label: 'Inner', pts: [{ x: 590, y: 780 }, { x: 712, y: 632 }] },
+          ] } },
+        { id: 'bottomRight', name: 'Lower-right vessel', label: 'Lower right', pts: [{ x: 1420, y: 1040 }, { x: 1360, y: 880 }, { x: 1190, y: 800 }, { x: 1000, y: 700 }, { x: 930, y: 610 }] },
+      ],
+    },
+    waves: [
+      { title: 'Strep throat', hint: 'S. pyogenes in long chains up the left, staph from the right. Every pathogen that reaches the node weakens the lymph nodes on its vessel until the wave ends.',
+        groups: [g('spyogenes', 'left', 8, 1, 2.6), g('saureus', 'right', 6, 4, 3), g('virus', 'top', 8, 8, 0.35)] },
+      { title: 'Swollen glands', hint: 'From the upper left and lower right; hijackers from above.',
+        groups: [g('spyogenes', 'topLeft', 8, 1, 2.6), g('saureus', 'bottomRight', 7, 3, 3), g('ecoli', 'left', 6, 6, 3), g('hijacker', 'top', 3, 9, 1), g('virus', 'right', 10, 12, 0.3)] },
+      { title: 'Drainage', hint: 'Everything the body drains comes here: from every side now.',
+        groups: [g('spyogenes', 'topRight', 9, 1, 2.4), g('ecoli', 'bottomLeft', 7, 3, 3), g('saureus', 'left', 7, 2, 3), g('hijacker', 'right', 4, 9, 1), g('virus', 'bottomRight', 12, 12, 0.3)] },
+      { title: 'Overwhelmed', hint: 'The last wave before the boss. Keep your lymph nodes from being worn down.',
+        groups: [g('spyogenes', 'bottomLeft', 10, 1, 2.2), g('saureus', 'topRight', 8, 2, 2.6), g('ecoli', 'topLeft', 8, 4, 2.8), g('spyogenes', 'right', 6, 6, 2.6), g('hijacker', 'bottomRight', 5, 10, 1), g('virus', 'top', 14, 14, 0.3)] },
+      { title: 'Boss: HIV', hint: 'HIV attacks the immune system itself: white cells can\'t touch it, and every lymph node it passes is switched off for the rest of the wave. Kill it early, with IgM and IgE.',
+        groups: [g('hiv', 'topLeft', 1, 2, 1), g('spyogenes', 'bottomRight', 8, 6, 2.6), g('virus', 'left', 10, 12, 0.3)] },
     ],
   },
 ];

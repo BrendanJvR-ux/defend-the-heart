@@ -7,7 +7,7 @@ import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed } from './sim';
-import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach } from './organs';
+import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
 export interface View {
@@ -270,6 +270,7 @@ function organImages(px: number, L: LevelDef = LEVEL) {
   else if (L.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
   else if (L.id === 'marrow') drawMarrow(x, c, m.rx, m.ry, 1, 0);
   else if (L.id === 'stomach') drawStomach(x, c, m.rx, m.ry, 1, 0);
+  else if (L.id === 'lymphnode') drawLymphNode(x, c, m.rx, m.ry, 1, 0);
   else drawKidney(x, c, m.rx, m.ry, 1, 0);
   // darker organs are lifted to a common lightness, so none is solid cross-hatching
   inkify(img, { px, form: 44, level: 0.3 });
@@ -407,7 +408,15 @@ function drawSites(ctx: CanvasRenderingContext2D, s: State, view: View, t: numbe
         ctx.fillStyle = 'rgba(42,30,24,0.05)'; ctx.strokeStyle = hot ? 'rgba(42,30,24,0.6)' : 'rgba(42,30,24,0.25)'; ctx.lineWidth = 2; ctx.setLineDash([8, 7]);
         ctx.beginPath(); ctx.arc(site.x, site.y, st.range, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
       }
+      if (node.off) ctx.globalAlpha = 0.4;
       drawNodeIcon(ctx, node.type, site.x, site.y, 1.05, node.flash);
+      ctx.globalAlpha = 1;
+      if (node.off) {
+        // switched off by HIV: struck through in violet ink
+        ctx.save(); ctx.strokeStyle = 'rgba(90,40,120,0.9)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(site.x - 26, site.y - 20); ctx.lineTo(site.x + 26, site.y + 20); ctx.moveTo(site.x + 26, site.y - 20); ctx.lineTo(site.x - 26, site.y + 20); ctx.stroke(); ctx.restore();
+        inkText(ctx, 'off', site.x, site.y + 42, '#5a2878', 15);
+      } else if ((node.power ?? 1) < 1) inkText(ctx, `${Math.round((node.power ?? 1) * 100)}%`, site.x, site.y + 42, INK_RED, 15);
     } else if (s.phase === 'prep') {
       const k = 0.5 + 0.5 * Math.sin(t * 3 + site.index);
       ctx.fillStyle = hot ? 'rgba(74,184,216,0.25)' : 'rgba(255,255,255,0.55)';

@@ -1,7 +1,7 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
 import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
 import { NO_PERKS, type Perks, type RunSave } from './career';
-import { VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
+import { VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, nearestOnVessel, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
 
@@ -21,8 +21,14 @@ export type CellMode = 'home' | 'out' | 'returning';
 export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; targetId: number | null; mode: CellMode; infected: boolean }
 /** `targets`: what an IgG node is aimed at (one, or two with the dual-target upgrade); empty for other types.
  *  `wavesFought`: cleared waves since it was placed (IgE burns out). */
-export interface LymphNode { id: number; site: string; vessel: VesselId; type: NodeType; cd: number; flash: number; targets: BacteriumType[]; wavesFought: number }
-export interface Shot { type: NodeType; targets: BacteriumType[]; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
+export interface LymphNode {
+  id: number; site: string; vessel: VesselId; type: NodeType; cd: number; flash: number; targets: BacteriumType[]; wavesFought: number;
+  /** Lymph node organ: its damage this wave (1 = full), worn down by pathogens reaching the organ on its vessel. */
+  power?: number;
+  /** Switched off by HIV for the rest of the wave. */
+  off?: boolean;
+}
+export interface Shot { type: NodeType; targets: BacteriumType[]; power: number; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
 export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' | 'sacrifice' | 'struck' }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number }
 export interface Spawn { type: PathogenType; vessel: VesselId; at: number }
@@ -404,7 +410,7 @@ export function startWave(s: State): boolean {
   s.pulsesLeft = CONFIG.immunePulse.perWave;
   s.lastPulseHits = 0;
   s.spent = [];
-  for (const n of s.nodes) n.cd = 0.3;
+  for (const n of s.nodes) { n.cd = 0.3; n.power = 1; n.off = false; } // worn-down and switched-off nodes recover
   const L = VESSELS[v].length;
   s.cells = [];
   const grow = LEVELS[s.level].cellGrowth, cells = grow ? Math.min(grow.max, LEVELS[s.level].cells + grow.perWave * (s.wave - 1)) : LEVELS[s.level].cells;
@@ -434,7 +440,7 @@ export function pulsePairs(s: State): { cell: WhiteCell; target: Pathogen }[] {
   for (const c of outCells(s)) {
     let best: Pathogen | null = null;
     for (const p of s.pathogens) {
-      if (p.hp <= 0 || taken.has(p) || hidden(s, p) || !covers(c.vessel, p) || p.s <= 0) continue;
+      if (p.hp <= 0 || taken.has(p) || hidden(s, p) || CONFIG.pathogens[p.type].ignoresCells || !covers(c.vessel, p) || p.s <= 0) continue;
       if (Math.abs(p.s - c.s) > CONFIG.whiteCell.attackRange) continue;
       if (!best || p.s > best.s) best = p;
     }
@@ -610,6 +616,7 @@ export function leakSummary(s: State): LeakSummary | null {
   if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
   else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`
     + (hasTarget(s, st.taxon.species) ? '' : ` Unlock the ${name} target in Upgrades first (or borrow it for this organ): you don't have it yet.`);
+  else if (type === 'hiv') advice = 'HIV switches off every lymph node it passes and white cells can\'t touch it: stack IgM and IgE far out on its vessel, so it dies before it gets far.';
   else if (type === 'burrower') advice = 'The swarm is acid-proof and burrows out of reach every few seconds: put many nodes on its vessel, IgG aimed at H. pylori first, so it is worn down in the moments it is out.';
   else if (type === 'granuloma') advice = 'The granuloma\'s wall soaks up three quarters of every hit until enough antibodies have struck it: build many fast-firing nodes on its vessel, or break it at once with the pulse.';
   else if (type === 'plasmodium') advice = 'Plasmodium is a parasite, not a bacterium: IgM and IgE wear it down, and time the pulse for when it comes out of its red blood cell.';
@@ -664,13 +671,25 @@ export function step(s: State, dtRaw: number) {
       if (p.shedT <= 0) { p.shedT += st.sheds.every; shed.push([st.sheds.type, p.vessel, Math.max(0, p.s - 6), p.committed]); }
     }
   }
+  // HIV switches off every lymph node guarding its route as it passes
+  for (const p of s.pathogens) {
+    if (p.hp <= 0 || !CONFIG.pathogens[p.type].switchesOffNodes) continue;
+    for (const n of s.nodes) {
+      if (n.off) continue;
+      const site = siteById(n.site);
+      if (!covers(n.vessel, p, site.stem) || p.s < nearestOnVessel(VESSELS[p.vessel], site.anchor).s) continue;
+      n.off = true;
+      s.rings.push({ x: site.x, y: site.y, r: 36, t: 0, dur: 0.7, kind: 'infect' });
+      s.floaters.push({ x: site.x, y: site.y - 34, text: 'Switched off by HIV', t: 0, color: '#5a2878', size: 18 });
+    }
+  }
   for (const [type, v, at, committed] of shed) { const q = newPathogen(s, type, v, at); if (committed) q.committed = true; }
   for (const p of s.pathogens) if (!p.committed && p.s >= forkAt(p.vessel)) chooseBranch(s, p);
 
   // Lymph nodes: each fires its immunoglobulin at the most advanced pathogen on its own vessel within reach.
   for (const n of s.nodes) {
     n.cd -= dt;
-    if (n.cd > 0) continue;
+    if (n.cd > 0 || n.off) continue;
     const st = CONFIG.nodes[n.type];
     const site = siteById(n.site);
     // the most advanced pathogen in reach
@@ -680,7 +699,7 @@ export function step(s: State, dtRaw: number) {
     n.cd = st.cooldown;
     n.flash = 0.4;
     const tp = pathogenPos(best);
-    s.shots.push({ type: n.type, targets: n.targets, vessel: n.vessel, x: site.x, y: site.y, sx: site.x, sy: site.y, targetId: best.id, t: 0, dur: Math.max(0.08, dist(site, tp) / st.shotSpeed) });
+    s.shots.push({ type: n.type, targets: n.targets, power: n.power ?? 1, vessel: n.vessel, x: site.x, y: site.y, sx: site.x, sy: site.y, targetId: best.id, t: 0, dur: Math.max(0.08, dist(site, tp) / st.shotSpeed) });
   }
   for (const sh of s.shots) {
     sh.t += dt;
@@ -690,7 +709,7 @@ export function step(s: State, dtRaw: number) {
     // a shot that arrives while its boss is hiding in a red cell misses
     if (k >= 1 && p && !hidden(s, p)) {
       const st = CONFIG.nodes[sh.type];
-      const dmg = antibodyDamage(sh.type, sh.targets, p.type) * s.perks.dmg[sh.type];
+      const dmg = antibodyDamage(sh.type, sh.targets, p.type) * s.perks.dmg[sh.type] * sh.power;
       if (sh.type === 'igg') {
         // show how well the IgG matched: big and bright for a good match, small and grey for a poor one
         const m = iggMultiplier(sh.targets, p.type), q = pathogenPos(p);
@@ -727,7 +746,7 @@ export function step(s: State, dtRaw: number) {
   for (const c of outCells(s)) {
     c.hit = Math.max(0, c.hit - dt);
     const L = VESSELS[c.vessel].length;
-    const mine = s.pathogens.filter((p) => p.hp > 0 && !hidden(s, p) && covers(c.vessel, p) && p.s > 0);
+    const mine = s.pathogens.filter((p) => p.hp > 0 && !hidden(s, p) && !CONFIG.pathogens[p.type].ignoresCells && covers(c.vessel, p) && p.s > 0);
     const target = mine.reduce<Pathogen | null>((b, p) => (!b || p.s > b.s ? p : b), null);
     c.targetId = target?.id ?? null;
     const rank = outCells(s).filter((x) => x.vessel === c.vessel).indexOf(c);
@@ -756,6 +775,8 @@ export function step(s: State, dtRaw: number) {
       const entry = entryOf(p.vessel);
       s.leaks.byVessel[entry] = (s.leaks.byVessel[entry] ?? 0) + dmg;
       s.leaks.byType[p.type] = (s.leaks.byType[p.type] ?? 0) + dmg;
+      const wk = LEVELS[s.level].weakens;
+      if (wk) for (const n of s.nodes) if (covers(n.vessel, p, siteById(n.site).stem)) n.power = Math.max(wk.min, (n.power ?? 1) - wk.per);
       s.leaked++;
       s.heartKick = 1;
       s.rings.push({ x: HEART.x, y: HEART.y, r: Math.max(LEVELS[s.level].map.rx, LEVELS[s.level].map.ry) + 30, t: 0, dur: 0.6, kind: 'heart' });
