@@ -1,5 +1,5 @@
 // Drawing for Defend the Heart: a stylised anatomy plate, kept calm so the white cells stand out.
-import { CONFIG, type BacteriumType, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
+import { CONFIG, LEVELS, type LevelDef, type BacteriumType, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
 import { drawBoss } from './bosses';
 import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec, type Vessel } from './level';
 import { drawBacterium } from './bacteria';
@@ -42,23 +42,26 @@ const C = {
   cell: '#fdfcf8', nucleus: '#6a4aa8', pulse: '#4ab8d8',
 };
 
-let bg: HTMLCanvasElement | null = null;
-let bgFor = '';
-function background(): HTMLCanvasElement {
-  if (bg && bgFor === LEVEL.id) return bg;
-  bgFor = LEVEL.id;
-  bg = document.createElement('canvas');
+// the map backgrounds made so far, by organ (the current one and one made ahead)
+const BGS = new Map<string, HTMLCanvasElement>();
+function background(L: LevelDef = LEVEL): HTMLCanvasElement {
+  const have = BGS.get(L.id);
+  if (have) return have;
+  if (BGS.size >= 2) BGS.delete(BGS.keys().next().value!);
+  const bg = document.createElement('canvas');
+  BGS.set(L.id, bg);
   bg.width = W * 2; bg.height = H * 2;
   const ctx = bg.getContext('2d')!;
   ctx.scale(2, 2);
   paper(ctx, W, H, 3);
   // a faint warm wash where the organ sits
-  const g = ctx.createRadialGradient(HEART.x, HEART.y, 60, HEART.x, HEART.y, 420 + Math.max(LEVEL.map.rx, LEVEL.map.ry));
+  const O = L.map.center;
+  const g = ctx.createRadialGradient(O.x, O.y, 60, O.x, O.y, 420 + Math.max(L.map.rx, L.map.ry));
   g.addColorStop(0, 'rgba(230,170,150,0.18)'); g.addColorStop(1, 'rgba(230,170,150,0)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.strokeRect(10, 10, W - 20, H - 20);
   ctx.lineWidth = 0.8; ctx.strokeRect(15, 15, W - 30, H - 30);
-  if (LEVEL.id === 'liver') {
+  if (L.id === 'liver') {
     // the gut, inked on its own image so the paper behind stays as it is
     const gut = document.createElement('canvas'); gut.width = 640; gut.height = 240;
     const x = gut.getContext('2d', { willReadFrequently: true })!; x.scale(2, 2); x.translate(0, -880); drawGut(x);
@@ -249,29 +252,43 @@ function drawHeartBody(ctx: CanvasRenderingContext2D) {
 
 // ── Organ images: each organ's still drawing is made once and reused every frame ──
 const ORGAN_HALF = ORGAN_SPAN / 2; // map units around the organ's centre that the image covers
-let organCache: { key: string; img: HTMLCanvasElement; red: HTMLCanvasElement } | null = null;
-function organImages(px: number) {
-  const m = LEVEL.map, key = organCacheKey(LEVEL.id, m.rx, m.ry, px);
-  if (organCache?.key === key) return organCache;
+// organ images made so far (the current organ, and one made ahead of time)
+const ORGANS = new Map<string, { img: HTMLCanvasElement; red: HTMLCanvasElement }>();
+function organImages(px: number, L: LevelDef = LEVEL) {
+  const m = L.map, key = organCacheKey(L.id, m.rx, m.ry, px);
+  const have = ORGANS.get(key);
+  if (have) return have;
+  if (ORGANS.size >= 2) ORGANS.delete(ORGANS.keys().next().value!);
   const size = Math.ceil(ORGAN_HALF * 2 * px);
   const img = document.createElement('canvas'); img.width = img.height = size;
   const x = img.getContext('2d')!; x.scale(px, px);
   const c = { x: ORGAN_HALF, y: ORGAN_HALF };
-  if (LEVEL.id === 'heart') { x.translate(c.x, c.y); drawHeartBody(x); }
-  else if (LEVEL.id === 'lungs') drawLungs(x, c, 1, 0);
-  else if (LEVEL.id === 'brain') drawBrain(x, c, m.rx, m.ry, 1, 0);
-  else if (LEVEL.id === 'liver') drawLiver(x, c, m.rx, m.ry, 1, 0);
-  else if (LEVEL.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
-  else if (LEVEL.id === 'marrow') drawMarrow(x, c, m.rx, m.ry, 1, 0);
-  else if (LEVEL.id === 'stomach') drawStomach(x, c, m.rx, m.ry, 1, 0);
+  if (L.id === 'heart') { x.translate(c.x, c.y); drawHeartBody(x); }
+  else if (L.id === 'lungs') drawLungs(x, c, 1, 0);
+  else if (L.id === 'brain') drawBrain(x, c, m.rx, m.ry, 1, 0);
+  else if (L.id === 'liver') drawLiver(x, c, m.rx, m.ry, 1, 0);
+  else if (L.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
+  else if (L.id === 'marrow') drawMarrow(x, c, m.rx, m.ry, 1, 0);
+  else if (L.id === 'stomach') drawStomach(x, c, m.rx, m.ry, 1, 0);
   else drawKidney(x, c, m.rx, m.ry, 1, 0);
   // darker organs are lifted to a common lightness, so none is solid cross-hatching
   inkify(img, { px, form: 44, level: 0.3 });
   // a red copy of the same shape, laid over it when the organ is hit
   const red = document.createElement('canvas'); red.width = red.height = size;
   const r = red.getContext('2d')!; r.drawImage(img, 0, 0); r.globalCompositeOperation = 'source-atop'; r.fillStyle = 'rgb(255,60,50)'; r.fillRect(0, 0, size, size);
-  organCache = { key, img, red };
-  return organCache;
+  const made = { img, red };
+  ORGANS.set(key, made);
+  return made;
+}
+
+let lastPx = 1;
+/** Make an organ's background and inked image ahead of time (when the browser is idle), so opening it later doesn't
+ *  pause while it is inked. */
+export function prepareOrgan(index: number) {
+  const L = LEVELS[index];
+  if (!L || typeof document === 'undefined') return;
+  const idle = (f: () => void) => ('requestIdleCallback' in window ? (window as unknown as { requestIdleCallback: (f: () => void) => void }).requestIdleCallback(f) : setTimeout(f, 200));
+  idle(() => { background(L); idle(() => organImages(lastPx, L)); });
 }
 
 /** Draw the organ from its image, scaled by its beat or breath, with the hit flash over it. */
@@ -279,6 +296,7 @@ function drawOrganImage(ctx: CanvasRenderingContext2D, scale: number, kick: numb
   // the image is made at the on-screen scale (rounded to a half, so resizing only rebuilds it at each step),
   // and never more than 4096 pixels across
   const m = ctx.getTransform(), px = organImageScale(Math.hypot(m.a, m.b));
+  lastPx = px;
   const { img, red } = organImages(px), c = LEVEL.map.center;
   ctx.save(); ctx.translate(c.x, c.y); ctx.scale(scale, scale);
   ctx.drawImage(img, -ORGAN_HALF, -ORGAN_HALF, ORGAN_HALF * 2, ORGAN_HALF * 2);
@@ -300,6 +318,18 @@ function drawHealthBeads(ctx: CanvasRenderingContext2D, s: State) {
       const hp = hatchPattern(ctx); if (hp) { ctx.fillStyle = hp; ctx.globalAlpha = 0.55; ctx.fill(); ctx.globalAlpha = 1; }
       ctx.strokeStyle = INKC; ctx.lineWidth = 1.6; ctx.stroke();
     } else { ctx.strokeStyle = 'rgba(35,26,20,0.4)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]); }
+  }
+  // the liver's gallbladder: a green drop on the ring at the health where it bursts, pulsing as health nears it
+  const gb = LEVEL.gallbladder;
+  if (gb && !s.bile.length) {
+    const at = Math.floor(n * gb.at), a = -Math.PI / 2 + ((at - 0.5) / n) * Math.PI * 2;
+    const x = HEART.x + Math.cos(a) * (rx + 22), y = HEART.y + 4 + Math.sin(a) * (ry + 22);
+    const near = s.heartHp - at <= 3, k = near ? 1 + 0.25 * Math.abs(Math.sin(performance.now() / 160)) : 1;
+    ctx.save(); ctx.translate(x, y); ctx.scale(k, k); ctx.rotate(a + Math.PI / 2);
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.bezierCurveTo(7, -2, 8, 4, 0, 8); ctx.bezierCurveTo(-8, 4, -7, -2, 0, -11); ctx.closePath();
+    ctx.fillStyle = near ? 'rgba(120,170,40,0.95)' : 'rgba(150,190,80,0.8)'; ctx.fill(); ctx.strokeStyle = INKC; ctx.lineWidth = 1.3; ctx.stroke();
+    ctx.restore();
+    if (near) inkText(ctx, 'gallbladder', x, y - 16, '#3e6a1e', 14);
   }
 }
 

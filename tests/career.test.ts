@@ -1,3 +1,4 @@
+import { entryOf, ENTRY_IDS } from '../src/level';
 import { describe, it, expect } from 'vitest';
 import { LEVELS } from '../src/config';
 import * as M from '../src/level';
@@ -91,6 +92,17 @@ describe('Career: continuing a game', () => {
     const r = resumeGame(run);
     expect(r.nodes.length).toBe(run.nodes.length - 1);
     expect(r.nodes.some((n) => n.site === 'nowhere-9')).toBe(false);
+  });
+
+  it('a run saved before every vessel had a free IgM gets the free IgMs it is missing, and only those', () => {
+    const old = { level: 1, wave: 2, heartHp: 15, energy: 300, no: 80, nodes: [{ site: newGame(1).nodes[0].site, type: 'iga' as const, targets: [], wavesFought: 1 }] };
+    const s = resumeGame(old);
+    expect(new Set(s.nodes.map((n) => entryOf(n.vessel))).size).toBe(ENTRY_IDS.length); // every vessel has one
+    expect(s.nodes.length).toBe(ENTRY_IDS.length); // the saved IgA counts for its own vessel
+    expect(s.energy).toBe(300);
+    // a newer save is left as it is (on the liver, bile may have taken a vessel's only node)
+    const kept = resumeGame({ ...old, freeNodes: true });
+    expect(kept.nodes.length).toBe(1);
   });
 
   it('a run for an organ that does not exist starts a fresh heart', () => {

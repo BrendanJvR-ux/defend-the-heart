@@ -97,14 +97,7 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 +
     const site = SITES.find((x) => x.vessel === n.vessel && x.index === n.site);
     if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets: n.type === 'igg' ? ['saureus'] : [], wavesFought: 0 });
   }
-  // every vessel starts with one free IgM: on its second site out (its first if it has only one), on the shared stem of a fork
-  for (const e of ENTRY_IDS) {
-    if (s.nodes.some((n) => entryOf(n.vessel) === e)) continue;
-    const all = SITES.filter((x) => entryOf(x.vessel) === e), stem = all.filter((x) => x.stem);
-    const mine = (stem.length ? stem : all).sort((a, b) => a.index - b.index);
-    const site = mine.find((x) => x.index === 1) ?? mine[0];
-    if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: 'igm', cd: 0, flash: 0, targets: [], wavesFought: 0 });
-  }
+  giveFreeNodes(s);
   if (perks.extraNode) {
     // one more IgM, on the first free site guarding the vessel bringing the most into wave 1
     const hp = new Map<VesselId, number>();
@@ -115,6 +108,18 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 +
     if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: 'igm', cd: 0, flash: 0, targets: [], wavesFought: 0 });
   }
   return s;
+}
+
+/** Every vessel without a lymph node gets one free IgM: on its second site out (its first if it has only one),
+ *  on the shared stem of a fork. */
+function giveFreeNodes(s: State) {
+  for (const e of ENTRY_IDS) {
+    if (s.nodes.some((n) => entryOf(n.vessel) === e)) continue;
+    const all = SITES.filter((x) => entryOf(x.vessel) === e), stem = all.filter((x) => x.stem);
+    const mine = (stem.length ? stem : all).sort((a, b) => a.index - b.index);
+    const site = mine.find((x) => x.index === 1 && !s.nodes.some((n) => n.site === x.id)) ?? mine.find((x) => !s.nodes.some((n) => n.site === x.id));
+    if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: 'igm', cd: 0, flash: 0, targets: [], wavesFought: 0 });
+  }
 }
 
 /** Put a saved build phase back: the organ, wave, health, energy, NO and nodes. Nodes on sites this
@@ -138,6 +143,8 @@ export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
     if (n.type === 'igg' && !targets.length) targets = ['saureus'];
     s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets, wavesFought: n.wavesFought | 0 });
   }
+  // a save from before every vessel started with a free IgM gets the ones it is missing
+  if (!run.freeNodes) giveFreeNodes(s);
   return s;
 }
 

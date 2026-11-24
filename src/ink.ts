@@ -115,7 +115,7 @@ export function inkify(c: HTMLCanvasElement, o: InkOpts) {
 
 /** Inked sprites, kept and reused: a drawing made once per key and on-screen size. */
 const SPRITES = new Map<string, HTMLCanvasElement>();
-const MAX_SPRITES = 220;
+const MAX_SPRITES = 360; // a boss's 64 animation frames fit alongside everything else
 
 /** Draw `draw` (centred on the origin, `half` units each way) inked, at the current transform's origin.
  *  Without a document (tests) it draws directly. */

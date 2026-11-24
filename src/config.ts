@@ -346,7 +346,7 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
-    twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave.',
+    twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave. Fall to half health and the gallbladder bursts: bile destroys two of your lymph nodes.',
     hp: 24, startEnergy: 60, cells: 2, regenPerWave: 3, income: 0.7, gallbladder: { at: 0.5, nodes: 2 },
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],

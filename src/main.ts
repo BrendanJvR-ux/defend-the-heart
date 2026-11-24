@@ -5,11 +5,12 @@ import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
   type State, newGame, step, advance, nextSpeed, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
   aliveCells, wave, resumeGame, leakSummary, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
-  hasTarget, borrowTarget, selectableTargets, pathogenPos, iggMultiplier, wallLeft, hidden, type Pathogen,
+  hasTarget, borrowTarget, selectableTargets, aimedAt, pathogenPos, iggMultiplier, wallLeft, hidden, type Pathogen,
 } from './sim';
 import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
-import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, type View } from './draw';
+import { unlockAudio, isMuted, setMuted, sfx } from './sound';
+import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, prepareOrgan, type View } from './draw';
 
 // ── The career: organs cleared, the game in progress, saved in this browser ──
 const store: KV = {
@@ -65,7 +66,8 @@ function pathogenAt(p: { x: number; y: number }): Pathogen | null {
   let best: Pathogen | null = null, bd = Infinity;
   for (const q of s.pathogens) {
     if (q.hp <= 0 || q.s <= 0) continue;
-    const st = CONFIG.pathogens[q.type], d = dist(p, pathogenPos(q)), reach = (st.boss ? 52 : q.type === 'infected' ? 26 : 22) + (view.touch ? 10 : 0);
+    // small enough that the rest of a busy vessel still opens it when clicked
+    const st = CONFIG.pathogens[q.type], d = dist(p, pathogenPos(q)), reach = (st.boss ? 44 : q.type === 'infected' ? 20 : 16) + (view.touch ? 8 : 0);
     if (d <= reach && d < bd) { bd = d; best = q; }
   }
   return best;
@@ -143,8 +145,9 @@ function targetButtons(act: string, disabled: (b: BacteriumType) => string): str
       const can = career.gold >= fee && s.phase === 'prep';
       return `<button data-act="borrow" data-target="${b}" ${can ? '' : 'disabled'} title="${can ? `Borrow for this organ: ${fee} gold` : `Needs ${fee} gold (you have ${career.gold})`}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>Borrow for this organ · ${fee} gold</small></span></button>`;
     }
-    const why = disabled(b);
-    return `<button data-act="${act}" data-target="${b}" ${why ? 'disabled' : ''} title="${esc(why)}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>${esc(why || st.short || '')}${s.borrowed.includes(b) ? ' · borrowed' : ''}</small></span></button>`;
+    const why = disabled(b), n = aimedAt(s, b, view.selectedSite ?? undefined);
+    const count = `${n} of ${CONFIG.iggPerTarget} aimed`;
+    return `<button data-act="${act}" data-target="${b}" ${why ? 'disabled' : ''} title="${esc(why)}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>${esc(why && !why.startsWith('Already') ? why : count)}${s.borrowed.includes(b) ? ' · borrowed' : ''}</small></span></button>`;
   }).join('')}</div>`;
 }
 
@@ -486,10 +489,16 @@ function startCareer() {
 }
 $('btnPause').addEventListener('click', togglePause);
 $('btnSpeed').addEventListener('click', () => { s.speed = nextSpeed(s.speed); });
+const toggleSound = () => { unlockAudio(); setMuted(!isMuted()); toast(isMuted() ? 'Sound off.' : 'Sound on.'); };
+$('btnSound').addEventListener('click', toggleSound);
+// browsers only allow sound after the player has touched the page
+window.addEventListener('pointerdown', unlockAudio, { capture: true });
+window.addEventListener('keydown', unlockAudio, { capture: true });
 $('btnRestart').addEventListener('click', restart);
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
   const keyed = /^[1-9]$/.test(e.key) ? map.VESSEL_IDS[Number(e.key) - 1] : undefined;
+  if ((e.key === 'm' || e.key === 'M') && tag !== 'INPUT') { toggleSound(); return; }
   if (menuPage) { if (e.key === 'Escape' && gameShown && menuPage.page !== 'switch') { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); } return; }
   if (keyed) choose(keyed);
   // Esc steps back from the IgG target list, then closes
@@ -545,7 +554,8 @@ function renderPanel() {
     const L = levelDef(s);
     h = `<section class="card organ"><h3>Level ${s.level + 1} · ${esc(L.title)}</h3><p class="hint small"><b>${esc(L.tagline)}</b> ${esc(L.twist)}</p>
         <div class="levels">${LEVELS.map((l, i) => `<button data-act="level" data-level="${i}" class="${i === s.level ? 'on' : ''}" ${i < unlocked ? '' : 'disabled'} title="${i < unlocked ? (i === s.level ? 'Restart this organ' : `Play ${esc(l.title)}`) : 'Locked: clear the previous organ'}">${i + 1}<small>${i < unlocked ? esc(organTitle(i)) : 'locked'}</small></button>`).join('')}</div></section>
-      ${(() => { const miss = missingTargets(s.level, s.perks).filter((b) => !s.borrowed.includes(b)); return miss.length ? `<p class="notice">Bacteria here you have no IgG target for: ${bugNames(miss)}. An IgG aimed at something else hits them at only ×0.5 to ×2. <button data-act="shop">Upgrades (${career.gold} gold)</button> ${miss.map((b) => `<button data-act="borrow" data-target="${b}" ${career.gold >= CONFIG.borrowTargetGold ? '' : 'disabled'}>Borrow <i>${esc(CONFIG.pathogens[b].plural)}</i> for this organ · ${CONFIG.borrowTargetGold} gold</button>`).join(' ')}</p>` : ''; })()}
+      ${(() => { const miss = missingTargets(s.level, s.perks).filter((b) => !s.borrowed.includes(b)); return miss.length ? `<p class="notice">Bacteria here you have no IgG target for: ${bugNames(miss)}. An IgG aimed at something else hits them at only ×0.5 to ×2. <button data-act="shop">Upgrades (${career.gold} gold)</button></p>
+        <details class="borrow"><summary>Borrow a target for this organ · ${CONFIG.borrowTargetGold} gold each</summary><div class="flist">${miss.map((b) => `<button data-act="borrow" data-target="${b}" ${career.gold >= CONFIG.borrowTargetGold ? '' : 'disabled'}><i>${esc(CONFIG.pathogens[b].plural)}</i></button>`).join('')}</div></details>` : ''; })()}
       ${s.borrowed.length ? `<p class="hint small">Borrowed for this organ: ${bugNames(s.borrowed)}. At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium.</p>` : `<p class="hint small">At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium on an organ.</p>`}
       <h2><small>Prepare · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>
       <p class="hint">What comes, and up which vessels, you will see once the wave begins: build for anything.</p>
@@ -613,6 +623,7 @@ function renderHud() {
   $('pulseStat').textContent = s.phase === 'combat' ? (s.pulsesLeft > 0 ? 'Ready' : 'Used') : s.phase === 'prep' ? 'Next wave' : '—';
   $('btnPause').textContent = s.paused ? 'Resume' : 'Pause';
   $('btnSpeed').textContent = `Speed ×${s.speed}`;
+  $('btnSound').textContent = isMuted() ? 'Sound off' : 'Sound on';
   document.body.dataset.phase = s.phase;
 }
 
@@ -658,7 +669,35 @@ function refresh(now: number) {
   draw(ctx, s, view, now / 1000);
 }
 
-let last = performance.now();
+let last = performance.now(), preparedFor = -1;
+
+// ── Sound: played for what happened since the last frame ──
+const heardRings = new WeakSet<object>(), heardBosses = new Set<number>();
+let heardPhase = '', beatT = 0;
+function sounds(dt: number) {
+  for (const r of s.rings) {
+    if (heardRings.has(r)) continue;
+    heardRings.add(r);
+    if (r.kind === 'pop') sfx.pop();
+    else if (r.kind === 'heart') sfx.hit();
+    else if (r.kind === 'sacrifice') sfx.sacrifice();
+    else if (r.kind === 'cellDown' || r.kind === 'infect') sfx.cellLost();
+    else if (r.kind === 'build') sfx.build();
+  }
+  for (const p of s.pathogens) if (CONFIG.pathogens[p.type].boss && !heardBosses.has(p.id)) { heardBosses.add(p.id); sfx.boss(); }
+  if (s.phase !== heardPhase) {
+    if (s.phase === 'combat' && heardPhase === 'prep') sfx.wave();
+    else if (s.phase === 'victory') sfx.win();
+    else if (s.phase === 'defeat') sfx.lose();
+    heardPhase = s.phase;
+  }
+  // a heartbeat under the wave, faster and louder as the organ weakens
+  if (s.phase === 'combat' && !s.paused) {
+    const k = 1 - s.heartHp / levelDef(s).hp;
+    beatT -= dt;
+    if (beatT <= 0) { beatT = 1.1 - 0.55 * k; sfx.beat(0.35 + 0.65 * k); }
+  }
+}
 function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
@@ -669,10 +708,15 @@ function frame(now: number) {
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
   refresh(now);
   updateInspect();
+  sounds(dt);
+  // once an organ is won, ink the next one while the player reads the result, so it opens without a pause
+  if (s.phase === 'victory' && preparedFor !== s.level + 1) { preparedFor = s.level + 1; prepareOrgan(s.level + 1); }
   requestAnimationFrame(frame);
 }
 resize();
 openMenu();
+// the game in progress is what Continue opens: make it ready while the menu is up
+if (career.run) prepareOrgan(career.run.level);
 refresh(performance.now());
 requestAnimationFrame(frame);
 

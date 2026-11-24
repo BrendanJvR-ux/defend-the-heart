@@ -12,11 +12,16 @@ function aura(ctx: CanvasRenderingContext2D, r: number, t: number, col: string) 
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, r * 1.6 * k, 0, Math.PI * 2); ctx.fill();
 }
 
-/** A boss, inked. Its drawing moves, so frames are inked at eight a second (at most 2 pixels a unit) and kept a while. */
+/** A boss's animation repeats every LOOP seconds, so its inked frames (PHASES of them) are made once and reused. */
+const LOOP = Math.PI * 4, PHASES = 64;
+
+/** A boss, inked. The frame is chosen by where it is in its animation loop; the boss is turned to face its way and
+ *  a hit flashes over it, so neither needs frames of its own. */
 export function drawBoss(ctx: CanvasRenderingContext2D, type: BossType, x: number, y: number, angle: number, hit: number, scale: number, t: number) {
-  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
-  const tq = Math.round(t * 8) / 8, aq = Math.round(angle / (Math.PI / 16)) * (Math.PI / 16);
-  inkSprite(ctx, `boss:${type}:${hit > 0 ? 'hit' : ''}:${tq}:${aq}`, 66, (c) => drawBossColour(c, type, 0, 0, aq, hit, 1, tq), { gap: 2.2, lw: 0.36, wash: 0.5 }, 2);
+  ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale); ctx.rotate(angle);
+  const phase = Math.floor(((((t % LOOP) + LOOP) % LOOP) / LOOP) * PHASES) % PHASES, tq = (phase / PHASES) * LOOP;
+  inkSprite(ctx, `boss:${type}:${phase}`, 66, (c) => drawBossColour(c, type, 0, 0, 0, 0, 1, tq), { gap: 2.2, lw: 0.36, wash: 0.5 }, 2);
+  if (hit > 0) { ctx.globalAlpha = Math.min(1, hit / 0.15) * 0.45; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 40, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();
 }
 
@@ -49,7 +54,7 @@ function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number
     // a tuberculous granuloma: a cheesy (caseous) core full of acid-fast rods, ringed by a Langhans giant cell
     // with its horseshoe of nuclei, palisades of epithelioid cells, and a cuff of small dark lymphocytes
     aura(ctx, 34, t, 'rgba(150,70,60,0.35)');
-    ctx.rotate(angle * 0.15 + t * 0.1);
+    ctx.rotate(angle * 0.15);
     const R = 36;
     ctx.fillStyle = flash ? '#ffffff' : '#c8a098'; ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.fill();
     // the lymphocyte cuff
@@ -128,7 +133,7 @@ function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number
   } else if (type === 'flu') {
     // a mother virus: a big spiked capsid, with buds of new virions on its surface
     aura(ctx, 30, t, 'rgba(138,74,184,0.45)');
-    ctx.rotate(t * 0.6);
+    ctx.rotate(t * 0.5);
     ctx.strokeStyle = INK; ctx.lineWidth = 2;
     for (let i = 0; i < 24; i++) {
       const a = (i / 24) * Math.PI * 2, ha = i % 3 !== 2;
@@ -153,7 +158,7 @@ function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number
       }
     }
     for (let i = 0; i < 3; i++) {
-      const a = t * 1.3 + i * 2.1, bud = 0.6 + 0.4 * Math.sin(t * 2 + i);
+      const a = t * 1.5 + i * 2.1, bud = 0.6 + 0.4 * Math.sin(t * 2 + i);
       ctx.fillStyle = '#b07ad8'; ctx.strokeStyle = INK; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.arc(Math.cos(a) * 26, Math.sin(a) * 26, 7 * bud, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
@@ -177,7 +182,7 @@ function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number
   } else if (type === 'hepatitis') {
     // a giant icosahedral virus, healing: green sparks of regrowth circle it
     aura(ctx, 32, t, 'rgba(78,160,82,0.45)');
-    ctx.save(); ctx.rotate(t * 0.4);
+    ctx.save(); ctx.rotate(t * 0.5);
     const hex = (r: number) => { ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); };
     const g = ctx.createRadialGradient(-8, -8, 2, 0, 0, 32); g.addColorStop(0, '#f6d08a'); g.addColorStop(0.6, '#d0862e'); g.addColorStop(1, '#7a4410');
     hex(32); ctx.fillStyle = flash ? '#ffffff' : g; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.8; ctx.stroke();
@@ -202,7 +207,7 @@ function drawBossColour(ctx: CanvasRenderingContext2D, type: BossType, x: number
   } else {
     // sepsis: a giant hijacker, barbed and spinning, in a blood-red haze
     aura(ctx, 34, t, 'rgba(160,20,30,0.55)');
-    ctx.rotate(t * 1.6);
+    ctx.rotate(t * 1.5);
     ctx.strokeStyle = INK; ctx.lineWidth = 2.4;
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;

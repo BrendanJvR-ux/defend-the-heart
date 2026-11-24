@@ -93,6 +93,8 @@ export interface RunSave {
   borrowed?: BacteriumType[];
   /** Liver: where the gallbladder's bile fell (it has burst if any). */
   bile?: { x: number; y: number }[];
+  /** Saved since every vessel started with a free IgM (older saves get theirs when they are continued). */
+  freeNodes?: boolean;
 }
 
 export interface Career {
@@ -194,6 +196,7 @@ export function snapshot(s: State): RunSave {
     nodes: s.nodes.map((n) => ({ site: n.site, type: n.type, targets: [...n.targets], wavesFought: n.wavesFought })),
     borrowed: [...s.borrowed],
     bile: s.bile.map((p) => ({ x: p.x, y: p.y })),
+    freeNodes: true,
   };
 }
 

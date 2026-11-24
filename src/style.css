@@ -175,3 +175,6 @@ body.menu-open #btnPause, body.menu-open #btnSpeed, body.menu-open #btnRestart {
 .popover.inspect p { margin: 3px 0; }
 .popover.inspect .nogauge { height: 9px; margin: 2px 0 6px; }
 .popover.inspect .nogauge i { background: var(--hatch-x), #dc9a8e; }
+details.borrow { margin-top: -4px; }
+details.borrow summary { font-size: 13px; }
+@media (max-width: 700px) { .popover.inspect { top: 8px !important; bottom: auto; max-height: 45vh; } }
