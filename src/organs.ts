@@ -265,55 +265,59 @@ export function drawKidney(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry
   ctx.restore();
 }
 
-/** The spleen: a purple crescent with a notched upper border and the splenic vessels at its hilum. */
+/** The spleen: a tilted, crimson-plum wedge, its upper border cut by deep notches, its cut face speckled with the
+ *  pale nodules of white pulp, a thin pale capsule round it, and the splenic vessels fanning in at its hilum. */
 export function drawSpleen(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
-  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell);
+  ctx.save(); ctx.translate(c.x, c.y); ctx.scale(swell, swell); ctx.rotate(-0.32);
   const shape = () => {
     ctx.beginPath();
-    ctx.moveTo(-rx * 0.1, -ry);
-    // convex outer border, notched near the top
-    ctx.bezierCurveTo(rx * 0.55, -ry * 1.02, rx * 1.05, -ry * 0.55, rx * 0.98, -ry * 0.05);
-    ctx.bezierCurveTo(rx * 1.02, ry * 0.55, rx * 0.6, ry * 1.02, -rx * 0.05, ry);
-    // concave inner (hilar) border
-    ctx.bezierCurveTo(-rx * 0.75, ry * 0.95, -rx * 1.02, ry * 0.4, -rx * 0.55, ry * 0.1);
-    ctx.bezierCurveTo(-rx * 0.4, 0, -rx * 0.4, -ry * 0.1, -rx * 0.55, -ry * 0.2);
-    ctx.lineTo(-rx * 0.72, -ry * 0.3); ctx.lineTo(-rx * 0.58, -ry * 0.38); // a notch
-    ctx.bezierCurveTo(-rx * 1.0, -ry * 0.55, -rx * 0.85, -ry * 0.98, -rx * 0.1, -ry);
+    ctx.moveTo(-rx * 0.15, -ry);
+    // the convex diaphragmatic surface
+    ctx.bezierCurveTo(rx * 0.7, -ry * 0.98, rx * 1.12, -ry * 0.4, rx * 0.95, ry * 0.25);
+    ctx.bezierCurveTo(rx * 0.85, ry * 0.75, rx * 0.4, ry * 1.04, -rx * 0.12, ry * 0.96);
+    // the flatter visceral face, with the hilum
+    ctx.bezierCurveTo(-rx * 0.62, ry * 0.88, -rx * 0.72, ry * 0.5, -rx * 0.5, ry * 0.22);
+    ctx.lineTo(-rx * 0.62, ry * 0.12); ctx.lineTo(-rx * 0.48, -ry * 0.02); // the hilum
+    // the upper border, cut by three deep notches
+    ctx.lineTo(-rx * 0.66, -ry * 0.16); ctx.lineTo(-rx * 0.5, -ry * 0.26);
+    ctx.lineTo(-rx * 0.74, -ry * 0.42); ctx.lineTo(-rx * 0.55, -ry * 0.52);
+    ctx.lineTo(-rx * 0.76, -ry * 0.68); ctx.lineTo(-rx * 0.55, -ry * 0.76);
+    ctx.bezierCurveTo(-rx * 0.55, -ry * 0.92, -rx * 0.4, -ry * 1.0, -rx * 0.15, -ry);
     ctx.closePath();
   };
-  const g = ctx.createRadialGradient(rx * 0.25, -ry * 0.3, 10, 0, 0, ry * 1.1);
-  g.addColorStop(0, '#b87aa8'); g.addColorStop(0.55, '#7e3a6e'); g.addColorStop(1, '#4a1e40');
+  const g = ctx.createLinearGradient(-rx, -ry, rx, ry);
+  g.addColorStop(0, '#d26a7e'); g.addColorStop(0.5, '#9a2a4a'); g.addColorStop(1, '#4e0e26');
   shape(); ctx.fillStyle = g; ctx.fill();
   if (kick > 0) { shape(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
   ctx.save(); shape(); ctx.clip();
-  // red pulp: a soft speckle; white pulp: pale nodules along the arteries
-  ctx.fillStyle = 'rgba(200,90,120,0.35)';
-  for (let i = 0; i < 90; i++) { const a = i * 2.39996, r = Math.sqrt(i / 90); ctx.beginPath(); ctx.arc(Math.cos(a) * r * rx * 0.95, Math.sin(a) * r * ry * 0.95, 3, 0, Math.PI * 2); ctx.fill(); }
-  ctx.fillStyle = 'rgba(245,232,220,0.75)';
-  for (let i = 0; i < 14; i++) { const a = -1.2 + i * 0.18, r = 0.35 + (i % 3) * 0.18; ctx.beginPath(); ctx.arc(-rx * 0.35 + Math.cos(a) * r * rx, Math.sin(a) * r * ry, 5, 0, Math.PI * 2); ctx.fill(); }
-  // trabeculae: fibrous partitions running in from the capsule
-  ctx.strokeStyle = 'rgba(70,20,60,0.35)'; ctx.lineWidth = 1.6;
   const T = seeded(61);
-  for (let i = 0; i < 16; i++) {
-    const a = -1.3 + i * 0.17, x0 = Math.cos(a) * rx * 0.95, y0 = Math.sin(a) * ry * 0.95;
-    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 * 0.7 + (T() - 0.5) * 20, y0 * 0.7, x0 * (0.45 + T() * 0.15), y0 * (0.45 + T() * 0.15)); ctx.stroke();
+  // red pulp: a dark, fine speckle all over
+  ctx.fillStyle = 'rgba(70,10,30,0.4)';
+  for (let i = 0; i < 260; i++) { ctx.beginPath(); ctx.arc((T() - 0.5) * rx * 2.2, (T() - 0.5) * ry * 2.1, 1 + T() * 1.6, 0, Math.PI * 2); ctx.fill(); }
+  // white pulp: many pale nodules, each round a small central artery (the spleen's tell-tale speckle)
+  for (let i = 0; i < 46; i++) {
+    const a = i * 2.39996, r = Math.sqrt((i + 0.5) / 46), x = Math.cos(a) * r * rx * 0.8 + rx * 0.08, y = Math.sin(a) * r * ry * 0.85;
+    const rr = 5 + T() * 5;
+    ctx.fillStyle = 'rgba(250,236,226,0.85)'; ctx.beginPath(); ctx.ellipse(x, y, rr, rr * 0.8, a, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(150,30,50,0.9)'; ctx.beginPath(); ctx.arc(x + rr * 0.2, y, 1.4, 0, Math.PI * 2); ctx.fill();
+  }
+  // trabeculae: fibrous strands running in from the capsule
+  ctx.strokeStyle = 'rgba(250,220,220,0.45)'; ctx.lineWidth = 1.6;
+  for (let i = 0; i < 18; i++) {
+    const a = -1.6 + i * 0.19, x0 = rx * 0.15 + Math.cos(a) * rx * 0.95, y0 = Math.sin(a) * ry * 0.98;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 * 0.75 + (T() - 0.5) * 18, y0 * 0.75, x0 * (0.5 + T() * 0.15), y0 * (0.5 + T() * 0.15)); ctx.stroke();
   }
   // branches of the splenic artery fanning in from the hilum
-  ctx.globalAlpha = 0.5;
-  vesselTree(ctx, -rx * 0.45, -10, -0.5, rx * 0.35, 4, 3, '#a8283a', T);
-  vesselTree(ctx, -rx * 0.45, 10, 0.4, rx * 0.35, 4, 3, '#a8283a', T);
+  ctx.globalAlpha = 0.6;
+  for (const a of [-0.7, -0.2, 0.3, 0.75]) vesselTree(ctx, -rx * 0.45, ry * 0.08, a, rx * 0.32, 4, 3, '#5e0e22', T);
   ctx.globalAlpha = 1;
-  ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.beginPath(); ctx.ellipse(rx * 0.45, -ry * 0.45, 16, 46, 0.3, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
-  // short gastric vessels leaving the upper pole
+  // a thin pale capsule just inside the outline
+  ctx.save(); shape(); ctx.clip(); shape(); ctx.strokeStyle = 'rgba(250,225,225,0.7)'; ctx.lineWidth = 7; ctx.stroke(); ctx.restore();
+  // splenic artery and vein at the hilum, and the short gastric vessels
   ctx.lineCap = 'round';
-  for (const [dx, col] of [[-12, '#b8433a'], [6, '#4a6aa8']] as const) {
-    ctx.strokeStyle = INK; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-rx * 0.2 + dx, -ry * 0.96); ctx.quadraticCurveTo(-rx * 0.4 + dx, -ry * 1.12, -rx * 0.7 + dx, -ry * 1.15); ctx.stroke();
-    ctx.strokeStyle = col; ctx.lineWidth = 3.5; ctx.stroke();
-  }
-  // splenic artery and vein at the hilum
-  for (const [col, dy] of [['#b8433a', -14], ['#4a6aa8', 14]] as const) {
-    ctx.strokeStyle = INK; ctx.lineWidth = 11; ctx.beginPath(); ctx.moveTo(-rx * 0.45, dy); ctx.quadraticCurveTo(-rx * 0.85, dy * 2, -rx * 1.05, dy * 3); ctx.stroke();
+  for (const [col, dy] of [['#b8433a', -12], ['#4a6aa8', 14]] as const) {
+    ctx.strokeStyle = INK; ctx.lineWidth = 11; ctx.beginPath(); ctx.moveTo(-rx * 0.5, ry * 0.06 + dy); ctx.quadraticCurveTo(-rx * 0.85, ry * 0.1 + dy * 2, -rx * 1.08, ry * 0.18 + dy * 3); ctx.stroke();
     ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.stroke();
   }
   shape(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();

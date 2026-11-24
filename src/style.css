@@ -168,3 +168,10 @@ body.menu-open #btnPause, body.menu-open #btnSpeed, body.menu-open #btnRestart {
 }
 .plate .tip { text-align: left; background: var(--wash-gold); border: 1px solid rgba(35, 26, 20, 0.5); border-left: 4px solid var(--ink); padding: 6px 10px; border-radius: var(--sketch-sm); }
 .needs { color: var(--red-dark); font-weight: 700; }
+
+/* Pathogen details: a small card beside the pathogen you clicked */
+.popover.inspect { width: 270px; font-size: 13.5px; padding: 10px 12px; }
+.popover.inspect h3 { font-size: 16px; }
+.popover.inspect p { margin: 3px 0; }
+.popover.inspect .nogauge { height: 9px; margin: 2px 0 6px; }
+.popover.inspect .nogauge i { background: var(--hatch-x), #dc9a8e; }

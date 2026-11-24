@@ -1,12 +1,12 @@
 // Drawing for Defend the Heart: a stylised anatomy plate, kept calm so the white cells stand out.
 import { CONFIG, type BacteriumType, type BossType, type NodeType, type PathogenType, type VesselId } from './config';
 import { drawBoss } from './bosses';
-import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec, type Vessel } from './level';
+import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, SITES, pointAt, entryOf, forkAt, routesOf, type Vec, type Vessel } from './level';
 import { drawBacterium } from './bacteria';
 import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
-import { layoutLabels, previewTagBox, type MapLabel } from './labels';
-import { type State, cellPos, pathogenPos, pulseTargets, waveSpawns, nodeAt, surging, activeBoss, openNeed } from './sim';
+import { layoutLabels, type MapLabel } from './labels';
+import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
@@ -21,6 +21,8 @@ export interface View {
   showPulseRadius: boolean;
   /** The tutorial's map pointer: a pulsing ring here. */
   coachAt: Vec | null;
+  /** The pathogen whose details card is open (ringed on the map). */
+  inspectId?: number | null;
   touch: boolean;
 }
 
@@ -66,11 +68,14 @@ function background(): HTMLCanvasElement {
   return bg;
 }
 
-/** A vessel's winding course, as a path. */
+/** A vessel's winding course, as a path. It carries on past its end, into the organ (which is drawn over it),
+ *  so no vessel is ever seen stopping short of the organ's outline. */
 function course(ctx: CanvasRenderingContext2D, v: Vessel) {
   ctx.beginPath(); ctx.moveTo(v.cx[0], v.cy[0]);
   for (let i = 2; i < v.cx.length; i += 2) ctx.lineTo(v.cx[i], v.cy[i]);
-  ctx.lineTo(v.cx[v.cx.length - 1], v.cy[v.cy.length - 1]);
+  const ex = v.cx[v.cx.length - 1], ey = v.cy[v.cy.length - 1];
+  ctx.lineTo(ex, ey);
+  ctx.lineTo(ex + (HEART.x - ex) * 0.6, ey + (HEART.y - ey) * 0.6);
 }
 
 export function vesselWidth(s: State, v: VesselId) {
@@ -323,7 +328,7 @@ function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
 function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
   if (s.phase !== 'combat') return;
   const heart = LEVEL.id === 'heart', y = HEART.y + (heart ? 159 : LEVEL.map.ry + 50) + 30, w = 150;
-  const low = s.no < openNeed() && !s.dilated, k = s.no / s.perks.noMax;
+  const low = s.no < openNeed() && !s.open.length, k = s.no / s.perks.noMax;
   ctx.save();
   ctx.globalAlpha = low ? 0.55 + 0.45 * Math.abs(Math.sin(t * 5)) : 1;
   inkTag(ctx, HEART.x - w / 2 - 44, y - 14, w + 96, 28, null, 8);
@@ -509,28 +514,6 @@ function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, fra
   inkBar(ctx, x - w / 2, y, w, 5, frac, col);
 }
 
-/** Next-wave preview: a small tag at each vessel's mouth with what is coming up it. */
-function drawPreview(ctx: CanvasRenderingContext2D, s: State) {
-  if (s.phase !== 'prep') return;
-  const sp = waveSpawns(s.wave);
-  for (const e of ENTRY_IDS) {
-    const mine = sp.filter((x) => entryOf(x.vessel) === e);
-    if (!mine.length) continue;
-    const counts = new Map<PathogenType, number>();
-    for (const m of mine) counts.set(m.type, (counts.get(m.type) ?? 0) + 1);
-    const w = 70 + counts.size * 86;
-    const { x: bx, y: by } = previewTagBox(e, w);
-    inkTag(ctx, bx, by, w, 48, null, 8);
-    ctx.fillStyle = INK_RED; ctx.font = 'italic 900 22px Palatino, Georgia, serif'; ctx.textAlign = 'left'; ctx.fillText('IN', bx + 14, by + 32);
-    ctx.strokeStyle = 'rgba(35,26,20,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bx + 52, by + 9); ctx.lineTo(bx + 52, by + 39); ctx.stroke();
-    let x = bx + 70;
-    for (const [type, n] of counts) {
-      drawPathogen(ctx, type, x, by + 24, 0, 0, CONFIG.pathogens[type].boss ? 0.42 : CONFIG.pathogens[type].taxon ? 1 : 1.2);
-      ctx.fillStyle = C.ink; ctx.font = '700 20px Palatino, Georgia, serif'; ctx.fillText(`×${n}`, x + 24, by + 31);
-      x += 86;
-    }
-  }
-}
 
 let flowT = 0, lastT = 0;
 let labelCache: { level: unknown; labels: MapLabel[] } = { level: null, labels: [] };
@@ -539,7 +522,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   flowT += dt * (surging(s) ? LEVEL.surge!.factor * 1.6 : 1);
   ctx.drawImage(background(), 0, 0, W, H);
   // the open route last, so its widened stem lies over its sibling's
-  const order = [...VESSEL_IDS].sort((a, b) => (a === s.dilated ? 1 : 0) - (b === s.dilated ? 1 : 0));
+  const order = [...VESSEL_IDS].sort((a, b) => (s.open.includes(a) ? 1 : 0) - (s.open.includes(b) ? 1 : 0));
   for (const v of order) drawVessel(ctx, s, v, view, t, flowT);
   for (const v of VESSEL_IDS) if (isFinite(forkAt(v)) && routesOf(entryOf(v))[0] === v) drawJunction(ctx, s, v);
   // vessel names, laid out once per organ to clear the sites, the organ, the next-wave tags and each other
@@ -549,14 +532,28 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   for (const { v, lx, ly, text, branch } of labelCache.labels) {
     ctx.font = '700 24px Palatino, Georgia, serif';
     const tw = ctx.measureText(text).width;
-    avoid.push({ x: lx - tw / 2 - 10, y: ly - 23, w: tw + 20, h: s.dilated === v ? 66 : 32 });
+    avoid.push({ x: lx - tw / 2 - 10, y: ly - 23, w: tw + 20, h: s.open.includes(v) ? 66 : 32 });
     ctx.fillStyle = 'rgba(244,234,216,0.9)'; ctx.fillRect(lx - tw / 2 - 10, ly - 23, tw + 20, 32);
     ctx.fillStyle = C.ink; ctx.fillText(text, lx, ly);
     // the DILATED tag goes on the open route's own label: a branch's, or an unforked vessel's
-    if (s.dilated === v && (branch || routesOf(entryOf(v)).length === 1)) {
+    if (s.open.includes(v) && (branch || routesOf(entryOf(v)).length === 1)) {
       inkTag(ctx, lx - 58, ly + 13, 116, 30, WASH.blue, 8);
       ctx.fillStyle = INK_BLUE; ctx.font = 'italic 700 17px Palatino, Georgia, serif'; ctx.fillText('DILATED', lx, ly + 34);
     }
+  }
+  // bile from the burst gallbladder: green stains where its lymph nodes were destroyed
+  for (const b of s.bile) {
+    const R = seeded(Math.round(b.x * 3 + b.y * 7));
+    ctx.save(); ctx.translate(b.x, b.y);
+    ctx.beginPath();
+    for (let i = 0; i <= 16; i++) { const a = (i / 16) * Math.PI * 2, r = 30 + (R() - 0.5) * 16; i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r * 0.8) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r * 0.8); }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(140,176,60,0.55)'; ctx.fill();
+    const hp = hatchPattern(ctx); if (hp) { ctx.fillStyle = hp; ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; }
+    ctx.strokeStyle = 'rgba(50,70,20,0.85)'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.fillStyle = 'rgba(110,150,40,0.7)';
+    for (let i = 0; i < 7; i++) { const a = R() * Math.PI * 2, r = 36 + R() * 14; ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r * 0.8, 2 + R() * 3, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
   }
   drawSites(ctx, s, view, t);
   drawOrgan(ctx, s, t);
@@ -569,6 +566,10 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     if (eligible.has(p.id) && (view.touch || view.showPulseRadius)) {
       ctx.strokeStyle = INK_BLUE; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
       ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.pathogens[p.type].boss ? 62 : CONFIG.pathogens[p.type].taxon ? 30 : 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (view.inspectId === p.id) {
+      ctx.save(); ctx.strokeStyle = INKC; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.lineDashOffset = -t * 12;
+      ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.pathogens[p.type].boss ? 70 : 34, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
     }
     if (p.slowT > 0) { ctx.fillStyle = 'rgba(160,200,140,0.35)'; ctx.beginPath(); ctx.arc(q.x, q.y, 22, 0, Math.PI * 2); ctx.fill(); }
     // a boss hiding in a red blood cell is shown faded, with a dashed ring: nothing can touch it now
@@ -679,23 +680,25 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     inkText(ctx, f.text, f.x, y, f.color, size);
     ctx.globalAlpha = 1;
   }
-  drawPreview(ctx, s);
   drawBossBanner(ctx, s);
 }
 
 /** While a boss is in play: its name and health across the top of the map. */
 function drawBossBanner(ctx: CanvasRenderingContext2D, s: State) {
-  const b = activeBoss(s);
+  const bs = activeBosses(s), b = bs[0];
   if (!b || s.phase !== 'combat') return;
   const st = CONFIG.pathogens[b.type];
+  // one boss comes up each vessel: the banner counts them and sums their health, with those still to come
+  const coming = s.spawns.filter((x) => CONFIG.pathogens[x.type].boss).length, n = bs.length + coming;
+  const hp = bs.reduce((a, p) => a + p.hp, 0) + coming * b.maxHp, max = n * b.maxHp;
   const w = 460, x = W / 2 - w / 2, y = 22;
   ctx.save();
   inkTag(ctx, x, y, w, 64, null, 8);
   ctx.fillStyle = INK_RED; ctx.font = '900 15px Palatino, Georgia, serif'; ctx.textAlign = 'left';
   ctx.fillText('BOSS', x + 18, y + 25);
-  ctx.fillStyle = C.ink; ctx.font = 'italic 700 22px Palatino, Georgia, serif'; ctx.fillText(st.name, x + 70, y + 26);
+  ctx.fillStyle = C.ink; ctx.font = 'italic 700 22px Palatino, Georgia, serif'; ctx.fillText(n > 1 ? `${st.name} ×${n}` : st.name, x + 70, y + 26);
   ctx.textAlign = 'right'; ctx.font = '700 16px Palatino, Georgia, serif'; ctx.fillStyle = 'rgba(42,30,24,0.7)';
-  ctx.fillText(`${Math.ceil(b.hp)} / ${b.maxHp}`, x + w - 18, y + 25);
-  inkBar(ctx, x + 18, y + 38, w - 36, 12, b.hp / b.maxHp, WASH.red);
+  ctx.fillText(`${Math.ceil(hp)} / ${max}`, x + w - 18, y + 25);
+  inkBar(ctx, x + 18, y + 38, w - 36, 12, hp / max, WASH.red);
   ctx.restore();
 }

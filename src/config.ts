@@ -54,7 +54,7 @@ export interface PathogenStats {
   /** Burrows into the lining for `for` seconds in every `every`: nothing can target or hit it then, and it
    *  tunnels on at ×`speed`. */
   burrows?: { every: number; for: number; speed: number };
-  /** Stomach acid does not harm it. */
+  /** Stomach acid does not harm it: it feeds on it, regaining that much health instead. */
   acidProof?: boolean;
 }
 
@@ -80,7 +80,7 @@ export interface WaveDef { title: string; hint: string; groups: WaveGroup[] }
 
 export const CONFIG = {
   /** Energy for a cleared wave (energy pays for lymph nodes). */
-  waveClearEnergy: (wave: number) => 40 + 10 * wave,
+  waveClearEnergy: (wave: number) => 30 + 8 * wave,
 
   vesselRestWidth: 30,
   vesselDilatedWidth: 64,
@@ -90,7 +90,7 @@ export const CONFIG = {
     igm: { name: 'IgM lymph node', short: 'IgM', cost: 60, damage: 10, cooldown: 0.9, range: 175, shotSpeed: 520, blurb: 'Hits every pathogen the same.' },
     igg: { name: 'IgG lymph node', short: 'IgG', cost: 50, damage: 10, cooldown: 0.8, range: 175, shotSpeed: 560,
       blurb: 'Aimed at one bacterium: ×3 on it, ×2.5 on the same shape, ×2 on the same Gram stain, ×0.5 on other bacteria, ×0.25 on viruses.' },
-    iga: { name: 'IgA lymph node', short: 'IgA', cost: 50, damage: 7.5, cooldown: 0.7, range: 175, shotSpeed: 560, slow: 0.5, slowSeconds: 2.2, blurb: 'Softer hits, but slows what it hits.' },
+    iga: { name: 'IgA lymph node', short: 'IgA', cost: 40, damage: 7.5, cooldown: 0.7, range: 175, shotSpeed: 560, slow: 0.4, slowSeconds: 2.2, blurb: 'Softer hits, but slows what it hits.' },
     ige: { name: 'IgE lymph node', short: 'IgE', cost: 80, damage: 20, cooldown: 0.9, range: 230, shotSpeed: 440, burnsOutAfter: 3,
       blurb: 'Double damage and a long reach, but it burns out after three waves.' },
   } as Record<NodeType, NodeStats>,
@@ -116,6 +116,12 @@ export const CONFIG = {
   iggMatch: { species: 3, shape: 2.5, gram: 2, unrelated: 0.5, nonBacterium: 0.25 },
   /** Energy to re-aim a placed IgG node between waves. */
   iggRetarget: 20,
+  /** The last wave sends its boss up every vessel, a few seconds apart; each has this share of the boss's health. */
+  bossEveryVessel: { gap: 3, hpShare: 0.45 },
+  /** At most this many IgG nodes may be aimed at any one bacterium on an organ (a dual node counts for both). */
+  iggPerTarget: 2,
+  /** Gold to borrow an IgG target for the rest of one organ (gone when it ends; a permanent target costs 120). */
+  borrowTargetGold: 30,
   /** Energy for an IgG node aimed at two targets (career upgrade). */
   dualIggCost: 80,
 
@@ -173,7 +179,8 @@ export interface LevelDef {
   hp: number;
   startEnergy: number;
   cells: number;
-  startingNodes: { vessel: VesselId; site: number; type: NodeType }[];
+  /** Nodes placed before the first wave besides the free IgM every vessel gets (none of the organs use this now). */
+  startingNodes?: { vessel: VesselId; site: number; type: NodeType }[];
   /** Lungs: every `every` seconds the blood surges for `length` seconds, pathogens move ×`factor`. */
   surge?: { every: number; length: number; factor: number };
   /** Liver: organ health regained after every cleared wave. */
@@ -188,6 +195,11 @@ export interface LevelDef {
   cellGrowth?: { perWave: number; max: number };
   /** Stomach: on the last `fraction` of every vessel, acid costs pathogens `dps` health a second (not the acid-proof). */
   acid?: { fraction: number; dps: number };
+  /** Liver: when its health first falls to `at` (a share of full health) or below, the gallbladder bursts and
+   *  bile destroys `nodes` lymph nodes at random. */
+  gallbladder?: { at: number; nodes: number };
+  /** Kidney: pathogens grow tougher every wave: health ×(1 + `waveHpGrowth` × waves before this one). */
+  waveHpGrowth?: number;
   map: {
     center: P;
     /** Rough organ size, for drawing and keeping build sites off the organ. */
@@ -207,8 +219,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'heart', title: 'The Heart', organ: 'Heart', tagline: 'Four vessels, one beating target.',
     twist: 'The first organ: learn lymph nodes, dilating with NO during the wave, and the pulse.',
-    hp: 20, startEnergy: 160, cells: 2,
-    startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }, { vessel: 'lower', site: 1, type: 'igm' }],
+    hp: 20, startEnergy: 60, cells: 2,
     map: {
       center: { x: 800, y: 480 }, rx: 100, ry: 100, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -277,9 +288,8 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'lungs', title: 'The Lungs', organ: 'Lung', tagline: 'Every breath drags the infection deeper.',
     twist: 'Breathing: every few seconds the lungs inhale and everything in the vessels surges forward.',
-    hp: 20, startEnergy: 312, cells: 2,
-    startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'iga' }],
-    surge: { every: 6, length: 1.4, factor: 1.5 },
+    hp: 20, startEnergy: 60, cells: 2,
+    surge: { every: 6, length: 1.4, factor: 2.2 },
     map: {
       center: { x: 800, y: 450 }, rx: 225, ry: 175, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -306,10 +316,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'brain', title: 'The Brain', organ: 'Brain', tagline: 'Little room to build, nothing to spare.',
     twist: 'The blood–brain barrier: only two lymph node sites guard each route and less health, but you get three white cells. The lower-right vessel forks.',
-    hp: 18, startEnergy: 286, cells: 3,
-    startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
+    hp: 18, startEnergy: 60, cells: 3,
     map: {
-      center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.36, 0.66],
+      center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.3, 0.5, 0.7],
       vessels: [
         { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 240 }, { x: 190, y: 200 }, { x: 380, y: 270 }, { x: 574, y: 350 }] },
         { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 240 }, { x: 1410, y: 200 }, { x: 1220, y: 270 }, { x: 1026, y: 350 }] },
@@ -338,8 +347,7 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave.',
-    hp: 24, startEnergy: 140, cells: 2, regenPerWave: 3, income: 0.7,
-    startingNodes: [{ vessel: 'portalLeft', site: 0, type: 'igm' }, { vessel: 'arteryLower', site: 1, type: 'igm' }],
+    hp: 24, startEnergy: 60, cells: 2, regenPerWave: 3, income: 0.7, gallbladder: { at: 0.5, nodes: 2 },
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
       vessels: [
@@ -373,10 +381,9 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
-    twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. The hardest waves.',
-    hp: 20, startEnergy: 330, cells: 2, income: 0.7,
+    twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 15% tougher.',
+    hp: 20, startEnergy: 220, cells: 2, income: 0.7, waveHpGrowth: 0.15,
     filtration: { fraction: 0.28, factor: 0.6 },
-    startingNodes: [{ vessel: 'leftUpper', site: 2, type: 'igm' }, { vessel: 'rightUpper', site: 2, type: 'igm' }],
     map: {
       center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -415,9 +422,8 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'spleen', title: 'The Spleen', organ: 'Spleen', tagline: 'The body\'s own immune organ.',
     twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
-    hp: 22, startEnergy: 314, cells: 2, income: 0.7,
+    hp: 22, startEnergy: 80, cells: 2, income: 0.7,
     respawn: { after: 8, cost: 1 },
-    startingNodes: [{ vessel: 'leftUpper', site: 1, type: 'igm' }, { vessel: 'rightUpper', site: 1, type: 'igm' }],
     map: {
       center: { x: 800, y: 480 }, rx: 150, ry: 210, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -457,9 +463,8 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'marrow', title: 'The Bone Marrow', organ: 'Marrow', tagline: 'Where white cells are born.',
     twist: 'It makes white cells: you start with 2, and every cleared wave adds one more, up to 5.',
-    hp: 24, startEnergy: 330, cells: 2, income: 0.7,
+    hp: 24, startEnergy: 180, cells: 2, income: 0.7,
     cellGrowth: { perWave: 1, max: 5 },
-    startingNodes: [{ vessel: 'topMid', site: 1, type: 'igm' }, { vessel: 'bottomMid', site: 1, type: 'igm' }],
     map: {
       center: { x: 800, y: 480 }, rx: 260, ry: 120, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -502,10 +507,9 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'stomach', title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
-    twist: 'Acid: on the last third of every vessel, pathogens lose 4 health a second. H. pylori is untouched by it.',
-    hp: 24, startEnergy: 230, cells: 2, income: 0.55,
+    twist: 'Acid: on the last third of every vessel, pathogens lose 4 health a second. H. pylori feeds on it and gains health there instead.',
+    hp: 24, startEnergy: 200, cells: 2, income: 0.55,
     acid: { fraction: 0.33, dps: 4 },
-    startingNodes: [{ vessel: 'left', site: 1, type: 'igm' }, { vessel: 'right', site: 1, type: 'igm' }],
     map: {
       center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [

@@ -31,7 +31,7 @@ export function tutorialTick(t: Tutorial, s: State) {
   switch (t.step) {
     case 'build': if (s.nodes.length > t.baseNodes) t.step = 'start'; break;
     case 'start': if (s.phase !== 'prep') t.step = 'open'; break;
-    case 'open': if (s.dilated) t.step = 'no'; else if (s.phase !== 'combat') t.step = 'done'; break;
+    case 'open': if (s.open.length) t.step = 'no'; else if (s.phase !== 'combat') t.step = 'done'; break;
     case 'pulse': if (s.pulsesLeft <= 0 || s.phase !== 'combat') t.step = 'done'; break;
   }
 }
@@ -39,7 +39,7 @@ export function tutorialTick(t: Tutorial, s: State) {
 /** Should time stand still? Only at the two moments that can't wait: opening a vessel, firing the pulse. */
 export function tutorialHolds(t: Tutorial, s: State): boolean {
   if (s.phase !== 'combat') return false;
-  if (t.step === 'open') return !s.dilated && halfwayIn(s);
+  if (t.step === 'open') return !s.open.length && halfwayIn(s);
   // wave 1's bacteria come one at a time, so one in range is enough to teach the pulse
   if (t.step === 'pulse') return s.pulsesLeft > 0 && pulseTargets(s).length >= 1;
   return false;

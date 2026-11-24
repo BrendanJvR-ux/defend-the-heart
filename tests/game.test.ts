@@ -54,7 +54,8 @@ function sensibleBuild(s: State) {
       const aim = bestAim(s, n, v);
       const want: NodeType = aim && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
       const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
-      if (site && placeNode(s, site.id, want, want === 'igg' ? aim! : undefined)) placed = true;
+      // an IgG it may not aim (two already aim at that bacterium) becomes an IgM
+      if (site && (placeNode(s, site.id, want, want === 'igg' ? aim! : undefined) || (want === 'igg' && placeNode(s, site.id, 'igm')))) placed = true;
     }
     if (!placed) break;
   }
@@ -79,9 +80,11 @@ function sensibleDilate(s: State) {
   if (s.phase !== 'combat') return;
   const best = [...M.VESSEL_IDS].sort((a, b) => danger(s, b) - danger(s, a))[0];
   const N = CONFIG.no;
-  if (danger(s, best) === 0) { if (s.dilated) toggleRoute(s, s.dilated); return; }
-  if (!s.dilated) { if (s.no >= N.openCost + 2 * N.drainPerSec) toggleRoute(s, best); return; }
-  if (best !== s.dilated && danger(s, best) > 2 * danger(s, s.dilated) && s.no >= N.openCost + 2 * N.drainPerSec) toggleRoute(s, best);
+  const cur = s.open[0];
+  if (danger(s, best) === 0) { if (cur) toggleRoute(s, cur); return; }
+  if (!cur) { if (s.no >= N.openCost + 2 * N.drainPerSec) toggleRoute(s, best); return; }
+  // switch (this player keeps one vessel open at a time): close the open one, open the busier
+  if (best !== cur && danger(s, best) > 2 * danger(s, cur) && s.no >= N.openCost + 2 * N.drainPerSec) { toggleRoute(s, cur); toggleRoute(s, best); }
 }
 const noBuild = () => {};
 /** A clumsy new player: spends all energy on IgM, on the first free sites in list order. */
@@ -92,7 +95,7 @@ function clumsyBuild(s: State) {
 function clumsyDilate(s: State) {
   if (s.phase !== 'combat') return;
   const count = (v: VesselId) => s.pathogens.filter((p) => p.hp > 0 && covers(v, p)).length;
-  if (s.dilated) { if (!count(s.dilated)) toggleRoute(s, s.dilated); return; }
+  if (s.open[0]) { if (!count(s.open[0])) toggleRoute(s, s.open[0]); return; }
   const late = M.VESSEL_IDS.filter((v) => s.pathogens.some((p) => p.hp > 0 && covers(v, p) && p.s > 0.8 * M.VESSELS[v].length));
   const v = late.sort((a, b) => count(b) - count(a))[0];
   if (v && s.no >= CONFIG.no.openCost + CONFIG.no.drainPerSec) toggleRoute(s, v);
@@ -107,7 +110,7 @@ function play(prep: (s: State) => void, dilate: (s: State) => void = sensibleDil
 describe('Defend the Heart: NO and mid-wave dilation', () => {
   it('a wave starts with every vessel resting and needs no choice', () => {
     const s = newGame(0); expect(canStartWave(s).ok).toBe(true); expect(startWave(s)).toBe(true);
-    expect(s.dilated).toBeNull(); expect(s.no).toBe(CONFIG.no.max);
+    expect(s.open).toEqual([]); expect(s.no).toBe(CONFIG.no.max);
     expect(s.cells.every((c) => c.mode === 'home')).toBe(true);
   });
   it('dilation is refused between waves and during recall', () => {
@@ -119,15 +122,34 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
     const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 10);
     toggleRoute(s, 'left'); expect(s.no).toBe(CONFIG.no.max - CONFIG.no.openCost);
     const a = s.no; tick(s, 1); expect(a - s.no).toBeCloseTo(CONFIG.no.drainPerSec, 0);
-    toggleRoute(s, 'left'); expect(s.dilated).toBeNull();
+    toggleRoute(s, 'left'); expect(s.open).toEqual([]);
     const b = s.no; tick(s, 1); expect(s.no - b).toBeCloseTo(CONFIG.no.regenPerSec, 0);
   });
-  it('switching pays again; too little NO refuses', () => {
-    const s = newGame(0); startWave(s); quiet(s);
+  it('a second vessel can be opened while there is a white cell for it; each pays and drains; too little NO refuses', () => {
+    const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 10);
     toggleRoute(s, 'left'); toggleRoute(s, 'right');
-    expect(s.dilated).toBe('right'); expect(s.no).toBe(CONFIG.no.max - 2 * CONFIG.no.openCost);
-    s.no = CONFIG.no.openCost - 1; expect(toggleRoute(s, 'left')).toBe(false); expect(s.dilated).toBe('right');
-    expect(dilateCheck(s, 'left').reason).toBe('Not enough NO to open the left vessel.');
+    expect(s.open).toEqual(['left', 'right']); expect(s.no).toBe(CONFIG.no.max - 2 * CONFIG.no.openCost);
+    const a = s.no; tick(s, 1); expect(a - s.no).toBeGreaterThan(1.8 * CONFIG.no.drainPerSec); expect(a - s.no).toBeLessThan(2.2 * CONFIG.no.drainPerSec); // two open: twice the drain
+    // two white cells on the heart: a third vessel has no cell to send
+    expect(toggleRoute(s, 'lower')).toBe(false); expect(dilateCheck(s, 'lower').reason).toMatch(/Every white cell already has a vessel/);
+    toggleRoute(s, 'right'); s.no = CONFIG.no.openCost - 1; expect(toggleRoute(s, 'lower')).toBe(false); expect(s.open).toEqual(['left']);
+    expect(dilateCheck(s, 'lower').reason).toBe('Not enough NO to open the lower vessel.');
+  });
+  it('with two vessels open the cells split, one each; closing one sends its cell to the other', () => {
+    const s = newGame(0); startWave(s); quiet(s); s.nodes = []; s.no = 999; s.perks = { ...s.perks, noMax: 999 };
+    const keep = mk(s, 'saureus', 'upper', 10); keep.slow = 0.0001; keep.slowT = 999; // keeps the wave going
+    toggleRoute(s, 'left'); tick(s, 2);
+    expect(outCells(s).filter((c) => c.vessel === 'left').length).toBe(2);
+    toggleRoute(s, 'right'); tick(s, 6);
+    expect(outCells(s).map((c) => c.vessel).sort()).toEqual(['left', 'right']);
+    toggleRoute(s, 'right'); tick(s, 6);
+    expect(outCells(s).map((c) => c.vessel)).toEqual(['left', 'left']);
+  });
+  it('on a fork, opening the other branch switches rather than opening both', () => {
+    const s = newGame(2); startWave(s); quiet(s);
+    const [a, b] = M.routesOf(M.ENTRY_IDS.find((e) => M.routesOf(e).length === 2)!);
+    toggleRoute(s, a); toggleRoute(s, b);
+    expect(s.open).toEqual([b]);
   });
   it('opening needs enough NO to stay open for a moment, not just the opening cost', () => {
     const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0);
@@ -137,7 +159,7 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
     expect(toggleRoute(s, 'left')).toBe(false);
     expect(dilateCheck(s, 'left').reason).toBe('Not enough NO to open the left vessel.');
     s.no = need; expect(toggleRoute(s, 'left')).toBe(true);
-    tick(s, CONFIG.no.minOpenSeconds * 0.9); expect(s.dilated).toBe('left');
+    tick(s, CONFIG.no.minOpenSeconds * 0.9); expect(s.open).toEqual(['left']);
   });
 
   it('reopening the vessel you just closed turns its returning cells back out', () => {
@@ -161,15 +183,15 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
   it('running dry closes the route once, never goes negative, and sends the cells home', () => {
     const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 10);
     toggleRoute(s, 'left'); tick(s, 0.5); s.no = 0.1; step(s, 0.1);
-    expect(s.no).toBe(0); expect(s.dilated).toBeNull(); expect(s.noOuts).toBe(1);
+    expect(s.no).toBe(0); expect(s.open).toEqual([]); expect(s.noOuts).toBe(1);
     expect(s.cells.every((c) => c.mode !== 'out')).toBe(true);
     step(s, 0.1); expect(s.noOuts).toBe(1);
   });
-  it('cells go out along the opened route; reopening another waits for them to get home first', () => {
+  it('cells go out along the opened route; switching to another waits for them to get home first', () => {
     const s = newGame(0); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 10);
     toggleRoute(s, 'left'); tick(s, 3);
     expect(outCells(s).every((c) => c.vessel === 'left' && c.s < M.VESSELS.left.length - 20)).toBe(true);
-    toggleRoute(s, 'right'); step(s, 1 / 30);
+    toggleRoute(s, 'left'); toggleRoute(s, 'right'); step(s, 1 / 30);
     expect(s.cells.every((c) => c.vessel === 'left' && c.mode === 'returning')).toBe(true);
     tick(s, 3); expect(outCells(s).length).toBe(2); expect(outCells(s).every((c) => c.vessel === 'right')).toBe(true);
   });
@@ -189,7 +211,7 @@ describe('Defend the Heart: NO and mid-wave dilation', () => {
   });
   it('after a cleared wave NO tops up, capped at capacity, and every vessel rests', () => {
     const s = newGame(0); startWave(s); quiet(s); s.no = 50; finishWave(s);
-    expect(s.phase).toBe('prep'); expect(s.no).toBeCloseTo(50 + CONFIG.no.waveTopUp, 0); expect(s.dilated).toBeNull();
+    expect(s.phase).toBe('prep'); expect(s.no).toBeCloseTo(50 + CONFIG.no.waveTopUp, 0); expect(s.open).toEqual([]);
     const t = newGame(0); startWave(t); quiet(t); finishWave(t); expect(t.no).toBe(CONFIG.no.max);
   });
 });
@@ -261,7 +283,7 @@ describe('Defend the Heart: cells and the pulse', () => {
     const e0 = s.energy;
     finishWave(s);
     expect(s.phase).toBe('prep'); expect(s.wave).toBe(2); expect(s.heartHp).toBeLessThan(LEVELS[0].hp);
-    expect(s.dilated).toBeNull(); expect(s.cells.length).toBe(0); expect(s.pulsesLeft).toBe(0);
+    expect(s.open).toEqual([]); expect(s.cells.length).toBe(0); expect(s.pulsesLeft).toBe(0);
     for (const v of M.VESSEL_IDS) expect(s.width[v]).toBe(0);
     expect(s.energy).toBeGreaterThan(e0);
     const hp = s.heartHp;
@@ -278,7 +300,7 @@ describe('Defend the Heart: cells and the pulse', () => {
     tick(s, 0.2);
     expect(s.phase).toBe('defeat');
     const r = newGame(0);
-    expect([r.heartHp, r.wave, r.dilated, r.energy, r.nodes.length]).toEqual([LEVELS[0].hp, 1, null, LEVELS[0].startEnergy, LEVELS[0].startingNodes.length]);
+    expect([r.heartHp, r.wave, r.open, r.energy, r.nodes.length]).toEqual([LEVELS[0].hp, 1, [], LEVELS[0].startEnergy, M.ENTRY_IDS.length]);
   });
 });
 
@@ -476,7 +498,8 @@ describe('Defend the Heart: balance', () => {
   it('from the liver on, energy is tight: the career player fills at most 60% of the build sites', () => {
     for (const r of careerRun().filter((x) => x.level >= 3)) {
       const g = play(sensibleBuild, sensibleDilate, 3, r.level, r.perks); newGame(r.level);
-      const share = g.s.nodes.length / M.SITES.length;
+      // the free IgM on each vessel isn't paid for, so it doesn't count: the share of the remaining sites built on
+      const share = (g.s.nodes.length - M.ENTRY_IDS.length) / (M.SITES.length - M.ENTRY_IDS.length);
       console.log(LEVELS[r.level].id, 'built', g.s.nodes.length, 'of', M.SITES.length, 'sites');
       expect(share, LEVELS[r.level].id).toBeLessThanOrEqual(0.6);
     }
@@ -519,7 +542,7 @@ function careerRun() {
 
 /** Holds the route with the most wave threat open: opens it as soon as it can, never closes it. */
 function holdOpen(s: State) {
-  if (s.phase !== 'combat' || s.dilated) return;
+  if (s.phase !== 'combat' || s.open.length) return;
   const e = [...M.ENTRY_IDS].sort((a, b) => threat(s.wave, b) - threat(s.wave, a))[0];
   if (s.no >= CONFIG.no.openCost) toggleRoute(s, M.routesOf(e)[0]);
 }
@@ -533,7 +556,10 @@ describe('Defend the Heart: organ levels', () => {
       expect(s.heartHp).toBe(LEVELS[i].hp);
       expect(totalWaves(s)).toBe(LEVELS[i].waves.length);
       expect(M.ENTRY_IDS).toEqual(LEVELS[i].map.vessels.map((v) => v.id));
-      expect(s.nodes.length).toBe(LEVELS[i].startingNodes.length);
+      // one free IgM on every vessel, on its shared stem if it forks
+      expect(s.nodes.length).toBe(M.ENTRY_IDS.length);
+      expect(s.nodes.every((n) => n.type === 'igm')).toBe(true);
+      expect(new Set(s.nodes.map((n) => M.entryOf(n.vessel))).size).toBe(M.ENTRY_IDS.length);
       // every route has at least two sites guarding it (its own, or its fork's shared stem)
       for (const r of M.VESSEL_IDS) expect(guarding(r).length).toBeGreaterThanOrEqual(2);
       // every wave group names an entry vessel of this organ, and every entry is used by some wave
@@ -558,7 +584,7 @@ describe('Defend the Heart: organ levels', () => {
       newGame(i);
       for (const r of M.VESSEL_IDS) {
         const n = guarding(r).length;
-        if (i === 2) expect(n, `brain ${r}`).toBe(2); else expect(n, `${LEVELS[i].id} ${r}`).toBeGreaterThanOrEqual(atLeast[i]);
+        if (i === 2) expect(n, `brain ${r}`).toBe(3); else expect(n, `${LEVELS[i].id} ${r}`).toBeGreaterThanOrEqual(atLeast[i]);
       }
     });
   });
@@ -613,12 +639,12 @@ describe('Defend the Heart: organ levels', () => {
   it('a vessel from another organ cannot be dilated', () => {
     const s = newGame(4); startWave(s);
     expect(toggleRoute(s, 'portal')).toBe(false);
-    expect(s.dilated).toBeNull();
+    expect(s.open).toEqual([]);
   });
 
-  it('brain: at most two sites on any route, three white cells', () => {
+  it('brain: at most three sites on any route, three white cells', () => {
     const s = newGame(2);
-    for (const r of M.VESSEL_IDS) expect(guarding(r).length).toBeLessThanOrEqual(2);
+    for (const r of M.VESSEL_IDS) expect(guarding(r).length).toBeLessThanOrEqual(3);
     go(s, 'left');
     expect(aliveCells(s).length).toBe(3);
   });
@@ -640,8 +666,8 @@ describe('Defend the Heart: organ levels', () => {
     expect((near.s - b) / (far.s - a)).toBeCloseTo(LEVELS[4].filtration!.factor, 2);
   });
 
-  it('holding one vessel open, with the career player\'s upgrades at each organ, loses or ends at least 2 worse', () => {
-    for (const r of careerRun()) {
+  it('holding one vessel open, with the career player\'s upgrades at each organ, loses or ends at least 2 worse (the heart, the gentle tutorial organ, excepted)', () => {
+    for (const r of careerRun().filter((x) => x.level > 0)) {
       const good = play(sensibleBuild, sensibleDilate, 3, r.level, r.perks), hold = play(sensibleBuild, holdOpen, 3, r.level, r.perks);
       console.log(LEVELS[r.level].id, 'careful', good.s.heartHp, 'hold-open', hold.hp, hold.s.phase);
       expect(hold.s.phase === 'defeat' || hold.s.heartHp <= good.s.heartHp - 2, LEVELS[r.level].id).toBe(true);
@@ -825,7 +851,7 @@ describe('Defend the Heart: forking vessels', () => {
   });
 
   it('a split or shed pathogen on the stem is undecided and chooses at the fork', () => {
-    const s = fixtureGame(); startWave(s); quiet(s); mk(s, 'saureus', 'upper', 0); toggleRoute(s, 'leftA');
+    const s = fixtureGame(); startWave(s); quiet(s); s.nodes = []; mk(s, 'saureus', 'upper', 0); toggleRoute(s, 'leftA');
     const b = undecided(mk(s, 'colony', 'leftA', M.forkAt('leftA') - 60)); hurt(s, b, 9999);
     const kids = s.pathogens.filter((p) => p.type === 'saureus' && p.vessel !== 'upper' && p.hp > 0);
     expect(kids.every((k) => !k.committed)).toBe(true);
@@ -891,7 +917,7 @@ describe('Defend the Heart: upgrades in play', () => {
   it('a new game has no upgrades: S. aureus is the only IgG target', () => {
     const s = newGame(0); const site = M.SITES.find((x) => !nodeAt(s, x.id))!;
     expect(s.perks).toEqual(NO_PERKS);
-    expect(buildCheck(s, site.id, 'igg', ['ecoli']).reason).toBe('Unlock this target in Upgrades.');
+    expect(buildCheck(s, site.id, 'igg', ['ecoli']).reason).toBe('Unlock this target in Upgrades, or borrow it for this organ.');
     expect(buildCheck(s, site.id, 'igg', ['saureus']).ok).toBe(true);
   });
   it('a damage upgrade raises that node type\'s hits by 15% a level', () => {
@@ -924,7 +950,7 @@ describe('Defend the Heart: upgrades in play', () => {
     placeNode(s, free[0].id, 'igm'); expect(s.energy).toBe(500 - 30);
     placeNode(s, free[1].id, 'igm'); expect(s.energy).toBe(500 - 30 - 60);
     startWave(s); quiet(s); finishWave(s); const e = s.energy;
-    placeNode(s, free[2].id, 'iga'); expect(s.energy).toBe(e - 25);
+    placeNode(s, free[2].id, 'iga'); expect(s.energy).toBe(e - CONFIG.nodes.iga.cost / 2);
   });
   it('extra starting node places one more IgM', () => {
     const a = newGame(0), b = newGame(0, perks({ extraNode: true }));

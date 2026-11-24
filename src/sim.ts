@@ -1,7 +1,7 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
 import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type LevelDef, type NodeType, type PathogenType, type VesselId } from './config';
 import { NO_PERKS, type Perks, type RunSave } from './career';
-import { VESSELS, VESSEL_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
+import { VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, siteById, HEART, LEVEL_INDEX, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
 
@@ -30,13 +30,18 @@ export interface Spawn { type: PathogenType; vessel: VesselId; at: number }
 export interface State {
   /** Index into LEVELS: which organ is being defended. */
   level: number;
+  /** IgG targets borrowed for this organ only (bought with gold; gone when the organ ends). */
+  borrowed: BacteriumType[];
+  /** Liver: where the gallbladder's bile destroyed lymph nodes (empty until it bursts; it bursts once). */
+  bile: Vec[];
   phase: Phase;
   paused: boolean;
   speed: number;
   wave: number;
   heartHp: number;
   energy: number;
-  dilated: VesselId | null;
+  /** Vessels open (dilated) right now; each drains NO and takes a share of the white cells. */
+  open: VesselId[];
   /** Nitric oxide left: opening a vessel costs it, an open vessel drains it. */
   no: number;
   /** Times NO has run dry (the UI toasts when it changes). */
@@ -83,14 +88,22 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 +
   loadLevel(level);
   const L = LEVELS[level];
   const s: State = {
-    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, dilated: null, no: perks.noMax, noOuts: 0,
-    perks, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
+    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, open: [], no: perks.noMax, noOuts: 0,
+    perks, borrowed: [], bile: [], discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
-  for (const n of L.startingNodes) {
+  for (const n of L.startingNodes ?? []) {
     const site = SITES.find((x) => x.vessel === n.vessel && x.index === n.site);
     if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets: n.type === 'igg' ? ['saureus'] : [], wavesFought: 0 });
+  }
+  // every vessel starts with one free IgM: on its second site out (its first if it has only one), on the shared stem of a fork
+  for (const e of ENTRY_IDS) {
+    if (s.nodes.some((n) => entryOf(n.vessel) === e)) continue;
+    const all = SITES.filter((x) => entryOf(x.vessel) === e), stem = all.filter((x) => x.stem);
+    const mine = (stem.length ? stem : all).sort((a, b) => a.index - b.index);
+    const site = mine.find((x) => x.index === 1) ?? mine[0];
+    if (site) s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: 'igm', cd: 0, flash: 0, targets: [], wavesFought: 0 });
   }
   if (perks.extraNode) {
     // one more IgM, on the first free site guarding the vessel bringing the most into wave 1
@@ -114,12 +127,14 @@ export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
   s.heartHp = Math.max(1, Math.min(L.hp, run.heartHp));
   s.energy = Math.max(0, Math.floor(run.energy));
   s.no = Math.max(0, Math.min(perks.noMax, run.no));
+  s.borrowed = (run.borrowed ?? []).filter((b, i, a) => CONFIG.pathogens[b]?.taxon && a.indexOf(b) === i);
+  s.bile = (run.bile ?? []).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y)).slice(0, 8);
   s.nodes = [];
   for (const n of run.nodes) {
     const site = SITES.find((x) => x.id === n.site);
     if (!site || !CONFIG.nodes[n.type] || s.nodes.some((x) => x.site === n.site)) continue;
     // IgG targets: only ones this career has unlocked, two only with dual-target, S. aureus if none are left
-    let targets = n.type === 'igg' ? n.targets.filter((b) => perks.targets.includes(b)).slice(0, perks.dual ? 2 : 1) : [];
+    let targets = n.type === 'igg' ? n.targets.filter((b) => hasTarget(s, b)).slice(0, perks.dual ? 2 : 1) : [];
     if (n.type === 'igg' && !targets.length) targets = ['saureus'];
     s.nodes.push({ id: s.nextId++, site: site.id, vessel: site.vessel, type: n.type, cd: 0, flash: 0, targets, wavesFought: n.wavesFought | 0 });
   }
@@ -157,6 +172,8 @@ export function organFlow(s: State, p: Pathogen): number {
 }
 /** The boss currently in play, if any. */
 export const activeBoss = (s: State) => s.pathogens.find((p) => p.hp > 0 && CONFIG.pathogens[p.type].boss);
+/** Every boss still alive (the last wave sends one up each vessel). */
+export const activeBosses = (s: State) => s.pathogens.filter((p) => p.hp > 0 && CONFIG.pathogens[p.type].boss);
 export const aliveCells = (s: State) => s.cells.filter((c) => c.hp > 0 && !c.infected);
 /** Living cells out on the open vessel: the only ones that fight, pulse or can be infected. */
 export const outCells = (s: State) => aliveCells(s).filter((c) => c.mode === 'out');
@@ -215,11 +232,26 @@ export function buildCheck(s: State, siteId: string, type: NodeType, targets?: B
 }
 
 /** Why these IgG targets can't be used ('' if they can). */
-function targetsCheck(s: State, targets: BacteriumType[]): string {
+/** Can IgG be aimed at this bacterium here: unlocked for the career, or borrowed for this organ. */
+export const hasTarget = (s: State, b: BacteriumType) => s.perks.targets.includes(b) || s.borrowed.includes(b);
+
+/** Borrow an IgG target for the rest of this organ (the caller pays the gold). */
+export function borrowTarget(s: State, b: BacteriumType): boolean {
+  if (hasTarget(s, b) || !CONFIG.pathogens[b]?.taxon) return false;
+  s.borrowed.push(b);
+  return true;
+}
+
+/** How many IgG nodes are aimed at this bacterium (leaving out the one on `except`). */
+export const aimedAt = (s: State, b: BacteriumType, except?: string) => s.nodes.filter((n) => n.type === 'igg' && n.site !== except && n.targets.includes(b)).length;
+
+function targetsCheck(s: State, targets: BacteriumType[], except?: string): string {
   if (!targets.length) return 'Choose what this IgG targets.';
   if (targets.length > 2 || new Set(targets).size !== targets.length) return 'Choose one target, or two different ones.';
   if (targets.length === 2 && !s.perks.dual) return 'Dual-target IgG is an upgrade.';
-  if (targets.some((b) => !s.perks.targets.includes(b))) return 'Unlock this target in Upgrades.';
+  if (targets.some((b) => !hasTarget(s, b))) return 'Unlock this target in Upgrades, or borrow it for this organ.';
+  const full = targets.find((b) => aimedAt(s, b, except) >= CONFIG.iggPerTarget);
+  if (full) return `Already ${CONFIG.iggPerTarget} IgG nodes aimed at ${CONFIG.pathogens[full].plural} on this organ.`;
   return '';
 }
 
@@ -240,14 +272,14 @@ export function placeNode(s: State, siteId: string, type: NodeType, targets?: Ba
 }
 
 /** The IgG targets this player can choose (Stage 3 limits them to the career's unlocks). */
-export const selectableTargets = (s: State): BacteriumType[] => [...s.perks.targets];
+export const selectableTargets = (s: State): BacteriumType[] => [...new Set([...s.perks.targets, ...s.borrowed])];
 
 /** Re-aim a placed IgG node between waves. */
 export function retargetCheck(s: State, siteId: string, targets: BacteriumType[]): { ok: boolean; reason: string } {
   const n = nodeAt(s, siteId);
   if (s.phase !== 'prep') return { ok: false, reason: 'Lymph nodes can only be changed between waves.' };
   if (!n || n.type !== 'igg') return { ok: false, reason: 'Only an IgG node can be re-aimed.' };
-  const t = targetsCheck(s, targets);
+  const t = targetsCheck(s, targets, siteId);
   if (t) return { ok: false, reason: t };
   const cost = retargetCost(n, targets);
   if (s.energy < cost) return { ok: false, reason: `Needs ${cost} energy (you have ${s.energy}).` };
@@ -274,46 +306,83 @@ export function canStartWave(s: State): { ok: boolean; reason: string } {
 /** NO needed to open a vessel: its cost, plus enough to hold it open for a moment. */
 export const openNeed = () => CONFIG.no.openCost + CONFIG.no.drainPerSec * CONFIG.no.minOpenSeconds;
 
-/** Can vessel r be opened (or, if it is the open one, closed) right now? */
+/** Can vessel r be opened (or, if it is open, closed) right now? Each open vessel needs a white cell of its own. */
 export function dilateCheck(s: State, r: VesselId): { ok: boolean; reason: string } {
   if (s.phase !== 'combat') return { ok: false, reason: 'Dilate during the wave.' };
   if (s.paused) return { ok: false, reason: 'Paused.' };
   if (!VESSELS[r]) return { ok: false, reason: 'Not a vessel of this organ.' };
-  if (s.dilated === r) return { ok: true, reason: '' };
+  if (s.open.includes(r)) return { ok: true, reason: '' };
   if (s.no < openNeed()) return { ok: false, reason: `Not enough NO to open the ${VESSELS[r].name.toLowerCase()}.` };
+  const sibling = s.open.find((x) => x !== r && entryOf(x) === entryOf(r)); // the other branch of a fork: switching
+  // one vessel may always be open (even with no cells left, it still turns pathogens at a fork); more need a cell each
+  if (!sibling && s.open.length >= Math.max(1, aliveCells(s).length)) return { ok: false, reason: 'Every white cell already has a vessel: close one first.' };
   return { ok: true, reason: '' };
 }
 
-/** Open r (paying NO; any other open vessel relaxes), or close r if it is already open. */
+/** Open r (paying NO), or close r if it is already open. Opening a branch of a fork closes its other branch.
+ *  The white cells are then shared out evenly among the open vessels. */
 export function toggleRoute(s: State, r: VesselId): boolean {
   if (!dilateCheck(s, r).ok) return false;
-  if (s.dilated === r) { closeRoute(s); return true; }
-  closeRoute(s);
+  if (s.open.includes(r)) { closeRoute(s, r); return true; }
+  const sibling = s.open.find((x) => x !== r && entryOf(x) === entryOf(r));
+  if (sibling) closeRoute(s, sibling);
   s.no -= CONFIG.no.openCost;
-  s.dilated = r;
+  s.open.push(r);
   // cells still heading home along this vessel turn round where they are
   for (const c of aliveCells(s)) if (c.mode === 'returning' && c.vessel === r) c.mode = 'out';
-  deployHome(s);
+  shareCells(s);
   return true;
 }
 
-/** Close the open vessel: cells out on it head home. */
-export function closeRoute(s: State) {
-  s.dilated = null;
-  for (const c of aliveCells(s)) if (c.mode === 'out') { c.mode = 'returning'; c.targetId = null; }
+/** Close vessel r (or every open vessel): its cells head home, then out along any vessel still open. */
+export function closeRoute(s: State, r?: VesselId) {
+  const closing = r ? [r] : [...s.open];
+  s.open = s.open.filter((x) => !closing.includes(x));
+  for (const c of aliveCells(s)) if (c.mode === 'out' && closing.includes(c.vessel)) { c.mode = 'returning'; c.targetId = null; }
+  shareCells(s);
 }
 
-/** Cells waiting at the organ set out along the open vessel. */
+/** How many cells each open vessel should have: as even as can be, the first-opened vessels getting any extra. */
+function shares(s: State): Map<VesselId, number> {
+  const n = aliveCells(s).length, k = s.open.length, out = new Map<VesselId, number>();
+  s.open.forEach((v, i) => out.set(v, Math.floor(n / k) + (i < n % k ? 1 : 0)));
+  return out;
+}
+
+/** Share the white cells out: a vessel with more than its share sends the extra home (to be sent on), and cells
+ *  waiting at the organ set out along the vessels short of theirs. */
+function shareCells(s: State) {
+  if (!s.open.length) return;
+  const want = shares(s);
+  for (const v of s.open) {
+    const mine = outCells(s).filter((c) => c.vessel === v).sort((a, b) => b.s - a.s); // nearest the organ first
+    for (const c of mine.slice(0, Math.max(0, mine.length - (want.get(v) ?? 0)))) { c.mode = 'returning'; c.targetId = null; }
+  }
+  deployHome(s);
+}
+
+/** Cells waiting at the organ set out along the open vessels that are short of their share. */
 function deployHome(s: State) {
-  if (!s.dilated) return;
-  const L = VESSELS[s.dilated].length;
-  let i = outCells(s).length;
-  for (const c of aliveCells(s)) if (c.mode === 'home') { c.vessel = s.dilated; c.s = L - 8 - i * 30; c.mode = 'out'; c.targetId = null; i++; }
+  if (!s.open.length) return;
+  const want = shares(s);
+  for (const c of aliveCells(s)) {
+    if (c.mode !== 'home') continue;
+    const v = s.open.find((x) => outCells(s).filter((o) => o.vessel === x).length < (want.get(x) ?? 0));
+    if (!v) break;
+    const i = outCells(s).filter((o) => o.vessel === v).length, L = VESSELS[v].length;
+    c.vessel = v; c.s = L - 8 - i * 30; c.mode = 'out'; c.targetId = null;
+  }
 }
 
 export function waveSpawns(n: number, level = LEVEL_INDEX): Spawn[] {
-  const out: Spawn[] = [];
-  for (const g of LEVELS[level].waves[n - 1].groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval });
+  const out: Spawn[] = [], L = LEVELS[level];
+  for (const g of L.waves[n - 1].groups) for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval });
+  // the last wave's boss comes up every vessel, one after another
+  if (n === L.waves.length) {
+    for (const g of L.waves[n - 1].groups.filter((x) => CONFIG.pathogens[x.type].boss)) {
+      L.map.vessels.filter((v) => v.id !== g.vessel).forEach((v, k) => out.push({ type: g.type, vessel: routesOf(v.id)[0], at: g.start + (k + 1) * CONFIG.bossEveryVessel.gap }));
+    }
+  }
   return out.sort((a, b) => a.at - b.at);
 }
 
@@ -321,7 +390,7 @@ export function startWave(s: State): boolean {
   if (!canStartWave(s).ok) return false;
   const v = VESSEL_IDS[0];
   s.phase = 'combat';
-  s.dilated = null;
+  s.open = [];
   s.waveTime = 0;
   s.spawns = waveSpawns(s.wave, s.level);
   s.respawns = [];
@@ -437,7 +506,10 @@ export function hurt(s: State, p: Pathogen, dmg: number, struck = false) {
 
 function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pathogen {
   const st = CONFIG.pathogens[type];
-  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp: st.hp, maxHp: st.hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
+  const grow = LEVELS[s.level].waveHpGrowth;
+  let hp = grow ? Math.round(st.hp * (1 + grow * (s.wave - 1))) : st.hp;
+  if (st.boss) hp = Math.round(hp * CONFIG.bossEveryVessel.hpShare); // one comes up every vessel
+  const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp, maxHp: hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
   if (st.boss) {
     const m = pointAt(VESSELS[vessel], 90);
@@ -453,6 +525,23 @@ function loseCell(s: State) {
   if (!r) return;
   s.respawns.push(s.waveTime + r.after);
   s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `The spleen will remake it in ${r.after} s`, t: 0, color: '#1e6a8a' });
+}
+
+/** Liver: the first time its health falls to the threshold, the gallbladder bursts and bile destroys lymph nodes
+ *  at random (chosen with the game's seeded random source), leaving green stains where they stood. */
+export function burstGallbladder(s: State) {
+  const gb = LEVELS[s.level].gallbladder;
+  if (!gb || s.bile.length || s.heartHp <= 0 || s.heartHp > LEVELS[s.level].hp * gb.at) return;
+  const pool = [...s.nodes];
+  for (let i = 0; i < gb.nodes && pool.length; i++) {
+    const n = pool.splice(Math.floor(rand(s) * pool.length), 1)[0], site = siteById(n.site);
+    s.nodes = s.nodes.filter((x) => x !== n);
+    s.bile.push({ x: site.x, y: site.y });
+    s.rings.push({ x: site.x, y: site.y, r: 40, t: 0, dur: 0.9, kind: 'pop' });
+  }
+  if (!s.bile.length) s.bile.push({ x: HEART.x, y: HEART.y }); // nothing to destroy: it has still burst
+  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: 'The gallbladder bursts! Bile destroys lymph nodes', t: 0, color: '#3e6a1e' });
+  s.heartKick = 1;
 }
 
 /** A hiding boss inside a red blood cell: nothing can target or hit it. */
@@ -478,7 +567,7 @@ export function infect(s: State, c: WhiteCell, virus: Pathogen) {
 
 function easeWidths(s: State, dt: number) {
   for (const v of VESSEL_IDS) {
-    const open = s.dilated === v && s.phase === 'combat';
+    const open = s.open.includes(v) && s.phase === 'combat';
     const target = open ? 1 : 0;
     const k = CONFIG.dilateRate * dt;
     s.width[v] = s.width[v] < target ? Math.min(target, s.width[v] + k) : Math.max(target, s.width[v] - k);
@@ -512,7 +601,7 @@ export function leakSummary(s: State): LeakSummary | null {
   let advice: string;
   if (type === 'sepsis') advice = 'The sepsis hijacker infects every white cell it touches: keep your cells off its vessel and let IgM and IgE nodes kill it.';
   else if (st.taxon) advice = `An IgG aimed at ${name} hits it three times as hard${st.boss ? '' : ', and other bacteria of the same shape two and a half times'}.`
-    + (s.perks.targets.includes(st.taxon.species) ? '' : ` Unlock the ${name} target in Upgrades first: you don't have it yet.`);
+    + (hasTarget(s, st.taxon.species) ? '' : ` Unlock the ${name} target in Upgrades first (or borrow it for this organ): you don't have it yet.`);
   else if (type === 'burrower') advice = 'The swarm is acid-proof and burrows out of reach every few seconds: put many nodes on its vessel, IgG aimed at H. pylori first, so it is worn down in the moments it is out.';
   else if (type === 'granuloma') advice = 'The granuloma\'s wall soaks up three quarters of every hit until enough antibodies have struck it: build many fast-firing nodes on its vessel, or break it at once with the pulse.';
   else if (type === 'plasmodium') advice = 'Plasmodium is a parasite, not a bacterium: IgM and IgE wear it down, and time the pulse for when it comes out of its red blood cell.';
@@ -558,7 +647,10 @@ export function step(s: State, dtRaw: number) {
     const st = CONFIG.pathogens[p.type];
     if (st.regen && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + st.regen * dt);
     const acid = LEVELS[s.level].acid;
-    if (acid && !st.acidProof && p.hp > 0 && p.s > 0 && inAcid(s, p)) hurt(s, p, acid.dps * dt);
+    if (acid && p.hp > 0 && p.s > 0 && inAcid(s, p)) {
+      if (st.acidProof) p.hp = Math.min(p.maxHp, p.hp + acid.dps * dt); // H. pylori feeds on the acid
+      else hurt(s, p, acid.dps * dt);
+    }
     if (st.sheds && p.hp > 0 && p.s > 0) {
       p.shedT = (p.shedT ?? st.sheds.every) - dt;
       if (p.shedT <= 0) { p.shedT += st.sheds.every; shed.push([st.sheds.type, p.vessel, Math.max(0, p.s - 6), p.committed]); }
@@ -603,9 +695,9 @@ export function step(s: State, dtRaw: number) {
   }
   s.shots = s.shots.filter((sh) => sh.t < sh.dur);
 
-  // NO: an open vessel drains it; when it runs dry the vessel closes. Closed, it slowly refills.
-  if (s.dilated) {
-    s.no -= CONFIG.no.drainPerSec * dt;
+  // NO: every open vessel drains it; when it runs dry they all close. All closed, it slowly refills.
+  if (s.open.length) {
+    s.no -= CONFIG.no.drainPerSec * s.open.length * dt;
     if (s.no <= 0) { s.no = 0; s.noOuts++; closeRoute(s); }
   } else s.no = Math.min(s.perks.noMax, s.no + CONFIG.no.regenPerSec * dt);
 
@@ -630,7 +722,7 @@ export function step(s: State, dtRaw: number) {
     const mine = s.pathogens.filter((p) => p.hp > 0 && !hidden(s, p) && covers(c.vessel, p) && p.s > 0);
     const target = mine.reduce<Pathogen | null>((b, p) => (!b || p.s > b.s ? p : b), null);
     c.targetId = target?.id ?? null;
-    const rank = outCells(s).indexOf(c);
+    const rank = outCells(s).filter((x) => x.vessel === c.vessel).indexOf(c);
     let goal = (target ? target.s : L * WC.guardAt) + rank * 22;
     goal = Math.max(L * WC.minReach, Math.min(L - 4, goal));
     const gap = goal - c.s;
@@ -664,6 +756,7 @@ export function step(s: State, dtRaw: number) {
   }
   s.pathogens = s.pathogens.filter((p) => p.hp > 0);
 
+  burstGallbladder(s);
   if (s.heartHp <= 0) { s.phase = 'defeat'; s.shots = []; return; }
   if (!s.spawns.length && !s.pathogens.length) {
     closeRoute(s);
@@ -677,8 +770,8 @@ export function step(s: State, dtRaw: number) {
  *  with neither open, the vessel's pathogens alternate, first branch first. */
 function chooseBranch(s: State, p: Pathogen) {
   const entry = entryOf(p.vessel), [a, b] = routesOf(entry);
-  if (s.dilated === a) p.vessel = b;
-  else if (s.dilated === b) p.vessel = a;
+  if (s.open.includes(a) && !s.open.includes(b)) p.vessel = b;
+  else if (s.open.includes(b) && !s.open.includes(a)) p.vessel = a;
   else { const n = s.forkFlip[entry] ?? 0; p.vessel = n % 2 ? b : a; s.forkFlip[entry] = n + 1; }
   p.committed = true;
 }
@@ -702,7 +795,7 @@ function recall(s: State, dt: number) {
   const contracted = VESSEL_IDS.every((v) => s.width[v] <= 0.001);
   if (allHome && contracted) {
     s.cells = [];
-    s.dilated = null;
+    s.open = [];
     s.pulsesLeft = 0;
     // every node has fought one more wave; IgE nodes burn out after their last
     for (const n of s.nodes) n.wavesFought++;

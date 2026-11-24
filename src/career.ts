@@ -89,6 +89,10 @@ export function buy(c: Career, id: UpgradeId): { ok: boolean; reason: string } {
 export interface RunSave {
   level: number; wave: number; heartHp: number; energy: number; no: number;
   nodes: { site: string; type: NodeType; targets: BacteriumType[]; wavesFought: number }[];
+  /** IgG targets borrowed for this organ. */
+  borrowed?: BacteriumType[];
+  /** Liver: where the gallbladder's bile fell (it has burst if any). */
+  bile?: { x: number; y: number }[];
 }
 
 export interface Career {
@@ -174,7 +178,8 @@ function validRun(r: unknown): r is RunSave {
   return Number.isInteger(x.level) && x.level >= 0 && x.level < LEVELS.length
     && [x.wave, x.heartHp, x.energy, x.no].every((n) => typeof n === 'number' && Number.isFinite(n)) && Array.isArray(x.nodes)
     && x.nodes.every((n) => n && typeof n.site === 'string' && typeof n.type === 'string' && Array.isArray(n.targets)
-      && n.targets.every((b) => (BACTERIA as string[]).includes(b)));
+      && n.targets.every((b) => (BACTERIA as string[]).includes(b)))
+    && (x.borrowed === undefined || (Array.isArray(x.borrowed) && x.borrowed.every((b) => (BACTERIA as string[]).includes(b))));
 }
 
 /** How many organs can be played: every cleared one, and the next. */
@@ -187,6 +192,8 @@ export function snapshot(s: State): RunSave {
   return {
     level: s.level, wave: s.wave, heartHp: s.heartHp, energy: s.energy, no: s.no,
     nodes: s.nodes.map((n) => ({ site: n.site, type: n.type, targets: [...n.targets], wavesFought: n.wavesFought })),
+    borrowed: [...s.borrowed],
+    bile: s.bile.map((p) => ({ x: p.x, y: p.y })),
   };
 }
 

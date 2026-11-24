@@ -4,7 +4,8 @@ import * as map from './level';
 import { W, H, siteById, nearestOnVessel, dist } from './level';
 import {
   type State, newGame, step, advance, nextSpeed, toggleRoute, dilateCheck, openNeed, canStartWave, startWave, firePulse, pulseCheck, pulseTargets, outCells,
-  aliveCells, wave, whenLabel, resumeGame, leakSummary, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
+  aliveCells, wave, resumeGame, leakSummary, nodeCost, retargetCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
+  hasTarget, borrowTarget, selectableTargets, pathogenPos, iggMultiplier, wallLeft, hidden, type Pathogen,
 } from './sim';
 import { loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
@@ -57,8 +58,62 @@ function vesselAt(p: { x: number; y: number }): VesselId | null {
     if (n.d <= reach && n.d < bd) { bd = n.d; best = v; onStem = n.s < map.forkAt(v); }
   }
   // the shared stem of a fork belongs to both branches: act on the open one, else the first
-  return best && onStem ? map.routeAtStem(map.entryOf(best), s.dilated) : best;
+  return best && onStem ? map.routeAtStem(map.entryOf(best), s.open.find((r) => map.entryOf(r) === map.entryOf(best)) ?? null) : best;
 }
+/** The pathogen under a point (bosses are bigger targets), if any. */
+function pathogenAt(p: { x: number; y: number }): Pathogen | null {
+  let best: Pathogen | null = null, bd = Infinity;
+  for (const q of s.pathogens) {
+    if (q.hp <= 0 || q.s <= 0) continue;
+    const st = CONFIG.pathogens[q.type], d = dist(p, pathogenPos(q)), reach = (st.boss ? 52 : q.type === 'infected' ? 26 : 22) + (view.touch ? 10 : 0);
+    if (d <= reach && d < bd) { bd = d; best = q; }
+  }
+  return best;
+}
+
+// ── Pathogen details: click one to see what it is and how it stands ──
+const inspectEl = $('inspect');
+function closeInspect() { view.inspectId = null; inspectEl.hidden = true; }
+function inspectHtml(q: Pathogen): string {
+  const st = CONFIG.pathogens[q.type], tx = st.taxon;
+  const rows: string[] = [];
+  rows.push(`<p class="sub">${esc(tx ? `${tx.gram === '+' ? 'Gram+' : 'Gram−'} ${tx.shape}${st.short ? ` · ${st.short.replace(/^Gram[+−-] (coccus|rod),? ?/, '')}` : ''}` : st.short ?? (st.boss ? 'Boss' : 'Virus'))}</p>`);
+  rows.push(`<p><b>Health</b> ${Math.ceil(q.hp)} / ${q.maxHp}</p><p class="nogauge"><i style="width:${Math.max(0, (q.hp / q.maxHp) * 100)}%"></i></p>`);
+  rows.push(`<p><b>Speed</b> ${st.speed}${q.slowT > 0 ? ` <i>(slowed by IgA to ×${q.slow})</i>` : ''} · <b>Organ damage</b> ${st.heartDamage} · <b>Energy for a kill</b> ${Math.round(st.bounty * (levelDef(s).income ?? 1))}</p>`);
+  if (st.contactDps) rows.push(`<p><b>Harms a white cell</b> ${st.contactDps} a second on contact</p>`);
+  // how hard your IgG hits it: the best match among the targets you can aim at
+  if (tx) {
+    const best = selectableTargets(s).map((b) => iggMultiplier([b], q.type)).reduce((a, b) => Math.max(a, b), 0);
+    rows.push(`<p><b>IgG</b> ×${best} at best with your targets${hasTarget(s, tx.species) ? '' : ` (×3 once you aim at <i>${esc(CONFIG.pathogens[tx.species].plural)}</i>)`}</p>`);
+  } else rows.push('<p><b>IgG</b> ×0.25: not a bacterium. IgM and IgE are best.</p>');
+  const traits: string[] = [];
+  if (st.infects) traits.push(st.infectsMany ? 'Infects every white cell it touches.' : 'Infects the first white cell it touches.');
+  if (st.acidProof) traits.push('Acid-proof: stomach acid heals it.');
+  if (st.slowImmune) traits.push('IgA cannot slow it.');
+  if (st.regen) traits.push(`Heals ${st.regen} a second.`);
+  if (st.sheds) traits.push(`Releases a ${CONFIG.pathogens[st.sheds.type].name.toLowerCase()} every ${st.sheds.every} s.`);
+  if (st.splitInto) traits.push(`Bursts into ${st.splitInto.count} ${CONFIG.pathogens[st.splitInto.type].plural}.`);
+  if (st.walled) traits.push(wallLeft(q) > 0 ? `Walled: a quarter damage until ${wallLeft(q)} more antibody strikes break the wall.` : 'Its wall is broken.');
+  if (st.hides || st.burrows) traits.push(hidden(s, q) ? `<b>${st.burrows ? 'Burrowed' : 'Hiding'} now</b>: nothing can touch it.` : st.burrows ? 'Burrows into the lining every few seconds.' : 'Hides in a red blood cell every few seconds.');
+  if (traits.length) rows.push(`<p class="sub">${traits.join(' ')}</p>`);
+  return `<button class="x" data-act="closeInspect" aria-label="Close">×</button><h3>${st.boss ? '<span class="bossTag">BOSS</span> ' : ''}<i>${esc(st.name)}</i></h3>${rows.join('')}`;
+}
+let inspectSig = '';
+function updateInspect() {
+  if (view.inspectId == null) return;
+  const q = s.pathogens.find((x) => x.id === view.inspectId && x.hp > 0);
+  if (!q || s.phase !== 'combat') { closeInspect(); return; }
+  const html = inspectHtml(q);
+  if (html !== inspectSig) { inspectEl.innerHTML = html; inspectSig = html; }
+  // keep the card beside the pathogen, inside the map
+  const r = canvas.getBoundingClientRect(), f = $('field').getBoundingClientRect(), pos = pathogenPos(q);
+  const x = r.left - f.left + (pos.x / W) * r.width, y = r.top - f.top + (pos.y / H) * r.height;
+  const w = inspectEl.offsetWidth, h = inspectEl.offsetHeight;
+  inspectEl.style.left = `${Math.max(6, Math.min(f.width - w - 6, x + (x + w + 40 > f.width ? -w - 30 : 30)))}px`;
+  inspectEl.style.top = `${Math.max(6, Math.min(f.height - h - 6, y - h / 2))}px`;
+}
+inspectEl.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('[data-act=closeInspect]')) closeInspect(); });
+
 function siteAt(p: { x: number; y: number }): string | null {
   let best: string | null = null, bd = view.touch ? 52 : 40;
   for (const site of map.SITES) { const d = dist(p, site); if (d < bd) { bd = d; best = site.id; } }
@@ -66,21 +121,41 @@ function siteAt(p: { x: number; y: number }): string | null {
 }
 
 function choose(v: VesselId) {
-  const had = s.dilated, c = dilateCheck(s, v);
+  const was = [...s.open], c = dilateCheck(s, v);
   if (!c.ok || !toggleRoute(s, v)) { toast(c.reason || 'Dilate during the wave.'); return; }
-  if (had === v) toast(`The ${vesselName(v).toLowerCase()} relaxes; your white cells head home.`);
-  else if (had) toast(`${vesselName(v)} dilated (−${CONFIG.no.openCost} NO); the ${vesselName(had).toLowerCase()} relaxes.`);
-  else toast(`${vesselName(v)} dilated (−${CONFIG.no.openCost} NO).`);
+  const n = s.open.length, split = n > 1 ? ` Your white cells are split ${n} ways.` : '';
+  if (was.includes(v)) toast(`The ${vesselName(v).toLowerCase()} relaxes; its white cells head home${n ? ' and on to the open vessels' : ''}.`);
+  else {
+    const closed = was.find((x) => !s.open.includes(x));
+    toast(`${vesselName(v)} dilated (−${CONFIG.no.openCost} NO)${closed ? `; the ${vesselName(closed).toLowerCase()} relaxes` : ''}.${split}`);
+  }
   lastSig = '';
 }
 
 // ── Build popover ───────────────────────────────────────────────────────────
 /** The target list for an IgG node: every bacterium with its icon, name and Gram/shape; locked or unusable ones greyed with the reason. */
 function targetButtons(act: string, disabled: (b: BacteriumType) => string): string {
+  const fee = CONFIG.borrowTargetGold;
   return `<div class="types targets">${BACTERIA.map((b) => {
-    const st = CONFIG.pathogens[b], locked = !s.perks.targets.includes(b), why = locked ? 'Unlock in Upgrades' : disabled(b);
-    return `<button data-act="${act}" data-target="${b}" ${why ? 'disabled' : ''} title="${esc(why)}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>${locked ? 'Unlock in Upgrades' : esc(st.short ?? '')}</small></span></button>`;
+    const st = CONFIG.pathogens[b];
+    if (!hasTarget(s, b)) {
+      // not unlocked: borrow it for this organ for a little gold
+      const can = career.gold >= fee && s.phase === 'prep';
+      return `<button data-act="borrow" data-target="${b}" ${can ? '' : 'disabled'} title="${can ? `Borrow for this organ: ${fee} gold` : `Needs ${fee} gold (you have ${career.gold})`}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>Borrow for this organ · ${fee} gold</small></span></button>`;
+    }
+    const why = disabled(b);
+    return `<button data-act="${act}" data-target="${b}" ${why ? 'disabled' : ''} title="${esc(why)}">${icon(b, 34)}<span><b><i>${esc(st.plural)}</i></b><small>${esc(why || st.short || '')}${s.borrowed.includes(b) ? ' · borrowed' : ''}</small></span></button>`;
   }).join('')}</div>`;
+}
+
+/** Borrow an IgG target for the rest of this organ, paying gold from the career. */
+function borrow(b: BacteriumType): boolean {
+  const fee = CONFIG.borrowTargetGold;
+  if (career.gold < fee || s.phase !== 'prep' || !borrowTarget(s, b)) return false;
+  career.gold -= fee; career.run = snapshot(s); saveNow();
+  toast(`${CONFIG.pathogens[b].plural} borrowed as an IgG target for this organ (−${fee} gold).`);
+  lastSig = '';
+  return true;
 }
 /** Bacteria names in italics, joined. */
 const bugNames = (ts: BacteriumType[]) => ts.map((b) => `<i>${esc(CONFIG.pathogens[b].plural)}</i>`).join(', ');
@@ -95,7 +170,7 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
   const x = `<button class="x" data-act="close" aria-label="Close">×</button>`;
   const back = `<p><button data-act="back">Back</button></p>`;
   if (mode === 'aim') {
-    const dual = s.perks.dual && s.perks.targets.length >= 2 ? `<p><button data-act="todual" ${buildCheck(s, id, 'igg', s.perks.targets.slice(0, 2)).ok ? '' : 'disabled'}>Aim at two targets (${nodeCost(s, 'igg', ['saureus', 'ecoli'])} energy)</button></p>` : '';
+    const dual = s.perks.dual && selectableTargets(s).length >= 2 ? `<p><button data-act="todual" ${buildCheck(s, id, 'igg', selectableTargets(s).slice(0, 2)).ok ? '' : 'disabled'}>Aim at two targets (${nodeCost(s, 'igg', ['saureus', 'ecoli'])} energy)</button></p>` : '';
     popover.innerHTML = `${x}<h3>Aim the IgG node</h3><p class="sub">${MULT_LINE}</p>
       ${targetButtons('aim', (b) => buildCheck(s, id, 'igg', [b]).reason)}${dual}${back}`;
   } else if (mode === 'dualA' || mode === 'dualB') {
@@ -113,7 +188,7 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
   } else if (node) {
     const st = CONFIG.nodes[node.type];
     const life = st.burnsOutAfter ? `<p class="notice">Burns out after ${st.burnsOutAfter - node.wavesFought} more wave${st.burnsOutAfter - node.wavesFought === 1 ? '' : 's'}.</p>` : '';
-    const dualNode = node.targets.length === 2, choices = s.perks.targets.length;
+    const dualNode = node.targets.length === 2, choices = selectableTargets(s).length;
     // re-aiming needs somewhere else to aim: another unlocked target (or, for a dual node, a third)
     const reaim = choices > node.targets.length ? `<button data-act="${dualNode ? 'toreaimA' : 'toreaim'}">${dualNode ? 'Re-aim both' : 'Re-aim'} (${CONFIG.iggRetarget} energy)</button>` : '';
     const second = s.perks.dual && !dualNode && choices >= 2 ? ` <button data-act="toadd">Add a second target (${retargetCost(node, [node.targets[0], 'ecoli'])})</button>` : '';
@@ -167,6 +242,7 @@ popover.addEventListener('click', (e) => {
     const n = nodeAt(s, id)!, ts = [n.targets[0], el.dataset.target as BacteriumType], cost = retargetCost(n, ts);
     if (retargetNode(s, id, ts)) { toast(`IgG now aims at ${ts.map((b) => CONFIG.pathogens[b].plural).join(' and ')} (−${cost} energy).`); closeSite(); lastSig = ''; }
   }
+  else if (act === 'borrow') { if (borrow(el.dataset.target as BacteriumType)) openSite(id, view.popMode); }
   else if (act === 'build') {
     const type = el.dataset.type as NodeType;
     if (type === 'igg') { openSite(id, 'aim'); return; }
@@ -191,6 +267,9 @@ canvas.addEventListener('pointerdown', (e) => {
     closeSite();
     if (vesselAt(p)) toast('Dilate during the wave: start it, then open a vessel with NO.');
   } else if (s.phase === 'combat') {
+    const bug = pathogenAt(p);
+    if (bug) { view.inspectId = bug.id; inspectSig = ''; inspectEl.hidden = false; updateInspect(); return; }
+    closeInspect();
     const v = vesselAt(p);
     if (v) choose(v);
     else if (siteAt(p)) toast('Lymph nodes can only be placed between waves.');
@@ -212,7 +291,7 @@ function pulse() {
   lastSig = '';
 }
 
-function restart() { const sp = s.speed; s = newGame(s.level, perksOf(career)); lastPhase = ''; spentToasted = 0; if (tut) { wantTutorial = true; maybeTutorial(); } s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
+function restart() { const sp = s.speed, borrowed = s.borrowed; s = newGame(s.level, perksOf(career)); s.borrowed = borrowed; lastPhase = ''; spentToasted = 0; if (tut) { wantTutorial = true; maybeTutorial(); } s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(`A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
 /** A run worth asking about before it is thrown away: past the first wave, or with nodes built. */
 const runInProgress = () => (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.phase !== 'prep' || s.energy !== levelDef(s).startEnergy);
 // ── The guided first wave on the heart ─────────────────────────────────────
@@ -361,6 +440,7 @@ panel.addEventListener('click', (e) => {
   if (a === 'restart') restart();
   if (a === 'level') playLevel(Number(el.dataset.level));
   if (a === 'shop') openMenu({ page: 'shop' });
+  if (a === 'borrow') borrow(el.dataset.target as BacteriumType);
 });
 panel.addEventListener('pointerover', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = true; const site = (e.target as HTMLElement).closest('[data-site]') as HTMLElement | null; view.hoverSite = site?.dataset.site ?? view.hoverSite; });
 panel.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = false; });
@@ -444,23 +524,9 @@ function nodeIcon(t: NodeType): string {
 
 let lastSig = '';
 function signature() {
-  return JSON.stringify([s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.dilated, s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
+  return JSON.stringify([s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.open.join(), s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
 }
 
-function previewHtml(): string {
-  const def = wave(s);
-  return map.ENTRY_IDS.map((v) => {
-    const groups = def.groups.filter((g) => g.vessel === v).sort((a, b) => a.start - b.start);
-    const forks = map.routesOf(v).length > 1;
-    if (!groups.length) return '';
-    const rows = groups.map((g) => {
-      const st = CONFIG.pathogens[g.type];
-      const traits = st.boss ? `<b class="bossTag">BOSS</b> ${esc(st.blurb ?? '')}` : st.taxon ? esc(st.short ?? '') : g.type === 'virus' ? 'fast, grouped' : 'infects white cells';
-      return `<li>${icon(g.type, st.boss ? 40 : 28)}<span><b>${g.count} ${(g.count > 1 ? st.plural : st.name).toLowerCase()}</b> <small>${whenLabel(g.start)}, ${traits}</small></span></li>`;
-    }).join('');
-    return `<div class="lane"><h4>${esc(map.entryDef(v).name)}${forks ? ' <small>· forks</small>' : ''}</h4><ul>${rows}</ul></div>`;
-  }).join('');
-}
 
 function lungsLine(): string {
   const sg = levelDef(s).surge;
@@ -479,13 +545,13 @@ function renderPanel() {
     const L = levelDef(s);
     h = `<section class="card organ"><h3>Level ${s.level + 1} · ${esc(L.title)}</h3><p class="hint small"><b>${esc(L.tagline)}</b> ${esc(L.twist)}</p>
         <div class="levels">${LEVELS.map((l, i) => `<button data-act="level" data-level="${i}" class="${i === s.level ? 'on' : ''}" ${i < unlocked ? '' : 'disabled'} title="${i < unlocked ? (i === s.level ? 'Restart this organ' : `Play ${esc(l.title)}`) : 'Locked: clear the previous organ'}">${i + 1}<small>${i < unlocked ? esc(organTitle(i)) : 'locked'}</small></button>`).join('')}</div></section>
-      ${(() => { const miss = missingTargets(s.level, s.perks); return miss.length ? `<p class="notice">Bacteria here you have no IgG target for: ${bugNames(miss)}. An IgG aimed at something else hits them at only ×0.5 to ×2. <button data-act="shop">Upgrades (${career.gold} gold)</button></p>` : ''; })()}
+      ${(() => { const miss = missingTargets(s.level, s.perks).filter((b) => !s.borrowed.includes(b)); return miss.length ? `<p class="notice">Bacteria here you have no IgG target for: ${bugNames(miss)}. An IgG aimed at something else hits them at only ×0.5 to ×2. <button data-act="shop">Upgrades (${career.gold} gold)</button> ${miss.map((b) => `<button data-act="borrow" data-target="${b}" ${career.gold >= CONFIG.borrowTargetGold ? '' : 'disabled'}>Borrow <i>${esc(CONFIG.pathogens[b].plural)}</i> for this organ · ${CONFIG.borrowTargetGold} gold</button>`).join(' ')}</p>` : ''; })()}
+      ${s.borrowed.length ? `<p class="hint small">Borrowed for this organ: ${bugNames(s.borrowed)}. At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium.</p>` : `<p class="hint small">At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium on an organ.</p>`}
       <h2><small>Prepare · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>
-      <p class="hint">${esc(def.hint)}</p>
+      <p class="hint">What comes, and up which vessels, you will see once the wave begins: build for anything.</p>
       ${s.message ? `<p class="notice">${esc(s.message)}</p>` : ''}
-      <section class="card"><h3>Incoming threats</h3><div class="lanes">${previewHtml()}</div></section>
       <section class="card"><h3>Dilation <span class="count"><span data-no>${Math.floor(s.no)}</span> NO</span></h3>
-        <p class="hint">During the wave, open one vessel at a time with NO. Opening costs ${CONFIG.no.openCost}; an open vessel drains NO; closed, it refills.</p></section>
+        <p class="hint">During the wave, open vessels with NO, as many as you have white cells. Opening costs ${CONFIG.no.openCost}; each open vessel drains NO; all closed, it refills.</p></section>
       <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
         <p class="hint">Click a + site beside a vessel to place a node. Each fires its immunoglobulin at pathogens on its own vessel.</p>
         <ul class="key">${NODE_TYPES.map((t) => `<li><img alt="" src="${nodeIcon(t)}" width="40" height="31"><span><b>${CONFIG.nodes[t].short}</b> · ${CONFIG.nodes[t].cost}<small>${esc(CONFIG.nodes[t].blurb)}</small></span></li>`).join('')}</ul>
@@ -497,13 +563,14 @@ function renderPanel() {
     const would = pulseTargets(s).length;
     const out = outCells(s).length, returning = aliveCells(s).some((c) => c.mode === 'returning');
     const organ = esc(levelDef(s).organ.toLowerCase());
-    const where = s.dilated ? (out ? `Patrolling the ${esc(vesselName(s.dilated).toLowerCase())}.` : `Heading home before setting out along the ${esc(vesselName(s.dilated).toLowerCase())}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
-    const noLow = s.no < openNeed() && !s.dilated;
-    h = `<h2><small>Defend · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>
+    const openNames = s.open.map((v) => esc(vesselName(v).toLowerCase()));
+    const where = s.open.length ? (out ? `Patrolling the ${openNames.join(' and the ')}${s.open.length > 1 ? `, split ${s.open.length} ways` : ''}.` : `Heading home before setting out along the ${openNames.join(' and the ')}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
+    const noLow = s.no < openNeed() && !s.open.length;
+    h = `<h2><small>Defend · wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
       <section class="card"><h3>Dilate <span class="count"><span data-no>${Math.floor(s.no)}</span> / ${s.perks.noMax} NO</span></h3>
         <p class="nogauge ${noLow ? 'low' : ''}"><i data-nobar style="width:${(s.no / s.perks.noMax) * 100}%"></i></p>
-        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.dilated === v}" class="${s.dilated === v ? 'on' : ''}" ${s.dilated === v || s.no >= openNeed() ? '' : 'disabled'}>${vesselName(v)}<small>${s.dilated === v ? `open · key ${i + 1} closes` : `resting · key ${i + 1}`}</small></button>`).join('')}</div>
-        <p class="hint">Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), an open vessel drains ${CONFIG.no.drainPerSec} a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out the vessel closes.</p></section>
+        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? `open · key ${i + 1} closes` : `resting · key ${i + 1}`}</small></button>`).join('')}</div>
+        <p class="hint">Open as many vessels as you have white cells: they are split evenly among them. Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), each open vessel drains ${CONFIG.no.drainPerSec} a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out every vessel closes.</p></section>
       <section class="card"><h3>White cells <span class="count">${cells} of ${levelDef(s).cells}</span></h3>
         <p class="cells">${Array.from({ length: levelDef(s).cells }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 30)}</span>`).join('')}</p>
         <p class="hint">${where}${s.infections ? ` <b>${s.infections} infected</b> by hijacker viruses: they now head for the ${esc(levelDef(s).organ.toLowerCase())}.` : ' Keep them clear of hijacker viruses.'}</p></section>
@@ -601,6 +668,7 @@ function frame(now: number) {
   autosave();
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
   refresh(now);
+  updateInspect();
   requestAnimationFrame(frame);
 }
 resize();
