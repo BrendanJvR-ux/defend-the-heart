@@ -964,6 +964,18 @@ describe('Defend the Heart: endless mode', () => {
     const p = s.pathogens.find((x) => !CONFIG.pathogens[x.type].boss)!;
     expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (1 + CONFIG.endless.hpGrowth * (s.wave - 1))));
   });
+  it('with the career\'s upgrades, every endless run gets somewhere and none goes on for ever', { timeout: 60000 }, () => {
+    const perks = careerRun().at(-1)!.perks, reached: string[] = [];
+    for (let i = 0; i < LEVELS.length; i++) {
+      const s = newGame(i, perks, undefined, true);
+      while (s.phase === 'prep' && s.wave <= 60) { blindBuild(s); startWave(s); finishWave(s, (st) => { sensibleDilate(st); pulseAtCluster(3)(st); }); }
+      reached.push(`${LEVELS[i].id} ${s.wave - 1}`);
+      expect(s.wave - 1, LEVELS[i].id).toBeGreaterThanOrEqual(3);
+      expect(s.phase, LEVELS[i].id).toBe('defeat');
+    }
+    console.log('endless waves held:', reached.join(', '));
+  });
+
   it('an endless run is saved and continued as endless', () => {
     const s = newGame(2, NO_PERKS, undefined, true); s.wave = 9;
     const r = resumeGame(snapshot(s));
