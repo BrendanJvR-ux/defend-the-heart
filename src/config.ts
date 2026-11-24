@@ -129,7 +129,9 @@ export const CONFIG = {
   /** Energy for an IgG node aimed at two targets (career upgrade). */
   dualIggCost: 80,
 
-  no: { max: 100, openCost: 15, drainPerSec: 8, regenPerSec: 3, waveTopUp: 35, minOpenSeconds: 1 },
+  /** NO: capacity, opening cost, drain a second while a vessel is open, refill a second while all are closed, the top-up
+   *  after a cleared wave. Every vessel opened beyond the first costs and drains less (`extraOpenCost`, `extraDrainPerSec`). */
+  no: { max: 100, openCost: 15, drainPerSec: 8, regenPerSec: 3, waveTopUp: 35, minOpenSeconds: 1, extraOpenCost: 8, extraDrainPerSec: 3 },
 
   pathogens: {
     saureus: { name: 'Staphylococcus aureus', plural: 'S. aureus', short: 'Gram+ coccus, in clusters', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '+', shape: 'coccus', species: 'saureus' } },

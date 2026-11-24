@@ -40,6 +40,8 @@ export interface State {
   borrowed: BacteriumType[];
   /** Liver: where the gallbladder's bile destroyed lymph nodes (empty until it bursts; it bursts once). */
   bile: Vec[];
+  /** The wave just fought (or being fought): what came up each vessel, and the organ health it cost; shown afterwards. */
+  waveLog: { came: { entry: VesselId; type: PathogenType; n: number }[]; cost: Record<VesselId, number> } | null;
   phase: Phase;
   paused: boolean;
   speed: number;
@@ -95,7 +97,7 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 +
   const L = LEVELS[level];
   const s: State = {
     level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: L.startEnergy, open: [], no: perks.noMax, noOuts: 0,
-    perks, borrowed: [], bile: [], discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
+    perks, borrowed: [], bile: [], waveLog: null, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
@@ -316,6 +318,11 @@ export function canStartWave(s: State): { ok: boolean; reason: string } {
 
 // ── Combat: dilation, paid for with NO ──────────────────────────────────────
 
+/** NO to open one more vessel: the full cost for the first, less for each beyond it. */
+export const openCost = (s: State) => (s.open.length ? CONFIG.no.extraOpenCost : CONFIG.no.openCost);
+/** NO drained a second by the vessels open now: the first at the full rate, each beyond it at less. */
+export const noDrain = (s: State) => (s.open.length ? CONFIG.no.drainPerSec + (s.open.length - 1) * CONFIG.no.extraDrainPerSec : 0);
+
 /** NO needed to open a vessel: its cost, plus enough to hold it open for a moment. */
 export const openNeed = () => CONFIG.no.openCost + CONFIG.no.drainPerSec * CONFIG.no.minOpenSeconds;
 
@@ -339,7 +346,7 @@ export function toggleRoute(s: State, r: VesselId): boolean {
   if (s.open.includes(r)) { closeRoute(s, r); return true; }
   const sibling = s.open.find((x) => x !== r && entryOf(x) === entryOf(r));
   if (sibling) closeRoute(s, sibling);
-  s.no -= CONFIG.no.openCost;
+  s.no -= openCost(s);
   s.open.push(r);
   // cells still heading home along this vessel turn round where they are
   for (const c of aliveCells(s)) if (c.mode === 'returning' && c.vessel === r) c.mode = 'out';
@@ -406,6 +413,13 @@ export function startWave(s: State): boolean {
   s.open = [];
   s.waveTime = 0;
   s.spawns = waveSpawns(s.wave, s.level);
+  // what this wave brings, by vessel and kind: shown once it is over
+  const came: { entry: VesselId; type: PathogenType; n: number }[] = [];
+  for (const sp of s.spawns) {
+    const e = entryOf(sp.vessel), row = came.find((x) => x.entry === e && x.type === sp.type);
+    if (row) row.n++; else came.push({ entry: e, type: sp.type, n: 1 });
+  }
+  s.waveLog = { came, cost: {} };
   s.respawns = [];
   s.pulsesLeft = CONFIG.immunePulse.perWave;
   s.lastPulseHits = 0;
@@ -724,7 +738,7 @@ export function step(s: State, dtRaw: number) {
 
   // NO: every open vessel drains it; when it runs dry they all close. All closed, it slowly refills.
   if (s.open.length) {
-    s.no -= CONFIG.no.drainPerSec * s.open.length * dt;
+    s.no -= noDrain(s) * dt;
     if (s.no <= 0) { s.no = 0; s.noOuts++; closeRoute(s); }
   } else s.no = Math.min(s.perks.noMax, s.no + CONFIG.no.regenPerSec * dt);
 
@@ -775,6 +789,7 @@ export function step(s: State, dtRaw: number) {
       const entry = entryOf(p.vessel);
       s.leaks.byVessel[entry] = (s.leaks.byVessel[entry] ?? 0) + dmg;
       s.leaks.byType[p.type] = (s.leaks.byType[p.type] ?? 0) + dmg;
+      if (s.waveLog) s.waveLog.cost[entry] = (s.waveLog.cost[entry] ?? 0) + dmg;
       const wk = LEVELS[s.level].weakens;
       if (wk) for (const n of s.nodes) if (covers(n.vessel, p, siteById(n.site).stem)) n.power = Math.max(wk.min, (n.power ?? 1) - wk.per);
       s.leaked++;

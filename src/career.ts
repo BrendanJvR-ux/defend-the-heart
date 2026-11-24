@@ -111,6 +111,8 @@ export interface Career {
   run: RunSave | null;
   /** The heart's guided first wave has been finished or skipped. */
   tutorialSeen: boolean;
+  /** One-time tips already shown (each new rule is explained once, the first time it matters). */
+  tips: string[];
 }
 
 /** Where things are kept. localStorage, or a stand-in in tests. */
@@ -122,7 +124,7 @@ export const BACKUP_KEY = 'dth-career-unreadable';
 
 export function freshCareer(): Career {
   const n = LEVELS.length;
-  return { version: 1, gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null, tutorialSeen: false };
+  return { version: 1, gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null, tutorialSeen: false, tips: [] };
 }
 
 const safeGet = (kv: KV, k: string) => { try { return kv.get(k); } catch { return null; } };
@@ -172,6 +174,7 @@ function parse(raw: string): Career | null {
   c.run = validRun(o.run) ? o.run : null;
   // older saves had no flag: a player who has cleared an organ has no need of the tutorial
   c.tutorialSeen = typeof o.tutorialSeen === 'boolean' ? o.tutorialSeen : c.cleared.some(Boolean);
+  c.tips = Array.isArray(o.tips) ? o.tips.filter((x): x is string => typeof x === 'string').slice(0, 50) : [];
   return c;
 }
 

@@ -12,14 +12,14 @@ try { muted = localStorage.getItem('dth-sound') === 'off'; } catch { /* no stora
 export function unlockAudio() {
   if (ac || typeof AudioContext === 'undefined') { void ac?.resume(); return; }
   ac = new AudioContext();
-  master = ac.createGain(); master.gain.value = muted ? 0 : 0.5; master.connect(ac.destination);
+  master = ac.createGain(); master.gain.value = muted ? 0 : 0.4; master.connect(ac.destination);
 }
 
 export const isMuted = () => muted;
 export function setMuted(m: boolean) {
   muted = m;
   try { localStorage.setItem('dth-sound', m ? 'off' : 'on'); } catch { /* no storage */ }
-  if (master && ac) master.gain.setTargetAtTime(m ? 0 : 0.5, ac.currentTime, 0.05);
+  if (master && ac) master.gain.setTargetAtTime(m ? 0 : 0.4, ac.currentTime, 0.05);
 }
 
 function tone(freq: number, dur: number, opts: { type?: OscillatorType; vol?: number; slide?: number; delay?: number; attack?: number } = {}) {
@@ -60,7 +60,7 @@ export const sfx = {
   /** A boss arrives: a low horn. */
   boss() { tone(98, 0.9, { type: 'sawtooth', vol: 0.06, attack: 0.08 }); tone(147, 0.9, { type: 'sawtooth', vol: 0.04, attack: 0.1 }); },
   /** One heartbeat: lub-dub. */
-  beat(vol: number) { tone(60, 0.14, { vol: 0.3 * vol, slide: 0.7 }); tone(52, 0.12, { vol: 0.22 * vol, slide: 0.7, delay: 0.16 }); },
+  beat(vol: number) { tone(60, 0.14, { vol: 0.22 * vol, slide: 0.7 }); tone(52, 0.12, { vol: 0.16 * vol, slide: 0.7, delay: 0.16 }); },
   /** The organ won. */
   win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.5, { type: 'triangle', vol: 0.12, delay: i * 0.12 })); },
   /** The organ lost. */
