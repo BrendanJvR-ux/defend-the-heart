@@ -61,7 +61,7 @@ Your gold is shown in the top bar. Winning an organ pays gold: **100 × the orga
 | Extra starting node | 1 | 150 | Every organ starts with one more IgM already placed |
 | Cheaper first node | 1 | 150 | The first node you place in each build phase costs half |
 
-The heart and lungs can be won without upgrades; from the brain on, the right IgG targets and some damage make a real difference, and the liver and spleen need them (the kidney can be scraped through on 2 health without). Before you start an organ, the **Organs** list, a message and the build panel name any of its bacteria you have no IgG target for yet; the shop says which organs each bacterium comes in.
+The heart, lungs and brain can be won without upgrades; from the liver on, the right IgG targets and some damage make a real difference: the liver and spleen are lost without them, and the kidney is only scraped through on 2 health. Before you start an organ, the **Organs** list, a message and the build panel name any of its bacteria you have no IgG target for yet; the shop says which organs each bacterium comes in.
 
 ## Bosses
 
