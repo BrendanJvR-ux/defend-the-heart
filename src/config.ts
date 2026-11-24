@@ -89,17 +89,20 @@ export const CONFIG = {
   } as Record<NodeType, NodeStats>,
 
   whiteCell: {
-    hp: 60,
+    hp: 90,
     speed: 62,
     recallSpeed: 210,
     attackRange: 26,
-    dps: 4,
+    /** Damage a second to every pathogen it touches. */
+    dps: 7,
     guardAt: 0.62,
     /** Cells never go further out than this fraction of the vessel (they fight under node cover). */
     minReach: 0.4,
   },
 
-  immunePulse: { perWave: 1, radius: 85, damage: 42, ringSeconds: 0.45 },
+  /** The immune pulse: every white cell out on a vessel and touching a pathogen destroys it (a boss loses
+   *  `bossShare` of its full health instead) and dies doing it. Once per wave. */
+  immunePulse: { perWave: 1, bossShare: 1 / 3, ringSeconds: 0.45 },
 
   /** Nitric oxide: the fuel that holds a vessel open during a wave. */
   /** IgG damage multipliers: the single best match applies. */

@@ -526,7 +526,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     const q = cellPos(c);
     if (view.showPulseRadius && s.phase === 'combat' && s.pulsesLeft > 0) {
       ctx.fillStyle = 'rgba(74,184,216,0.12)'; ctx.strokeStyle = C.pulse; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-      ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.immunePulse.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(q.x, q.y, CONFIG.whiteCell.attackRange + 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
     }
     drawWhiteCell(ctx, q.x, q.y, c.hit, t + c.id, 1.45);
     bar(ctx, q.x, q.y - 38, 40, c.hp / c.maxHp, '#4ab8d8');

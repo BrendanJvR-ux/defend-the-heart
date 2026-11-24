@@ -208,7 +208,7 @@ function pulse() {
   const c = pulseCheck(s);
   if (!c.ok) { if (c.reason) toast(c.reason); return; }
   const hits = firePulse(s);
-  toast(hits > 0 ? `Immune pulse: ${hits} pathogen${hits === 1 ? '' : 's'} hit.` : 'Immune pulse fired, but nothing was close enough.');
+  toast(`Immune pulse: ${hits} white cell${hits === 1 ? '' : 's'} gave ${hits === 1 ? 'its life' : 'their lives'} to destroy ${hits === 1 ? 'a pathogen' : `${hits} pathogens`}.`);
   lastSig = '';
 }
 
@@ -510,7 +510,7 @@ function renderPanel() {
       <section class="card"><h3>Immune pulse <span class="count">${s.pulsesLeft} left</span></h3>
         <button data-act="pulse" class="pulse" ${pc.ok ? '' : 'disabled'}>${s.pulsesLeft > 0 ? 'Immune pulse' : 'Pulse used'}</button>
         ${lungsLine()}
-        <p class="hint">${s.pulsesLeft > 0 ? `A burst around each white cell, hitting pathogens on its vessel only. <b>Right now it would hit ${would}.</b> Space bar works too.` : 'One pulse per wave. It returns next wave.'}</p></section>`;
+        <p class="hint">${s.pulsesLeft > 0 ? `Each white cell touching a pathogen destroys it (a boss loses a third of its health) and dies doing it; lost cells return next wave. <b>Right now ${would ? `${would} cell${would === 1 ? '' : 's'} would strike` : 'no cell is touching a pathogen'}.</b> Space bar works too.` : 'One pulse per wave. It returns next wave.'}</p></section>`;
   } else if (s.phase === 'recall') {
     h = `<h2><small>Wave ${s.wave} cleared</small>Recalling white cells</h2><p class="hint">Survivors return to the ${esc(levelDef(s).organ.toLowerCase())}, then the vessel contracts.</p>`;
   } else {

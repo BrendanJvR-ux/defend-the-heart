@@ -336,29 +336,45 @@ export function pulseCheck(s: State): { ok: boolean; reason: string } {
   if (s.pulsesLeft <= 0) return { ok: false, reason: 'Immune pulse already used this wave.' };
   if (!aliveCells(s).length) return { ok: false, reason: 'No white cells left to pulse.' };
   if (!outCells(s).length) return { ok: false, reason: 'Open a vessel to send your white cells out first.' };
+  if (!pulsePairs(s).length) return { ok: false, reason: 'None of your white cells is touching a pathogen yet.' };
   return { ok: true, reason: '' };
 }
 
-/** Pathogens a pulse would hit right now: inside the radius of a living cell AND on that cell's vessel. */
-export function pulseTargets(s: State): Pathogen[] {
-  const R = CONFIG.immunePulse.radius;
-  const hit = new Set<Pathogen>();
+/** Each white cell out on a vessel and touching a pathogen there, with the one it would destroy: the one furthest in,
+ *  and never one another cell has already taken. */
+export function pulsePairs(s: State): { cell: WhiteCell; target: Pathogen }[] {
+  const taken = new Set<Pathogen>(), out: { cell: WhiteCell; target: Pathogen }[] = [];
   for (const c of outCells(s)) {
-    const cp = cellPos(c);
-    for (const p of s.pathogens) if (p.hp > 0 && !hidden(s, p) && covers(c.vessel, p) && dist(pathogenPos(p), cp) <= R) hit.add(p);
+    let best: Pathogen | null = null;
+    for (const p of s.pathogens) {
+      if (p.hp <= 0 || taken.has(p) || hidden(s, p) || !covers(c.vessel, p) || p.s <= 0) continue;
+      if (Math.abs(p.s - c.s) > CONFIG.whiteCell.attackRange) continue;
+      if (!best || p.s > best.s) best = p;
+    }
+    if (best) { taken.add(best); out.push({ cell: c, target: best }); }
   }
-  return [...hit];
+  return out;
 }
 
-/** Fire the one pulse of this wave. Spends the charge first, so a double tap cannot fire twice. */
+/** Pathogens the pulse would strike right now. */
+export function pulseTargets(s: State): Pathogen[] { return pulsePairs(s).map((x) => x.target); }
+
+/** Fire the one pulse of this wave: every white cell touching a pathogen destroys it (a boss loses a third of its
+ *  health) and is lost. Spends the charge first, so a double tap cannot fire twice. Returns how many were struck. */
 export function firePulse(s: State): number {
   if (!pulseCheck(s).ok) return -1;
   s.pulsesLeft -= 1;
-  const targets = pulseTargets(s);
-  for (const c of outCells(s)) { const p = cellPos(c); s.rings.push({ x: p.x, y: p.y, r: CONFIG.immunePulse.radius, t: 0, dur: CONFIG.immunePulse.ringSeconds, kind: 'pulse' }); }
-  for (const p of targets) hurt(s, p, CONFIG.immunePulse.damage);
-  s.lastPulseHits = targets.length;
-  return targets.length;
+  const pairs = pulsePairs(s);
+  for (const { cell, target } of pairs) {
+    const q = cellPos(cell);
+    s.rings.push({ x: q.x, y: q.y, r: 46, t: 0, dur: CONFIG.immunePulse.ringSeconds, kind: 'pulse' });
+    hurt(s, target, CONFIG.pathogens[target.type].boss ? target.maxHp * CONFIG.immunePulse.bossShare : target.hp);
+    cell.hp = 0;
+    s.floaters.push({ x: q.x, y: q.y - 24, text: 'White cell gave its life', t: 0, color: '#1e6a8a' });
+    loseCell(s);
+  }
+  s.lastPulseHits = pairs.length;
+  return pairs.length;
 }
 
 // ── Simulation ──────────────────────────────────────────────────────────────
@@ -588,8 +604,8 @@ export function step(s: State, dtRaw: number) {
     const hijacker = near.find((p) => CONFIG.pathogens[p.type].infects);
     if (hijacker) { infect(s, c, hijacker); continue; }
     if (near.length) {
-      const victim = near.reduce((b, p) => (p.s > b.s ? p : b));
-      hurt(s, victim, WC.dps * dt);
+      // a white cell fights everything it touches at once
+      for (const p of near) hurt(s, p, WC.dps * dt);
       for (const p of near) { c.hp -= CONFIG.pathogens[p.type].contactDps * dt; c.hit = 0.12; }
       if (c.hp <= 0) { const q = cellPos(c); s.rings.push({ x: q.x, y: q.y, r: 30, t: 0, dur: 0.6, kind: 'cellDown' }); s.floaters.push({ x: q.x, y: q.y - 24, text: 'White cell lost', t: 0, color: '#c8402a' }); loseCell(s); }
     }

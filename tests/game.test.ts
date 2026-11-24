@@ -8,7 +8,7 @@ import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type Upgra
 // live bindings: always the currently loaded organ
 const M = map;
 import {
-  newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, cellPos, pathogenPos,
+  newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, pathogenPos,
   waveSpawns, placeNode, buildCheck, nodeAt, hurt, hidden, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
 } from '../src/sim';
 
@@ -32,7 +32,12 @@ function quiet(s: State) { s.spawns = []; s.pathogens = []; }
 /** The wave's pathogens entering by route v's vessel (a fork's two branches share them). */
 const spawnsFor = (n: number, v: VesselId) => waveSpawns(n).filter((x) => M.entryOf(x.vessel) === M.entryOf(v));
 const threat = (n: number, v: VesselId) => spawnsFor(n, v).reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
-const pulseAtCluster = (min: number) => (s: State) => { if (s.phase === 'combat' && s.pulsesLeft > 0 && pulseTargets(s).length >= min) firePulse(s); };
+/** The scripted players' pulse: spend the white cells only on a boss, or on something tough (40+ health left)
+ *  that is about to reach the organ. `min` 999 = never pulse. */
+const pulseAtCluster = (min: number) => (s: State) => {
+  if (min >= 999 || s.phase !== 'combat' || s.pulsesLeft <= 0) return;
+  if (pulseTargets(s).some((p) => CONFIG.pathogens[p.type].boss || (p.hp >= 40 && p.s > 0.85 * M.VESSELS[p.vessel].length))) firePulse(s);
+};
 
 /** A sensible player: dilate the busiest vessel; spend energy on nodes for the other threatened vessels,
  *  IgG where bacteria come, IgA where viruses swarm, IgM otherwise; pulse into clusters. */
@@ -204,27 +209,50 @@ describe('Defend the Heart: cells and the pulse', () => {
     expect([...shots].sort()).toEqual([...M.VESSEL_IDS].sort());
   });
 
-  it('the pulse never damages a pathogen on a resting vessel, even inside its radius', () => {
-    const s = newGame(0); go(s, 'left'); quiet(s);
+  it('the pulse never strikes a pathogen on a resting vessel, even right beside a cell', () => {
+    const s = newGame(0); go(s, 'left'); quiet(s); for (const c of s.cells) { c.vessel = 'left'; c.mode = 'out'; }
     const c = s.cells[0]; c.s = M.VESSELS.left.length - 2; s.cells = [c];
     const p = mk(s, 'virus', 'upper', M.VESSELS.upper.length - 4);
-    const d = dist(pathogenPos(p), cellPos(c));
-    const saved = CONFIG.immunePulse.radius; CONFIG.immunePulse.radius = d + 50;
     expect(pulseTargets(s).length).toBe(0);
-    expect(firePulse(s)).toBe(0);
-    CONFIG.immunePulse.radius = saved;
-    expect(p.hp).toBe(CONFIG.pathogens.virus.hp);
+    expect(pulseCheck(s).ok).toBe(false);
+    expect(firePulse(s)).toBe(-1);
+    expect(p.hp).toBe(CONFIG.pathogens.virus.hp); expect(c.hp).toBeGreaterThan(0);
   });
 
-  it('the pulse comes from the cells: misses early, hits a cluster, works once', () => {
-    const early = newGame(0); early.wave = 2; go(early, 'right'); tick(early, 1);
-    expect(firePulse(early)).toBe(0);
-    expect(firePulse(early)).toBe(-1);
-    const s = newGame(0); s.wave = 2; go(s, 'right'); endlessNo(s);
-    let hits = -1;
-    tick(s, 30, (st) => { if (hits < 0 && pulseTargets(st).length >= 3) hits = firePulse(st); });
-    expect(hits).toBeGreaterThanOrEqual(3);
+  it('the pulse: a white cell touching a pathogen destroys it and dies; once per wave', () => {
+    const s = newGame(0); go(s, 'left'); quiet(s); for (const c of s.cells) { c.vessel = 'left'; c.mode = 'out'; }
+    const [a, b] = s.cells; a.s = 400; b.s = 300;
+    expect(pulseCheck(s).reason).toMatch(/touching/); // nothing near yet: the charge is kept
+    const p = mk(s, 'saureus', 'left', 410), far = mk(s, 'saureus', 'left', 200);
+    expect(pulseTargets(s)).toEqual([p]);
+    expect(firePulse(s)).toBe(1);
+    expect(p.hp).toBeLessThanOrEqual(0); expect(a.hp).toBe(0);
+    expect(far.hp).toBe(CONFIG.pathogens.saureus.hp); expect(b.hp).toBeGreaterThan(0); // a cell touching nothing lives
     expect(firePulse(s)).toBe(-1);
+  });
+
+  it('two cells touching pathogens strike two different ones', () => {
+    const s = newGame(0); go(s, 'left'); quiet(s); for (const c of s.cells) { c.vessel = 'left'; c.mode = 'out'; }
+    const [a, b] = s.cells; a.s = 400; b.s = 402;
+    const p = mk(s, 'virus', 'left', 405), q = mk(s, 'virus', 'left', 395);
+    expect(new Set(pulseTargets(s))).toEqual(new Set([p, q]));
+    expect(firePulse(s)).toBe(2);
+    expect(p.hp).toBeLessThanOrEqual(0); expect(q.hp).toBeLessThanOrEqual(0); expect(a.hp).toBe(0); expect(b.hp).toBe(0);
+  });
+
+  it('a pulse on a boss takes a third of its health, not all of it', () => {
+    const s = newGame(0); go(s, 'left'); quiet(s); for (const c of s.cells) { c.vessel = 'left'; c.mode = 'out'; }
+    s.cells = [s.cells[0]]; s.cells[0].s = 400;
+    const boss = mk(s, 'colony', 'left', 410);
+    expect(firePulse(s)).toBe(1);
+    expect(boss.hp).toBeCloseTo(boss.maxHp * (2 / 3), 5);
+  });
+
+  it('lost cells are back at the start of the next wave', () => {
+    const s = newGame(0); go(s, 'left'); quiet(s); for (const c of s.cells) { c.vessel = 'left'; c.mode = 'out'; }
+    s.cells[0].s = 400; mk(s, 'virus', 'left', 405); firePulse(s);
+    finishWave(s);
+    startWave(s); expect(aliveCells(s).length).toBe(LEVELS[0].cells);
   });
 
   it('between waves: cells home, vessel contracts, choice and pulse reset, energy awarded; heart damage persists', () => {
