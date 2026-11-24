@@ -529,7 +529,7 @@ function lastWaveHtml(): string {
     const cost = log.cost[e] ?? 0;
     return `<li><b>${esc(map.entryDef(e).name)}</b>: ${mine.map((x) => `${x.n} ${esc(x.n === 1 ? CONFIG.pathogens[x.type].name : CONFIG.pathogens[x.type].plural)}`).join(', ')}${cost ? ` <span class="needs">· cost ${cost} health</span>` : ''}</li>`;
   }).join('');
-  return `<section class="card"><h3>Last wave</h3><ul class="key">${rows}</ul></section>`;
+  return `<section class="card"><h3>Last wave</h3><ul class="lastwave">${rows}</ul></section>`;
 }
 
 function renderPanel() {
