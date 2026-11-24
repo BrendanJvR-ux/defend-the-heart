@@ -982,7 +982,7 @@ describe('Defend the Heart: the lymph node', () => {
 
 describe('Defend the Heart: the stomach', () => {
   const STOMACH = LEVELS.findIndex((l) => l.id === 'stomach');
-  it('acid on the last third of a vessel costs pathogens 4 health a second; nothing before it', () => {
+  it('acid on the last third of a vessel costs pathogens its health a second; nothing before it', () => {
     const s = newGame(STOMACH); go(s, 'top'); quiet(s); s.cells = []; s.nodes = [];
     const L = M.VESSELS.left.length, acid = LEVELS[STOMACH].acid!;
     const out = mk(s, 'saureus', 'left', L * 0.3), inside = mk(s, 'saureus', 'left', L * (1 - acid.fraction) + 10);

@@ -345,15 +345,15 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'The barrier', hint: 'Few sites: pick them well. Three white cells patrol whichever vessel you dilate.',
-        groups: [g('spneumo', 'lowerLeft', 7, 1, 3.4), g('virus', 'left', 11, 4, 0.35), g('virus', 'midLeft', 9, 10, 0.35)] },
+        groups: [g('spneumo', 'lowerLeft', 9, 1, 3.4), g('virus', 'left', 15, 4, 0.35), g('virus', 'midLeft', 12, 10, 0.35)] },
       { title: 'Crossing over', hint: 'Viruses come up the lower-right vessel, which forks: at the fork they take the branch you have not opened. Nodes on the shared stem guard both.',
-        groups: [g('saureus', 'right', 7, 1, 3.2), g('virus', 'lowerRight', 11, 6, 0.3), g('virus', 'left', 9, 14, 0.3), g('listeria', 'midLeft', 5, 4, 3.2)] },
+        groups: [g('saureus', 'right', 9, 1, 3.2), g('virus', 'lowerRight', 15, 6, 0.3), g('virus', 'left', 12, 14, 0.3), g('listeria', 'midLeft', 7, 4, 3.2)] },
       { title: 'Meningitis', hint: 'Meningococci (Gram-negative cocci) and pneumococci on two vessels, and the first hijackers.',
-        groups: [g('nmening', 'left', 7, 1, 3), g('spneumo', 'lowerRight', 7, 3, 3), g('virus', 'right', 13, 10, 0.3), g('hijacker', 'lowerLeft', 5, 16, 1), g('virus', 'midLeft', 11, 8, 0.3)] },
+        groups: [g('nmening', 'left', 9, 1, 3), g('spneumo', 'lowerRight', 9, 3, 3), g('virus', 'right', 18, 10, 0.3), g('hijacker', 'lowerLeft', 7, 16, 1), g('virus', 'midLeft', 15, 8, 0.3)] },
       { title: 'Fever', hint: 'Everything at once. The brain cannot take many hits.',
-        groups: [g('listeria', 'lowerLeft', 9, 1, 2.6), g('hijacker', 'left', 4, 3, 1), g('virus', 'lowerRight', 13, 6, 0.3), g('hijacker', 'right', 5, 9, 1), g('virus', 'left', 9, 20, 0.3), g('nmening', 'midLeft', 5, 12, 3)] },
+        groups: [g('listeria', 'lowerLeft', 12, 1, 2.6), g('hijacker', 'left', 5, 3, 1), g('virus', 'lowerRight', 18, 6, 0.3), g('hijacker', 'right', 7, 9, 1), g('virus', 'left', 12, 20, 0.3), g('nmening', 'midLeft', 7, 12, 3)] },
       { title: 'Boss: meningococcus', hint: 'A giant N. meningitidis that IgA cannot slow. IgG aimed at N. meningitidis hits it three times as hard.',
-        groups: [g('meningo', 'lowerLeft', 1, 2, 1), g('virus', 'right', 11, 10, 0.3), g('saureus', 'midLeft', 5, 6, 3)] },
+        groups: [g('meningo', 'lowerLeft', 1, 2, 1), g('virus', 'right', 15, 10, 0.3), g('saureus', 'midLeft', 7, 6, 3)] },
     ],
   },
   {
@@ -519,9 +519,9 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'stomach', title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
-    twist: 'Acid: on the last third of every vessel, pathogens lose 4 health a second. H. pylori feeds on it and gains health there instead.',
+    twist: 'Acid: on the last third of every vessel, pathogens lose 3 health a second. H. pylori feeds on it and gains health there instead.',
     hp: 24, startEnergy: 260, cells: 2, income: 0.55,
-    acid: { fraction: 0.33, dps: 4 },
+    acid: { fraction: 0.33, dps: 3 },
     map: {
       center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -552,15 +552,15 @@ export const LEVELS: LevelDef[] = [
     },
     waves: [
       { title: 'Something it ate', hint: 'Salmonella: fast, in groups. The acid on the last third of each vessel wears down everything that gets that far, so slow them before they arrive.',
-        groups: [g('salmonella', 'left', 11, 1, 1.8), g('saureus', 'right', 8, 4, 3), g('virus', 'top', 11, 8, 0.35)] },
+        groups: [g('salmonella', 'left', 15, 1, 1.8), g('saureus', 'right', 11, 4, 3), g('virus', 'top', 15, 8, 0.35)] },
       { title: 'Acid-proof', hint: 'H. pylori shrugs off acid: it must be killed before it reaches the stomach.',
-        groups: [g('hpylori', 'topLeft', 8, 1, 3.2), g('salmonella', 'right', 11, 3, 1.8), g('saureus', 'left', 7, 6, 3), g('virus', 'top', 11, 10, 0.3)] },
+        groups: [g('hpylori', 'topLeft', 11, 1, 3.2), g('salmonella', 'right', 15, 3, 1.8), g('saureus', 'left', 10, 6, 3), g('virus', 'top', 15, 10, 0.3)] },
       { title: 'Ulcer', hint: 'H. pylori from both upper sides, hijackers from above.',
-        groups: [g('hpylori', 'topRight', 10, 1, 3), g('hpylori', 'topLeft', 7, 5, 3.2), g('salmonella', 'left', 13, 3, 1.6), g('hijacker', 'top', 6, 9, 1), g('saureus', 'right', 8, 2, 3), g('virus', 'bottomRight', 14, 14, 0.3)] },
+        groups: [g('hpylori', 'topRight', 14, 1, 3), g('hpylori', 'topLeft', 10, 5, 3.2), g('salmonella', 'left', 18, 3, 1.6), g('hijacker', 'top', 8, 9, 1), g('saureus', 'right', 11, 2, 3), g('virus', 'bottomRight', 20, 14, 0.3)] },
       { title: 'Every side', hint: 'Everything at once. The acid helps against all but H. pylori.',
-        groups: [g('hpylori', 'bottomLeft', 8, 1, 3.2), g('salmonella', 'topRight', 13, 2, 1.6), g('saureus', 'left', 8, 4, 2.8), g('hpylori', 'right', 8, 6, 3), g('hijacker', 'topLeft', 6, 10, 1), g('virus', 'bottomRight', 17, 14, 0.3)] },
+        groups: [g('hpylori', 'bottomLeft', 11, 1, 3.2), g('salmonella', 'topRight', 18, 2, 1.6), g('saureus', 'left', 11, 4, 2.8), g('hpylori', 'right', 11, 6, 3), g('hijacker', 'topLeft', 8, 10, 1), g('virus', 'bottomRight', 24, 14, 0.3)] },
       { title: 'Boss: the burrowing swarm', hint: 'A swarm of H. pylori: acid-proof, and every few seconds it burrows into the lining, where nothing can touch it, and tunnels on three times as fast. Hit it hard while it is out.',
-        groups: [g('burrower', 'topLeft', 1, 2, 1), g('hpylori', 'bottomLeft', 8, 4, 3), g('salmonella', 'bottomRight', 11, 6, 1.6), g('virus', 'right', 14, 12, 0.3)] },
+        groups: [g('burrower', 'topLeft', 1, 2, 1), g('hpylori', 'bottomLeft', 11, 4, 3), g('salmonella', 'bottomRight', 15, 6, 1.6), g('virus', 'right', 20, 12, 0.3)] },
     ],
   },
   {
