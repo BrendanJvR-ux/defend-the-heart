@@ -238,6 +238,8 @@ export interface LevelDef {
     rx: number; ry: number;
     /** Where on each vessel (fractions of its length) lymph nodes may stand. */
     siteFractions: number[];
+    /** How far below the organ's centre the NO gauge sits in combat (default ry + 80; negative is above), where a vessel label would be under it. */
+    gaugeDrop?: number;
     /** Blood flows from the first point (off the map edge) to the last (the organ). A vessel with a `fork`
      *  ends its points at the fork, and each branch's points carry on from there to the organ. */
     vessels: VesselDef[];
@@ -639,7 +641,7 @@ export const LEVELS: LevelDef[] = [
     endlessPace: 0.7, hp: 24, startEnergy: 360, cells: 3, income: 0.25,
     wounds: { from: 0.2, to: 0.5 },
     map: {
-      center: { x: 800, y: 430 }, rx: 280, ry: 110, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      center: { x: 800, y: 430 }, rx: 280, ry: 110, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: 136,
       vessels: [
         { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 430 }, { x: 180, y: 410 }, { x: 320, y: 430 }],
           fork: { branches: [
@@ -683,7 +685,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Immune privilege: no white cells come to the eye, so there is no pulse. Only your lymph nodes defend it.',
     endlessPace: 0.47, hp: 22, startEnergy: 200, cells: 0, income: 0.45,
     map: {
-      center: { x: 800, y: 500 }, rx: 150, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
+      center: { x: 800, y: 500 }, rx: 150, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: -200,
       vessels: [
         { id: 'topLeft', name: 'Upper-left vessel', label: 'Upper left', pts: [{ x: 200, y: -40 }, { x: 300, y: 150 }, { x: 480, y: 250 }],
           fork: { branches: [

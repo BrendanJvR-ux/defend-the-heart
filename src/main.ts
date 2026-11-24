@@ -333,13 +333,13 @@ function playLevel(i: number, confirmed = false) {
 // ── Saving: at the start of every build phase, and when an organ is won or lost ──
 let lastPhase = '';
 /** Gold paid for the organ just won (shown on the victory screen). */
-let lastPaid = 0;
+let lastPaid = 0, lastFirstClear = false;
 function autosave() {
   const key = `${s.level}:${s.wave}:${s.phase}`;
   if (!gameShown || key === lastPhase) return;
   lastPhase = key;
   if (s.phase === 'prep') { career.run = snapshot(s); saveNow(); }
-  else if (s.phase === 'victory' || s.phase === 'defeat') { lastPaid = onOrganEnd(career, s); unlocked = unlockedCount(career); saveNow(); lastSig = ''; }
+  else if (s.phase === 'victory' || s.phase === 'defeat') { lastFirstClear = s.phase === 'victory' && !s.endless && !career.cleared[s.level]; lastPaid = onOrganEnd(career, s); unlocked = unlockedCount(career); saveNow(); lastSig = ''; }
 }
 
 // ── The menu ────────────────────────────────────────────────────────────────
@@ -607,7 +607,7 @@ function renderPanel() {
     h = `<h2><small>Wave ${s.wave} cleared</small>Recalling white cells</h2><p class="hint">Survivors return to the ${esc(levelDef(s).organ.toLowerCase())}, then the vessel contracts.</p>`;
   } else {
     const L = levelDef(s), next = s.level + 1 < LEVELS.length ? s.level + 1 : -1;
-    h = `<h2><small>${s.phase === 'victory' ? 'Level complete' : `The ${L.organ.toLowerCase()} has failed`}</small>${s.phase === 'victory' ? `The ${esc(organTitle(s.level).toLowerCase())} ${s.level === 1 ? 'are' : 'is'} safe` : 'Defeat'}</h2><div class="start">${s.phase === 'victory' && next >= 0 ? `<button data-act="level" data-level="${next}" class="primary">Next: ${esc(LEVELS[next].title)}</button> ` : ''}<button data-act="restart" ${s.phase === 'victory' && next >= 0 ? '' : 'class="primary"'}>${s.phase === 'victory' ? 'Play again' : 'Restart'}</button></div>`;
+    h = `<h2><small>${s.phase === 'victory' ? 'Level complete' : s.endless ? 'Endless run over' : `The ${L.organ.toLowerCase()} has failed`}</small>${s.phase === 'victory' ? `The ${esc(organTitle(s.level).toLowerCase())} ${s.level === 1 ? 'are' : 'is'} safe` : s.endless ? `${Math.max(0, s.wave - 1)} wave${s.wave === 2 ? '' : 's'} held` : 'Defeat'}</h2><div class="start">${s.phase === 'victory' && next >= 0 ? `<button data-act="level" data-level="${next}" class="primary">Next: ${esc(LEVELS[next].title)}</button> ` : ''}<button data-act="restart" ${s.phase === 'victory' && next >= 0 ? '' : 'class="primary"'}>${s.phase === 'victory' ? 'Play again' : s.endless ? 'Again' : 'Restart'}</button></div>`;
   }
   panel.innerHTML = h;
 }
@@ -662,7 +662,7 @@ function renderOverlay() {
     lastSig = '';
     const next = s.level + 1 < LEVELS.length ? s.level + 1 : -1;
     overlay.hidden = false; overlay.className = 'victory';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>Unlocked: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : '<p><b>Every organ is safe.</b> The whole body has been defended.</p><button data-act="restart" class="primary">Play again</button>'}</div>`;
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>${lastFirstClear ? 'Unlocked' : 'Next'}: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : '<p><b>Every organ is safe.</b> The whole body has been defended.</p><button data-act="restart" class="primary">Play again</button>'}</div>`;
   } else if (s.phase === 'defeat' && s.endless) {
     // an endless run ends here: how far it got, and where that puts it on the board
     const waves = Math.max(0, s.wave - 1), board = career.endless[L.id] ?? [];

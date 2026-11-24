@@ -360,7 +360,7 @@ function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
 /** The NO gauge: a small bar under the organ, flashing when too low to open a vessel. */
 function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
   if (s.phase !== 'combat') return;
-  const heart = LEVEL.id === 'heart', y = HEART.y + (heart ? 159 : LEVEL.map.ry + 50) + 30, w = 150;
+  const heart = LEVEL.id === 'heart', y = HEART.y + (heart ? 189 : LEVEL.map.gaugeDrop ?? LEVEL.map.ry + 80), w = 150;
   const low = s.no < openNeed() && !s.open.length, k = s.no / s.perks.noMax;
   ctx.save();
   ctx.globalAlpha = low ? 0.55 + 0.45 * Math.abs(Math.sin(t * 5)) : 1;
@@ -722,16 +722,17 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   for (const f of s.floaters) {
     const size = f.size ?? 24;
     ctx.font = `italic 700 ${size}px Palatino, Georgia, serif`;
-    const tw = ctx.measureText(f.text).width;
+    const tw = ctx.measureText(f.text).width, x = Math.max(tw / 2 + 24, Math.min(1600 - tw / 2 - 24, f.x));
     let y = f.y - f.t * 30;
     for (let tries = 0; tries < 8; tries++) {
-      const hit = avoid.find((b) => f.x + tw / 2 > b.x && f.x - tw / 2 < b.x + b.w && y > b.y && y - 24 < b.y + b.h);
+      const hit = avoid.find((b) => x + tw / 2 > b.x && x - tw / 2 < b.x + b.w && y > b.y && y - 24 < b.y + b.h);
       if (!hit) break;
       y = hit.y - 4;
     }
-    avoid.push({ x: f.x - tw / 2, y: y - 24, w: tw, h: 30 });
+    y = Math.max(size + 8, y);
+    avoid.push({ x: x - tw / 2, y: y - 24, w: tw, h: 30 });
     ctx.globalAlpha = Math.max(0, 1 - f.t / 1.4);
-    inkText(ctx, f.text, f.x, y, f.color, size);
+    inkText(ctx, f.text, x, y, f.color, size);
     ctx.globalAlpha = 1;
   }
   drawBossBanner(ctx, s);
