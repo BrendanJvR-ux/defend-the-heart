@@ -61,7 +61,7 @@ Your gold is shown in the top bar. Winning an organ pays gold: **100 × the orga
 | Extra starting node | 1 | 150 | Every organ starts with one more IgM already placed |
 | Cheaper first node | 1 | 150 | The first node you place in each build phase costs half |
 
-The heart and lungs can be won without upgrades; from the brain on, the right IgG targets and some damage make a real difference, and the liver and kidney need them. Before you start an organ, the **Organs** list, a message and the build panel name any of its bacteria you have no IgG target for yet; the shop says which organs each bacterium comes in.
+The heart and lungs can be won without upgrades; from the brain on, the right IgG targets and some damage make a real difference, and the liver and spleen need them (the kidney can be scraped through on 2 health without). Before you start an organ, the **Organs** list, a message and the build panel name any of its bacteria you have no IgG target for yet; the shop says which organs each bacterium comes in.
 
 ## Bosses
 
@@ -131,11 +131,11 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 
 
 - A scripted sensible player (builds on the least-defended threatened vessels first, at most three nodes per vessel per build; aims IgG with the unlocked target that does most to that vessel's wave, and builds IgM instead when no target helps; during the wave opens the route with the most pathogens past 65% of the way in, keeping 2 s of NO to spare, closes it when clear, switches only for twice the threat; pulses into clusters of three):
-  - **without upgrades** wins the heart (19/20) and the lungs (12/20), and loses the liver and kidney;
-  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 19/20, lungs 12/20 (buying the *S. pneumoniae* target), brain 15/18 (*Listeria*, *N. meningitidis* and IgM damage), liver 14/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 8/20 (IgM and IgG damage), spleen 13/22 (IgA and IgG damage). From the liver on it fills only 56%, 55% and 53% of the build sites.
+  - **without upgrades** wins the heart (20/20), the lungs (8/20) and the brain (15/18), scrapes through the kidney on 2/20, and loses the liver and the spleen;
+  - **as a career** (organs in order, gold banked, before each organ buying first the IgG targets for its bacteria, then damage for its most-built node types, then the rest) wins every organ at the first attempt: heart 20/20, lungs 8/20 (buying the *S. pneumoniae* target and IgM damage), brain 15/18 (*Listeria* and *N. meningitidis*), liver 14/24 (*E. coli*, *Klebsiella* and IgA damage), kidney 10/20 (two levels of IgM damage and one of IgG), spleen 13/22 (two levels of IgA damage and one of IgG). From the liver on it fills only 56%, 55% and 53% of the build sites.
 - **A clumsy new player wins the heart.** A scripted player who builds only IgM on the first free sites in the list, opens a vessel only once a pathogen is 80% of the way in, and never pulses, still clears the heart without losing health. (The **Place by list** order takes each vessel's outermost site first, then the next.)
 - Never building loses every organ, even with every upgrade; white cells alone leak most of the heart's health in wave 1 (it ends on 5/20).
-- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and kidney and finishes the heart, lungs, brain and spleen at least 2 health worse (heart 17, lungs 5, brain 4, spleen 11). The tests require this on every organ.
+- **Holding one route open is worse than dilating with care.** With the career's upgrades at each organ, a player who opens the busiest route as soon as it can and never closes it loses the liver and finishes every other organ at least 2 health worse (heart 18 against 20, lungs 5 against 8, brain 3 against 15, kidney 1 against 10, spleen 11 against 13). The tests require this on every organ.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
 ### Files
