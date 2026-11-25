@@ -69,7 +69,7 @@ Everything is drawn like a pen-and-ink plate with faint watercolour:
 - **Vessels** wind: their corners are rounded and a long, even meander (with a faint shorter ripple on it) runs along each one (the same along a forked vessel's shared stem, fading out where it meets the organ). The winding is real length: every route is **half as long again** as its corner points, measured along the course pathogens and white cells follow, so pathogens take half as long again to arrive and move at a steady speed round the bends. Each has a firm ink outline, a pale rose wash, hatched walls and red cells ringed in fine ink.
 - **The panel, top bar and menus** are paper plates on a faintly cross-hatched table: a double ink rule with slightly uneven, hand-drawn corners; buttons with an ink offset shadow; the selected organ, primary buttons, the open vessel, the pulse button and the gauges in faint washes with pen hatching instead of solid colour; italic serif headings.
 
-Inking is a pass over pixels, so it is run once per organ image and per sprite and the results are kept: a frame takes about as long to draw as before. The next organ is inked in idle time after a win (and the saved organ while the menu is up), so it opens without a pause; a boss's animation loops, so each of its 64 frames is inked once and reused.
+Inking is a pass over pixels, so it is run once per organ image and per sprite and the results are kept. The map's background and every vessel at rest are drawn once into a layer per map and screen size; only open, opening or hovered vessels are drawn each frame (a busy frame drew in about 14 ms before, well under 1 ms now). The next organ is inked in idle time after a win (and the saved organ while the menu is up), so it opens without a pause; a boss's animation loops, so each of its 64 frames is inked once and reused.
 
 ## Endless mode and your leaderboard
 
@@ -80,7 +80,7 @@ Once you have cleared the eye, **Endless** in the menu starts a run through orga
 - **Tougher and more**: pathogens have 6% more health a stage, and every group is 4% larger.
 - **Bosses at random**: on top of each organ's own boss wave, a boss chosen at random comes up a vessel chosen at random in one of its middle waves (never the first, when little is built yet) on the first stage, and in one more every two stages, with 55% of its health like a boss-wave boss (the same stage always brings the same ones). The wave's hint names it, its vessel, its trick and what works. Tests check that the vessel names still clear the sites and each other on every organ at stages 12, 22 and 34.
 
-A stage cleared pays **20 gold** (scaled by the difficulty). The run ends when an organ falls, and goes on the **leaderboard** for your difficulty: your ten best runs (stages cleared, waves into the next, and the date), kept in this browser with your career. The end screen says where it placed ("A new best!", or #3 on the board). The leaderboard is personal to this device, not shared between players.
+A stage cleared pays **20 gold** (scaled by the difficulty), and the next stage is saved at once, so leaving at the stage-cleared screen and coming back carries on from there. Leaving a run still going (Restart, another organ, a new run) asks first, and puts it on the leaderboard as it stands. The run ends when an organ falls, and goes on the **leaderboard** for your difficulty: your ten best runs (stages cleared, waves into the next, and the date), kept in this browser with your career. The end screen says where it placed ("A new best!", or #3 on the board). The leaderboard is personal to this device, not shared between players.
 
 The scripted player who can't see the waves, with every upgrade the career buys by its end, clears 9 stages and falls on stage 10, the skin. (It fell on stage 4 until random bosses stopped coming in a stage's first wave at full health, and growth was gentler.) A test requires a run to clear at least 8 stages and to end by stage 30.
 
@@ -180,6 +180,8 @@ The first six have 70 health and the same speed; *M. tuberculosis* is tougher (1
 7. **Reset.** Cells return home, every route rests, you earn energy and build again. Organ damage persists until restart (the liver regrows a little).
 
 **After each wave** the panel shows a **Last wave** card: what came up each vessel, and how much organ health each vessel cost.
+
+**Switching away** mid-wave (another tab, a call) pauses the game. Gold spent during a wave is saved with the game, so a reload keeps what you paid for.
 
 **On a phone** the map is small: the **Zoom** button on it doubles its size inside its frame (centred on the organ), and you swipe to move around it; everything pinned to the map, like a pathogen's card, moves with it. It is remembered.
 
