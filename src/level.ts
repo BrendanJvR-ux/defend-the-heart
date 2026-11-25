@@ -17,7 +17,10 @@ export interface Vessel { id: VesselId; name: string; label: string; pts: Vec[];
 // the same along both branches' shared stem, fading out where the vessel meets the organ. The meander is real
 // length: a route is measured along its winding course, `WIND` times as long as its corner points (1.5: half as
 // long again). Endless stages wind more tightly still.
-const STEP = 4, ROUND = 24, MEANDER = 30, FADE = 80;
+const STEP = 4, ROUND = 24, MEANDER = 40, FADE = 80;
+/** The meander's shape at distance d (corner units): one long, even wave with a faint shorter ripple on it, so a
+ *  vessel reads as a winding vessel rather than a zigzag. `q` stretches it (longer q: gentler). */
+const wave = (d: number, q: number, phase: number) => 0.86 * Math.sin(d / (27 * q) + phase) + 0.14 * Math.sin(d / (10 * q) + phase * 2);
 export const BASE_WIND = 1.5;
 let WIND = BASE_WIND;
 
@@ -30,7 +33,7 @@ function scaleFor(wind: number): number {
   if (have) return have;
   const ratio = (q: number) => {
     let len = 0, py = 0;
-    for (let d = 1; d <= 6000; d++) { const y = MEANDER * (0.65 * Math.sin(d / (27 * q)) + 0.35 * Math.sin(d / (15.5 * q))); len += Math.hypot(1, y - py); py = y; }
+    for (let d = 1; d <= 6000; d++) { const y = MEANDER * wave(d, q, 0); len += Math.hypot(1, y - py); py = y; }
     return len / 6000;
   };
   let lo = 0.05, hi = 20;
@@ -93,7 +96,7 @@ function build(def: { id: VesselId; name: string; label: string; pts: Vec[] }, e
     const lim = d <= fork ? fork : Infinity;
     const a = centre(d - 6, lim), b = centre(Math.min(lim, d + 6), lim), m = centre(d, lim);
     const ang = Math.atan2(b.y - a.y, b.x - a.x);
-    const k = isFinite(q) ? MEANDER * Math.min(1, (path.length - d) / FADE) * (0.65 * Math.sin(d / (27 * q) + phase) + 0.35 * Math.sin(d / (15.5 * q) + phase * 2)) : 0;
+    const k = isFinite(q) ? MEANDER * Math.min(1, (path.length - d) / FADE) * wave(d, q, phase) : 0;
     return { x: m.x - Math.sin(ang) * k, y: m.y + Math.cos(ang) * k };
   };
   // walk the winding course finely, measuring it: that measure is how far along the route anything is
@@ -154,7 +157,7 @@ export function organClearance(p: Vec): number {
   return (Math.hypot(dx, dy) - 1) * Math.min(rx, ry);
 }
 
-const SITE_OFFSET = 88;
+const SITE_OFFSET = 100;
 
 /** Endless stages add build sites between the usual ones, in this order (each lands on whichever side of its
  *  vessel has room, or is left out where there is none). */
@@ -171,14 +174,14 @@ function makeSites(): Site[] {
       // a stem site is shared by both branches: only the first branch makes it
       if (stemWanted && !first) return;
       // just past a fork the two branches' sites crowd each other: where there is no room, a little further along
-      for (const shift of LEVEL.id === 'liver' && isFinite(forkAt(v)) && !stemWanted && want - forkAt(v) < 160 ? [0, 50, 100] : [0]) {
+      for (const shift of isFinite(forkAt(v)) && !stemWanted && want - forkAt(v) < 160 ? [0, 50, 100] : [0]) {
         const d = want + shift, stem = isFinite(forkAt(v)) && d < forkAt(v);
         if (d <= 0 || d >= ves.length || stem !== stemWanted) continue;
         const a = pathPointAt(ves, d), on = pointAt(ves, d);
         // try both sides; keep the one with the most room from the organ and other vessels, inside the map
         let best: Site | null = null, bestScore = -Infinity;
         for (const side of [1, -1]) {
-          for (const extra of [0, 20, -14]) {
+          for (const extra of [0, 20, -14, -26]) {
             const off = SITE_OFFSET + extra;
             const p = { x: a.x - Math.sin(a.angle) * off * side, y: a.y + Math.cos(a.angle) * off * side };
             if (p.x < 50 || p.x > W - 50 || p.y < 50 || p.y > H - 50) continue;

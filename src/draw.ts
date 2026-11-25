@@ -5,7 +5,7 @@ import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, SITES, pointAt, entryOf, forkA
 import { drawBacterium } from './bacteria';
 import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
-import { layoutLabels, KEY_W, type MapLabel } from './labels';
+import { layoutLabels, noGauge, KEY_W, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode, drawSkin, drawEye } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
@@ -367,18 +367,21 @@ function drawLodged(ctx: CanvasRenderingContext2D, s: State) {
   for (let i = 0; i < Math.min(8, tb); i++) {
     const p = spot(i + 1);
     ctx.save(); ctx.translate(p.x, p.y);
-    ctx.fillStyle = 'rgba(236,222,190,0.95)'; ctx.strokeStyle = INKC; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = 'rgba(190,160,110,0.8)'; ctx.beginPath(); ctx.arc(1, -1, 4, 0, Math.PI * 2); ctx.fill();
+    // a tubercle: a pale, firm nodule with a cheesy (caseous) yellow centre, ringed in ink
+    ctx.fillStyle = 'rgba(244,236,214,0.98)'; ctx.strokeStyle = INKC; ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(120,90,50,0.7)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(214,176,90,0.95)'; ctx.beginPath(); ctx.arc(1, -1, 6, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
+  if (tb > 0) { const p = spot(1); inkText(ctx, `TB ×${tb}`, p.x, p.y + 34, '#5a4a2a', 16); }
   const hp = s.lodged.hpylori ?? 0;
   if (hp > 0) {
     // one growth: each H. pylori lodged adds a lobe, up to eight
     const c = spot(40), R = seeded(4242), lobes = Math.min(8, hp);
     ctx.save(); ctx.translate(c.x, c.y);
     for (let i = 0; i < lobes; i++) {
-      const a = (i / Math.max(1, lobes)) * Math.PI * 2 + R(), d = i ? 8 + R() * 8 : 0, r = 9 + R() * 5;
+      const a = (i / Math.max(1, lobes)) * Math.PI * 2 + R(), d = i ? 10 + R() * 9 : 0, r = 12 + R() * 6;
       ctx.beginPath(); ctx.arc(Math.cos(a) * d, Math.sin(a) * d, r, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(92,40,70,0.85)'; ctx.fill(); ctx.strokeStyle = INKC; ctx.lineWidth = 1.8; ctx.stroke();
     }
@@ -386,14 +389,14 @@ function drawLodged(ctx: CanvasRenderingContext2D, s: State) {
     ctx.fillStyle = 'rgba(230,190,210,0.8)';
     for (let i = 0; i < lobes * 2; i++) { ctx.beginPath(); ctx.arc((R() - 0.5) * 24, (R() - 0.5) * 24, 1.6, 0, Math.PI * 2); ctx.fill(); }
     ctx.restore();
-    inkText(ctx, 'cancer', c.x, c.y + 34 + lobes, '#5a2846', 16);
+    inkText(ctx, 'cancer', c.x, c.y + 40 + lobes * 1.5, '#5a2846', 17);
   }
 }
 
 /** The NO gauge: a small bar under the organ, flashing when too low to open a vessel. */
 function drawNoGauge(ctx: CanvasRenderingContext2D, s: State, t: number) {
   if (s.phase !== 'combat') return;
-  const heart = LEVEL.id === 'heart', y = HEART.y + (heart ? 189 : LEVEL.map.gaugeDrop ?? LEVEL.map.ry + 80), w = 150;
+  const y = noGauge().y, w = 150;
   const low = s.no < openNeed() && !s.open.length, k = s.no / s.perks.noMax;
   ctx.save();
   ctx.globalAlpha = low ? 0.55 + 0.45 * Math.abs(Math.sin(t * 5)) : 1;
@@ -475,7 +478,7 @@ export function drawPathogen(ctx: CanvasRenderingContext2D, type: PathogenType, 
   ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
   const h = hit > 0 ? 'hit' : '';
   if (type === 'virus') inkSprite(ctx, `virus${h}`, 17, (c) => drawSmall(c, type, hit, 0), { gap: 1.8, lw: 0.3, wash: 0.5 });
-  else if (type === 'jumper') { ctx.rotate(Math.sin(t * 5) * 0.4); inkSprite(ctx, `jumper${h}`, 19, (c) => drawSmall(c, type, hit, 0), { gap: 1.8, lw: 0.3, wash: 0.5 }); }
+  else if (type === 'jumper') { ctx.rotate(Math.sin(t * 5) * 0.4); inkSprite(ctx, `jumper${h}`, 23, (c) => drawSmall(c, type, hit, 0), { gap: 1.8, lw: 0.3, wash: 0.5 }); }
   else if (type === 'hijacker') { ctx.rotate(t * 2); inkSprite(ctx, `hijacker${h}`, 21, (c) => drawSmall(c, type, hit, 0), { gap: 1.8, lw: 0.3, wash: 0.5 }); }
   else {
     // the membrane ripples: a few dozen frames of it, inked once each
@@ -507,7 +510,7 @@ function drawSmall(ctx: CanvasRenderingContext2D, type: PathogenType, hit: numbe
     facets(9); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.7; ctx.stroke();
   } else if (type === 'jumper') {
     // a jumping virus (a phage-like virion): a capsid head on a tail, with long jointed legs to spring off
-    ctx.strokeStyle = C.ink; ctx.lineWidth = 1.4;
+    ctx.strokeStyle = C.ink; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
     for (const sx of [-1, 1]) for (const k of [0, 1]) {
       const bx = sx * (2 + k * 2.5);
       ctx.beginPath(); ctx.moveTo(bx, 8); ctx.lineTo(bx + sx * 7, 12 + k * 2); ctx.lineTo(bx + sx * 9, 18); ctx.stroke();
@@ -690,7 +693,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     // a boss hiding in a red blood cell is shown faded, with a dashed ring: nothing can touch it now
     const hide = hidden(s, p);
     if (hide) ctx.globalAlpha = 0.45;
-    drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, CONFIG.pathogens[p.type].boss ? 1.2 : p.type === 'infected' ? 1.35 : 1.4, t + p.id);
+    drawPathogen(ctx, p.type, q.x, q.y, q.angle, p.hit, CONFIG.pathogens[p.type].boss ? 1.2 : p.type === 'infected' ? 1.35 : p.type === 'jumper' ? 1.9 : 1.4, t + p.id);
     if (hide) {
       // a thick dashed ring that slowly turns, and a HIDING tag: nothing can hit it until it shows again
       ctx.globalAlpha = 1; ctx.strokeStyle = INK_RED; ctx.lineWidth = 3.5; ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 20;
@@ -768,8 +771,8 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     } else if (r.kind === 'heart') {
       ctx.strokeStyle = `rgba(110,38,34,${0.8 * (1 - k)})`; ctx.lineWidth = 3; ctx.setLineDash([10, 6]);
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.8 + 0.4 * k), 0, Math.PI * 2); ctx.stroke();
-    } else if (r.kind === 'cellDown' || r.kind === 'infect') {
-      ctx.strokeStyle = r.kind === 'infect' ? `rgba(90,40,120,${1 - k})` : `rgba(110,38,34,${1 - k})`; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
+    } else if (r.kind === 'cellDown' || r.kind === 'infect' || r.kind === 'jump' || r.kind === 'knock' || r.kind === 'lodge') {
+      ctx.strokeStyle = r.kind === 'cellDown' ? `rgba(110,38,34,${1 - k})` : `rgba(90,40,120,${1 - k})`; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.5 + k), 0, Math.PI * 2); ctx.stroke();
     } else if (r.kind === 'build') {
       ctx.strokeStyle = `rgba(35,26,20,${1 - k})`; ctx.lineWidth = 2;

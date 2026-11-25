@@ -42,7 +42,7 @@ export interface LymphNode {
   broad?: boolean;
 }
 export interface Shot { type: NodeType; targets: BacteriumType[]; broad?: boolean; power: number; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
-export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' | 'sacrifice' | 'struck' }
+export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' | 'sacrifice' | 'struck' | 'jump' | 'knock' | 'lodge' | 'cancel' }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number }
 /** A pathogen due to enter: when, up which route, and (skin wounds) how far along it, as a share of its length. */
 export interface Spawn { type: PathogenType; vessel: VesselId; at: number; pos?: number }
@@ -212,13 +212,14 @@ export function endlessWave(level: number, n: number, stage: number): WaveDef {
   const groups: WaveGroup[] = base.groups.map((g) => ({ ...g, count: CONFIG.pathogens[g.type].boss ? g.count : Math.max(1, Math.round(g.count * k)) }));
   const ordinary = Array.from({ length: L.waves.length - 1 }, (_, i) => i + 1).sort((a, b) => hash(stage, a) - hash(stage, b));
   const bosses = Math.min(ordinary.length, E.bosses + Math.floor((stage - 1) / E.bossEvery));
-  let extra = '';
+  let extra = '', hint = base.hint;
   if (ordinary.slice(0, bosses).includes(n)) {
     const type = BOSSES[Math.floor(hash(stage, n, 7) * BOSSES.length)], vessel = L.map.vessels[Math.floor(hash(stage, n, 11) * L.map.vessels.length)].id;
     groups.push({ type, vessel, count: 1, start: 6, interval: 1 });
     extra = ` + ${CONFIG.pathogens[type].name.toLowerCase()}`;
+    hint = `${base.hint} A boss joins this wave at random: the ${CONFIG.pathogens[type].name.toLowerCase()}, up the ${L.map.vessels.find((x) => x.id === vessel)!.name.toLowerCase()}. ${CONFIG.pathogens[type].blurb ?? ''}`.trim();
   }
-  return { title: `Stage ${stage}: ${base.title.replace(/^Boss: /, 'boss, ')}${extra}`, hint: base.hint, groups };
+  return { title: `Stage ${stage}: ${base.title.replace(/^Boss: /, 'boss, ')}${extra}`, hint, groups };
 }
 /** Does wave n of this organ send its boss up every vessel? (Its last wave.) */
 const bossWave = (level: number, n: number) => n === LEVELS[level].waves.length;
@@ -370,7 +371,7 @@ export function cancelNode(s: State, siteId: string): number {
   s.energy += back;
   if (n.discounted) s.discountUsed = false;
   s.nodes = s.nodes.filter((x) => x !== n);
-  s.rings.push({ x: site.x, y: site.y, r: 34, t: 0, dur: 0.4, kind: 'pop' });
+  s.rings.push({ x: site.x, y: site.y, r: 34, t: 0, dur: 0.4, kind: 'cancel' });
   return back;
 }
 
@@ -840,7 +841,7 @@ export function step(s: State, dtRaw: number) {
         if (Math.abs(site.at - p.s) < 1) {
           n.off = true;
           p.hp = 0;
-          s.rings.push({ x: site.x, y: site.y, r: 46, t: 0, dur: 0.8, kind: 'infect' });
+          s.rings.push({ x: site.x, y: site.y, r: 46, t: 0, dur: 0.8, kind: 'knock' });
           s.floaters.push({ x: site.x, y: site.y - 34, text: 'Knocked out by an infected cell', t: 0, color: '#8a2ab8', size: 18 });
         }
       }
@@ -966,6 +967,7 @@ export function step(s: State, dtRaw: number) {
       // some lodge in the organ, and go on costing health at every wave's end
       if (st.lodges && (!st.lodges.only || st.lodges.only === L.id)) {
         s.lodged[p.type] = (s.lodged[p.type] ?? 0) + 1;
+        s.rings.push({ x: HEART.x, y: HEART.y, r: Math.min(L.map.rx, L.map.ry) * 0.7, t: 0, dur: 0.9, kind: 'lodge' });
         s.floaters.push({ x: HEART.x, y: HEART.y + L.map.ry * 0.4, text: `${st.plural} lodged: −${st.lodges.perWave} every wave`, t: 0, color: '#5a2878', size: 18 });
       }
       s.heartHp = Math.max(0, s.heartHp - dmg);
@@ -1001,7 +1003,7 @@ function jump(s: State, p: Pathogen) {
   const from = pathogenPos(p), share = p.s / VESSELS[p.vessel].length, r = others[Math.floor(rand(s) * others.length)];
   p.vessel = r; p.s = share * VESSELS[r].length; p.committed = p.s >= forkAt(r);
   const to = pathogenPos(p);
-  s.rings.push({ x: from.x, y: from.y, r: 22, t: 0, dur: 0.4, kind: 'pop' }, { x: to.x, y: to.y, r: 28, t: 0, dur: 0.5, kind: 'infect' });
+  s.rings.push({ x: from.x, y: from.y, r: 22, t: 0, dur: 0.4, kind: 'cancel' }, { x: to.x, y: to.y, r: 28, t: 0, dur: 0.5, kind: 'jump' });
   s.floaters.push({ x: to.x, y: to.y - 26, text: 'Jumped!', t: 0, color: '#8a2ab8', size: 16 });
 }
 

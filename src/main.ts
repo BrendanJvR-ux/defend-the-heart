@@ -10,7 +10,7 @@ import {
 } from './sim';
 import { loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, endlessOpen, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
-import { unlockAudio, isMuted, setMuted } from './sound';
+import { unlockAudio, isMuted, setMuted, sfx } from './sound';
 import { playSounds } from './soundEvents';
 import { pathogenAt, inspectHtml } from './inspect';
 import { esc } from './text';
@@ -124,7 +124,7 @@ function targetButtons(act: string, disabled: (b: BacteriumType) => string): str
 function borrow(b: BacteriumType): boolean {
   const fee = CONFIG.borrowTargetGold;
   if (career.gold < fee || s.phase !== 'prep' || !borrowTarget(s, b)) return false;
-  career.gold -= fee; career.run = snapshot(s); saveNow();
+  career.gold -= fee; sfx.coin(); career.run = snapshot(s); saveNow();
   toast(`${CONFIG.pathogens[b].plural} borrowed as an IgG target for this organ (−${fee} gold).`);
   lastSig = '';
   return true;
@@ -358,7 +358,7 @@ function renderMenu() {
       <div class="menuButtons">
         ${run ? `<button data-menu="continue" class="primary">Continue<small>${esc(organTitle(run.level))} · ${run.stage ? `endless stage ${run.stage}, wave ${run.wave}` : `wave ${run.wave} of ${LEVELS[run.level].waves.length}`}</small></button>` : ''}
         ${!run && lead === 'next' ? `<button data-menu="level" data-level="${next}" class="primary">Continue<small>next organ: ${esc(LEVELS[next].title)}</small></button>` : ''}
-        <button data-menu="new" ${lead === 'new' ? 'class="primary"' : ''}>New career<small>choose a difficulty</small></button>
+        <button data-menu="new" ${lead === 'new' ? 'class="primary"' : ''}>New career<small>${careerStarted() ? `starts over: a difficulty is kept for a whole career` : 'choose a difficulty'}</small></button>
         <button data-menu="organs">Organs<small>${unlocked} unlocked</small></button>
         <button data-menu="endless" ${open ? '' : 'disabled'} ${lead === 'endless' ? 'class="primary"' : ''}>Endless<small>${open ? 'organ after organ, ever bigger · your leaderboard' : 'clear the eye, the last organ, first'}</small></button>
         <button data-menu="tutorial">Tutorial<small>a guided first wave on the heart</small></button>
@@ -394,7 +394,7 @@ function renderMenu() {
     h = `<h2>Start over?</h2><p>Your cleared organs${career.gold ? ', gold' : ''} and the game in progress will be lost.</p>
       <div class="menuButtons"><button data-menu="newYes" class="primary danger">Start a new career</button><button data-menu="back">Keep my career</button></div>`;
   } else if (menuPage.page === 'difficulty') {
-    h = `<h2>Choose a difficulty</h2><p class="sub">For the whole career. Each keeps its own endless leaderboard.</p>
+    h = `<h2>Choose a difficulty</h2><p class="sub">It stays for the whole career; to change it later, start a new one. Each keeps its own endless leaderboard. This career: ${esc(CONFIG.difficulty[career.difficulty].name)}.</p>
       <div class="menuButtons">${DIFFICULTIES.map((d) => `<button data-menu="newMode" data-mode="${d}" ${d === 'normal' ? 'class="primary"' : ''}>${esc(CONFIG.difficulty[d].name)}<small>${esc(CONFIG.difficulty[d].blurb)}</small></button>`).join('')}<button data-menu="back">Back</button></div>`;
   } else {
     const L = levelDef(s), same = menuPage.level === s.level && !menuPage.endless && !s.endless;
@@ -438,7 +438,7 @@ function buyWithGold(what: 'no' | 'cell') {
   if (!chk.ok) { toast(chk.reason); return; }
   if (career.gold < price) { toast(`Needs ${price} gold (you have ${career.gold}).`); return; }
   if (!(what === 'no' ? buyNo(s) : buyCell(s))) return;
-  career.gold -= price;
+  career.gold -= price; sfx.coin();
   if (s.phase === 'prep') career.run = snapshot(s);
   saveNow(); lastSig = '';
   toast(what === 'no' ? `+${CONFIG.goldBuys.no.amount} NO (−${price} gold).` : `A white cell joins you for the rest of this organ (−${price} gold).`);
@@ -479,7 +479,7 @@ menuEl.addEventListener('click', (e) => {
   else if (a === 'shop') openMenu({ page: 'shop' });
   else if (a === 'buy') {
     const id = el.dataset.up as UpgradeId, r = buy(career, id);
-    if (r.ok) { saveNow(); s.perks = perksOf(career); toast(`${UPGRADES[id].name} bought.`); } else toast(r.reason);
+    if (r.ok) { saveNow(); sfx.coin(); s.perks = perksOf(career); toast(`${UPGRADES[id].name} bought.`); } else toast(r.reason);
     const y = menuEl.scrollTop; renderMenu(); menuEl.scrollTop = y;
   }
   else if (a === 'back') openMenu({ page: 'main' });
@@ -663,7 +663,7 @@ function renderPanel() {
 function renderHud() {
   const L = levelDef(s);
   $('title').textContent = `Defend the ${organTitle(s.level)}`;
-  $('levelName').textContent = `Level ${s.level + 1} of ${LEVELS.length}`;
+  $('levelName').textContent = `Level ${s.level + 1} of ${LEVELS.length} · ${CONFIG.difficulty[career.difficulty].name}`;
   $('hpLabel').textContent = `${L.organ} health`;
   document.title = `Defend the ${organTitle(s.level)}`;
   $('hp').textContent = `${s.heartHp}/${levelDef(s).hp}`;

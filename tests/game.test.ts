@@ -4,13 +4,14 @@ import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, ROUTE_KEYS, type Box } from '../src/labels';
 import { organCacheKey, organImageScale } from '../src/organCache';
+import { inspectHtml } from '../src/inspect';
 import { NO_PERKS, perksOf, freshCareer, snapshot, type Perks } from '../src/career';
 // live bindings: always the currently loaded organ
 const M = map;
 import {
   newGame, toggleRoute, dilateCheck, openNeed, outCells, pulseCheck, covers, infect, surging, activeBoss, filtered, totalWaves, canStartWave, startWave, step, firePulse, pulseTargets, aliveCells, pathogenPos,
   placeNode, buildCheck, endlessWave, waveSpawns, resumeGame, nodeAt, hurt, hidden, iggMultiplier, retargetNode, advance, nextSpeed, SPEEDS, leakSummary, type State, type Pathogen,
-  cancelNode, cancelCheck, stageLevel, stageMap, nodeCost, igeLife, buyNo, buyNoCheck, buyCell, buyCellCheck,
+  cancelNode, cancelCheck, stageLevel, stageMap, BOSSES, nodeCost, igeLife, buyNo, buyNoCheck, buyCell, buyCellCheck,
 } from '../src/sim';
 
 import {
@@ -789,6 +790,17 @@ describe('Defend the Heart: map labels', () => {
       expect(layoutLabels(widthOf, false).every((l) => !l.key)).toBe(true);
     });
   }
+  it('on late endless stages too (longer vessels, more sites), every vessel label clears the sites, the other labels and the map edge', () => {
+    for (const stage of [12, 22, 34]) for (let i = 0; i < LEVELS.length; i++) {
+      newGame(i, NO_PERKS, undefined, stage);
+      const labels = layoutLabels(widthOf);
+      for (const l of labels) {
+        for (const site of M.SITES) expect(hitsCircle(l.box, site, 32), `stage ${stage} ${LEVELS[i].id}: ${l.text} over site ${site.id}`).toBe(false);
+        expect(l.box.x >= 0 && l.box.y >= 0 && l.box.x + l.box.w <= M.W && l.box.y + l.box.h <= M.H, `stage ${stage} ${LEVELS[i].id}: ${l.text} off the map`).toBe(true);
+        for (const o of labels) if (o !== l) expect(overlaps(l.box, o.box), `stage ${stage} ${LEVELS[i].id}: ${l.text} over ${o.text}`).toBe(false);
+      }
+    }
+  });
   it('every organ has at most 12 routes, so every route has a key', () => {
     for (let i = 0; i < LEVELS.length; i++) { newGame(i); expect(M.VESSEL_IDS.length, LEVELS[i].id).toBeLessThanOrEqual(ROUTE_KEYS.length); }
   });
@@ -984,8 +996,13 @@ describe('Defend the Heart: endless mode', () => {
     base.groups.forEach((g, i) => expect(w.groups[i].count).toBe(Math.max(1, Math.round(g.count * k))));
     const bossesIn = (stage: number) => L.waves.slice(0, -1).filter((_, i) => endlessWave(0, i + 1, stage).groups.length > L.waves[i].groups.length).length;
     expect(bossesIn(1)).toBe(CONFIG.endless.bosses); expect(bossesIn(5)).toBeGreaterThan(bossesIn(1));
-    // the same stage always brings the same bosses
+    // the same stage always brings the same bosses; a wave with one says which, up which vessel, and what it does
     expect(JSON.stringify(endlessWave(3, 2, 7))).toBe(JSON.stringify(endlessWave(3, 2, 7)));
+    const withBoss = L.waves.slice(0, -1).map((_, i) => endlessWave(0, i + 1, 1)).find((w, i) => w.groups.length > L.waves[i].groups.length)!;
+    const boss = CONFIG.pathogens[withBoss.groups.at(-1)!.type];
+    expect(withBoss.hint).toContain(`the ${boss.name.toLowerCase()}, up the`); expect(withBoss.hint).toContain(boss.blurb!);
+    // no boss is described as if it were in one organ only
+    for (const t of BOSSES) expect(CONFIG.pathogens[t].blurb, t).not.toMatch(/stomach|portal vein/);
   });
   it('a stage ends in victory like an organ; pathogens are tougher each stage', () => {
     const s = newGame(0, NO_PERKS, undefined, 3);
@@ -1092,6 +1109,17 @@ describe('Defend the Heart: the new rules', () => {
     inf.hp = 1e6; tick(s, 6);
     expect(nodeAt(s, node.site)!.off).toBe(true); expect(inf.hp).toBe(0);
     s.pathogens = []; finishWave(s); startWave(s); expect(nodeAt(s, node.site)!.off).toBe(false); // back next wave
+  });
+  it('a pathogen\'s card tells its new tricks: the jump, lodging, double damage in the stomach, the node an infected cell is after', () => {
+    const s = newGame(7); startWave(s); quiet(s);
+    const j = mk(s, 'jumper', M.VESSEL_IDS[0], 10);
+    expect(inspectHtml(s, j)).toContain('Leaps once to another vessel');
+    const h = mk(s, 'hpylori', M.VESSEL_IDS[0], 10), card = inspectHtml(s, h);
+    expect(card).toContain('Lodges'); expect(card).toContain(`Organ damage</b> ${2 * CONFIG.pathogens.hpylori.heartDamage}`);
+    const t = mk(s, 'mtb', M.VESSEL_IDS[0], 10); expect(inspectHtml(s, t)).toContain('Lodges');
+    const inf = mk(s, 'infected', s.nodes[0].vessel, 10); inf.goalSite = s.nodes[0].site;
+    expect(inspectHtml(s, inf)).toContain('Going for the lymph node');
+    const heart = newGame(0); expect(inspectHtml(heart, mk(heart, 'hpylori', 'left', 10))).not.toContain('Lodges'); // only in the stomach
   });
   it('the boss of the brain is stronger; every boss wave\'s bosses carry 55% of their health each', () => {
     expect(CONFIG.pathogens.meningo.hp).toBe(400); expect(CONFIG.bossEveryVessel.hpShare).toBe(0.55);

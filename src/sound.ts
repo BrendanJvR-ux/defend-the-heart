@@ -65,6 +65,16 @@ export const sfx = {
   win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.5, { type: 'triangle', vol: 0.12, delay: i * 0.12 })); },
   /** The organ lost. */
   lose() { [392, 349, 311, 262].forEach((f, i) => tone(f, 0.6, { type: 'triangle', vol: 0.12, delay: i * 0.18 })); },
+  /** A jumping virus leaps: a quick rising spring. */
+  jump() { tone(260, 0.16, { type: 'triangle', vol: 0.09, slide: 2.6 }); },
+  /** An infected cell knocks out a lymph node: a dull clank. */
+  knock() { tone(150, 0.22, { type: 'square', vol: 0.06, slide: 0.7 }); noise(0.07, 900, 3, 0.25); },
+  /** An infection lodges in the organ: a low, uneasy pair of notes. */
+  lodge() { tone(110, 0.7, { type: 'sawtooth', vol: 0.05, attack: 0.05, slide: 0.85 }); tone(117, 0.7, { type: 'sawtooth', vol: 0.04, attack: 0.05, slide: 0.85 }); },
+  /** A node cancelled: the pen scratch, backwards and lower. */
+  cancel() { noise(0.07, 1400, 1.5, 0.35); tone(600, 0.12, { type: 'triangle', vol: 0.06, slide: 0.6 }); },
+  /** Gold spent: two bright coin notes. */
+  coin() { tone(1568, 0.12, { type: 'square', vol: 0.04 }); tone(2093, 0.25, { type: 'square', vol: 0.04, delay: 0.07 }); },
   /** A wave begins. */
   wave() { tone(330, 0.25, { type: 'triangle', vol: 0.1 }); tone(440, 0.3, { type: 'triangle', vol: 0.1, delay: 0.12 }); },
 };

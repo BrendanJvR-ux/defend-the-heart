@@ -195,7 +195,7 @@ export const CONFIG = {
       lodges: { perWave: 1, only: 'stomach', cancer: true } },
     salmonella: { name: 'Salmonella enterica', plural: 'Salmonella', short: 'Gram− rod, fast, in groups', hp: 55, speed: 46, heartDamage: 2, contactDps: 3, bounty: 6, taxon: { gram: '-', shape: 'rod', species: 'salmonella' } },
     burrower: { name: 'H. pylori swarm', plural: 'H. pylori swarms', hp: 620, speed: 15, heartDamage: 8, contactDps: 5, bounty: 60, boss: true, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' },
-      burrows: { every: 5, for: 1.6, speed: 3 }, blurb: 'A swarm of H. pylori, untouched by acid. Every few seconds it burrows into the stomach lining, where nothing can touch it, and tunnels on three times as fast.' },
+      burrows: { every: 5, for: 1.6, speed: 3 }, blurb: 'A swarm of H. pylori, untouched by acid. Every few seconds it burrows into the lining of the vessel, where nothing can touch it, and tunnels on three times as fast.' },
     spyogenes: { name: 'Streptococcus pyogenes', plural: 'S. pyogenes', short: 'Gram+ coccus, in long chains', hp: 75, speed: 32, heartDamage: 3, contactDps: 4, bounty: 8, taxon: { gram: '+', shape: 'coccus', species: 'spyogenes' } },
     paeruginosa: { name: 'Pseudomonas aeruginosa', plural: 'Pseudomonas', short: 'Gram− rod, one whip-like flagellum', hp: 80, speed: 32, heartDamage: 3, contactDps: 4, bounty: 8, taxon: { gram: '-', shape: 'rod', species: 'paeruginosa' } },
     chlamydia: { name: 'Chlamydia trachomatis', plural: 'Chlamydia', short: 'Gram− coccoid, lives inside cells', hp: 65, speed: 34, heartDamage: 3, contactDps: 3, bounty: 8, taxon: { gram: '-', shape: 'coccus', species: 'chlamydia' } },
@@ -433,7 +433,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave. Fall to half health and the gallbladder bursts: bile destroys two of your lymph nodes.',
     feature: 'Regrows; the gallbladder can burst',
     handicap: { text: 'Fatty liver: every lymph node costs 5 more energy.', nodeCost: 5 },
-    hp: 24, startEnergy: 200, cells: 2, regenPerWave: 2, income: 0.65, gallbladder: { at: 0.5, nodes: 2 },
+    hp: 24, startEnergy: 195, cells: 2, regenPerWave: 2, income: 0.65, gallbladder: { at: 0.5, nodes: 2 },
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
       vessels: [
@@ -470,7 +470,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 20% tougher.',
     feature: 'Filtration; tougher every wave',
     handicap: { text: 'Poor blood supply: 10% less energy.', income: 0.9 },
-    hp: 20, startEnergy: 320, cells: 2, income: 0.7, waveHpGrowth: 0.2,
+    hp: 20, startEnergy: 360, cells: 2, income: 0.7, waveHpGrowth: 0.2,
     filtration: { fraction: 0.28, factor: 0.6 },
     map: {
       center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -512,7 +512,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
     feature: 'Remakes lost white cells',
     handicap: { text: 'Enlarged: white cells move 15% slower.', cellSpeed: 0.85 },
-    hp: 22, startEnergy: 100, cells: 2, income: 0.55,
+    hp: 22, startEnergy: 230, cells: 2, income: 0.55,
     respawn: { after: 8, cost: 1 },
     map: {
       center: { x: 800, y: 480 }, rx: 150, ry: 210, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -590,9 +590,9 @@ export const LEVELS: LevelDef[] = [
       { title: 'A slow cough', hint: 'M. tuberculosis: slow, tough and hard to see. Aim IgG at it if you have the target.',
         groups: [g('mtb', 'topRight', 6, 1, 3.4), g('saureus', 'topLeft', 7, 3, 3), g('ecoli', 'bottomMid', 4, 6, 3), g('virus', 'bottomRight', 8, 10, 0.3)] },
       { title: 'Seeded in the bone', hint: 'Tuberculosis from both sides, hijackers from below.',
-        groups: [g('mtb', 'topLeft', 7, 1, 3.2), g('mtb', 'bottomRight', 6, 4, 3.2), g('ecoli', 'topMid', 6, 6, 3), g('hijacker', 'bottomMid', 4, 9, 1), g('saureus', 'bottomLeft', 6, 3, 3), g('virus', 'topRight', 10, 14, 0.3)] },
+        groups: [g('mtb', 'topLeft', 5, 1, 3.2), g('mtb', 'bottomRight', 4, 4, 3.2), g('ecoli', 'topMid', 7, 6, 3), g('hijacker', 'bottomMid', 4, 9, 1), g('saureus', 'bottomLeft', 6, 3, 3), g('virus', 'topRight', 10, 14, 0.3)] },
       { title: 'Every side', hint: 'Five white cells now: spread them where the bacteria are thickest.',
-        groups: [g('mtb', 'bottomLeft', 8, 1, 3), g('saureus', 'topRight', 8, 2, 2.6), g('ecoli', 'bottomRight', 5, 4, 3.2), g('mtb', 'topMid', 5, 6, 3.2), g('hijacker', 'topLeft', 5, 10, 1), g('virus', 'bottomMid', 12, 14, 0.3)] },
+        groups: [g('mtb', 'bottomLeft', 6, 1, 3), g('saureus', 'topRight', 9, 2, 2.6), g('ecoli', 'bottomRight', 6, 4, 3.2), g('mtb', 'topMid', 4, 6, 3.2), g('hijacker', 'topLeft', 5, 10, 1), g('virus', 'bottomMid', 12, 14, 0.3)] },
       { title: 'Boss: the granuloma', hint: 'A tuberculous granuloma: bacteria walled in by your own cells. Every antibody strike chips the wall; until it breaks, everything does a quarter damage. A pulse breaks it at once.',
         groups: [g('granuloma', 'topLeft', 1, 2, 1), g('mtb', 'bottomRight', 6, 6, 3), g('virus', 'topRight', 10, 12, 0.3)] },
     ],
@@ -600,11 +600,11 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'stomach', title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
     damageMul: { hpylori: 2 },
-    twist: 'Acid: on the last third of every vessel, pathogens lose 3 health a second. H. pylori feeds on it and gains health there instead.',
+    twist: 'Acid: on the last third of every vessel, pathogens lose 2 health a second. H. pylori feeds on it and gains health there instead.',
     feature: 'Acid; H. pylori feeds on it',
     handicap: { text: 'Churning: NO drains 15% faster.', noDrain: 1.15 },
-    hp: 24, startEnergy: 280, cells: 2, income: 0.55,
-    acid: { fraction: 0.33, dps: 3 },
+    hp: 24, startEnergy: 300, cells: 2, income: 0.55,
+    acid: { fraction: 0.33, dps: 2 },
     map: {
       center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -738,7 +738,7 @@ export const LEVELS: LevelDef[] = [
       { title: 'Burn wound', hint: 'Pseudomonas, the burn-ward bacterium: tough, and quick through wounds.',
         groups: [g('paeruginosa', 'right', 7, 1, 3), g('saureus', 'left', 7, 3, 2.8), g('spyogenes', 'bottomMid', 5, 6, 3), g('virus', 'bottomRight', 9, 10, 0.3)] },
       { title: 'Infected cut', hint: 'Pseudomonas from two sides, hijackers through a wound from below.',
-        groups: [g('paeruginosa', 'left', 10, 1, 2.8), g('paeruginosa', 'bottomRight', 8, 4, 3), g('spyogenes', 'topMid', 9, 6, 2.8), g('hijacker', 'bottomMid', 5, 9, 1), g('saureus', 'bottomLeft', 9, 3, 2.8), g('jumper', 'right', 9, 14, 0.4)] },
+        groups: [g('paeruginosa', 'left', 8, 1, 2.8), g('paeruginosa', 'bottomRight', 7, 4, 3), g('spyogenes', 'topMid', 8, 6, 2.8), g('hijacker', 'bottomMid', 4, 9, 1), g('saureus', 'bottomLeft', 8, 3, 2.8), g('jumper', 'right', 7, 14, 0.4)] },
       { title: 'Cellulitis', hint: 'The infection spreads under the skin: every vessel at once.',
         groups: [g('paeruginosa', 'bottomLeft', 11, 1, 2.6), g('saureus', 'right', 11, 2, 2.4), g('spyogenes', 'bottomRight', 10, 4, 2.6), g('paeruginosa', 'topMid', 9, 6, 2.8), g('hijacker', 'left', 7, 10, 1), g('jumper', 'bottomMid', 12, 14, 0.4)] },
       { title: 'Boss: flesh-eating strep', hint: 'Necrotising fasciitis. Every antibody strike makes it faster, up to more than twice its speed: slow it with IgA, or hit it hard and fast with IgE.',
@@ -750,7 +750,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Immune privilege: no white cells come to the eye, so there is no pulse. Only your lymph nodes defend it.',
     feature: 'No white cells: nodes alone',
     handicap: { text: 'Blurred: lymph nodes fire 10% slower.', cooldown: 1.1 },
-    hp: 22, startEnergy: 160, cells: 0, income: 0.35,
+    hp: 22, startEnergy: 240, cells: 0, income: 0.35,
     map: {
       center: { x: 800, y: 500 }, rx: 150, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: -200,
       vessels: [

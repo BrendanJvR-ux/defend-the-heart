@@ -1,7 +1,7 @@
 // Where the vessel names go on the map. Pure layout (no canvas), so it can be tested:
 // the caller passes how wide a piece of text is.
 import type { VesselId } from './config';
-import { W, H, VESSEL_IDS, VESSELS, ENTRY_IDS, SITES, routesOf, forkAt, entryDef, pointAt, organClearance, type Vec } from './level';
+import { W, H, HEART, LEVEL, VESSEL_IDS, VESSELS, ENTRY_IDS, SITES, routesOf, forkAt, entryDef, pointAt, organClearance, type Vec } from './level';
 
 /** The key that opens each route during a wave, in route order: 1 to 9, then 0, - and = (up to 12 routes). */
 export const ROUTE_KEYS = '1234567890-=';
@@ -37,12 +37,19 @@ export function previewTagBox(entry: VesselId, w: number): Box {
   return { x, y, w, h: 48 };
 }
 
+/** Where the NO gauge sits during a wave (under the organ, or wherever the organ's `gaugeDrop` puts it): its centre
+ *  line, and the box it takes. Vessel names keep clear of it. */
+export function noGauge(): { y: number; box: Box } {
+  const y = HEART.y + (LEVEL.id === 'heart' ? 189 : LEVEL.map.gaugeDrop ?? LEVEL.map.ry + 80), w = 150;
+  return { y, box: { x: HEART.x - w / 2 - 44, y: y - 14, w: w + 96, h: 28 } };
+}
+
 /** Lay out every vessel's name: for each, try spots along its own stretch of vessel and on either side,
  *  and keep the first that clears the build sites, the organ, the next-wave tags, the map edge and the
  *  names already placed. */
 export function layoutLabels(widthOf: (text: string) => number, withKeys = true): MapLabel[] {
   const out: MapLabel[] = [];
-  const tags = ENTRY_IDS.map((e) => previewTagBox(e, 242));
+  const tags = [...ENTRY_IDS.map((e) => previewTagBox(e, 242)), noGauge().box, noGauge().box];
   const place = (v: VesselId, from: number, to: number, start: number, text: string, top: boolean, branch: boolean, sibling?: VesselId) => {
     const key = withKeys && (branch || !isFinite(forkAt(v))) ? routeKey(v) : '';
     const ves = VESSELS[v], tw = widthOf(text) + (key ? KEY_W : 0), half = tw / 2;
