@@ -249,9 +249,18 @@ describe('Career: endless leaderboard', () => {
     const c = freshCareer(); const s = newGame(3, undefined, undefined, 4); s.phase = 'victory';
     expect(onOrganEnd(c, s)).toBe(CONFIG.endless.goldPerStage); expect(c.gold).toBe(CONFIG.endless.goldPerStage);
     expect(c.cleared[3]).toBe(false); expect(c.endless).toEqual({});
+    // the next stage is saved, so leaving at the stage-cleared screen and coming back carries on there
+    expect(c.run).toMatchObject({ level: 4, wave: 1, stage: 5, nodes: [] });
+    const next = resumeGame(c.run!, { ...NO_PERKS, extraNode: true });
+    expect([next.level, next.stage, next.wave, next.heartHp]).toEqual([4, 5, 1, LEVELS[4].hp]);
+    expect(next.nodes.length).toBe(M.ENTRY_IDS.length + 1); // the free IgMs, and the extra starting node
     const t = newGame(4, undefined, undefined, 5); t.wave = 3; t.phase = 'defeat';
     expect(onOrganEnd(c, t, '2026-11-24T09:00:00Z')).toBe(0);
     expect(c.endless.normal).toEqual([{ stages: 4, waves: 2, date: '2026-11-24' }]); expect(c.run).toBeNull();
+  });
+  it('a game saved in the old one-organ endless (no stage) is not continued', () => {
+    const c = loadCareer(memory({ [SAVE_KEY]: JSON.stringify({ version: 1, run: { level: 2, wave: 9, heartHp: 10, energy: 50, no: 80, nodes: [], endless: true } }) }));
+    expect(c.run).toBeNull();
   });
   it('endless opens once the eye is cleared', () => {
     const c = freshCareer(); expect(endlessOpen(c)).toBe(false);

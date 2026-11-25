@@ -8,7 +8,7 @@ import {
   hasTarget, borrowTarget, selectableTargets, aimedAt, openCost, pathogenPos, cancelCheck, cancelNode, igeLife, buyNo, buyNoCheck, buyCell, buyCellCheck,
   cellCount, lodgeCost, stageLevel,
 } from './sim';
-import { loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, endlessOpen, type Career, type KV, type UpgradeId } from './career';
+import { loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, recordEndless, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, endlessOpen, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
 import { unlockAudio, isMuted, setMuted, sfx } from './sound';
 import { playSounds } from './soundEvents';
@@ -292,10 +292,18 @@ function renderCoach() {
   } else { coachEl.style.left = '12px'; coachEl.style.top = `${Math.max(6, fh - ch - 12)}px`; }
 }
 
+/** Leaving an endless run still in play (for another organ, a new run, or Restart): it goes on the board, as if it
+ *  had fallen where it was. */
+function closeEndlessRun() {
+  if (!s.endless || !(s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall')) return;
+  recordEndless(career, s.stage - 1, Math.max(0, s.wave - 1), new Date().toISOString()); career.run = null; saveNow();
+}
+
 /** Endless (once the eye is cleared): a run through organ after organ, from the heart, each stage bigger. */
 function playEndless(confirmed = false) {
   if (!endlessOpen(career)) { toast('Clear the eye, the last organ, to open endless.'); return; }
   if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: 0, endless: true }); return; }
+  closeEndlessRun();
   const sp = s.speed; s = newGame(stageLevel(1), perksOf(career), undefined, 1); s.speed = sp;
   closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = ''; spentToasted = 0; gameShown = true; s.paused = false; pausedBeforeMenu = false; organTagFor = '';
   const best = career.endless[career.difficulty]?.[0];
@@ -312,7 +320,8 @@ function nextStage() {
 
 function playLevel(i: number, confirmed = false) {
   if (i >= unlocked) { toast('Clear the previous organ to unlock this one.'); return; }
-  if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: i }); return; }
+  if (!confirmed && (runInProgress() || (s.endless && s.stage > 1))) { openMenu({ page: 'switch', level: i }); return; }
+  closeEndlessRun();
   const sp = s.speed; s = newGame(i, perksOf(career)); s.speed = sp;
   closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = ''; spentToasted = 0;
   maybeTutorial();
@@ -333,7 +342,7 @@ function autosave() {
 }
 
 // ── The menu ────────────────────────────────────────────────────────────────
-type MenuPage = { page: 'main' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'switch'; level: number; endless?: boolean };
+type MenuPage = { page: 'main' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'abandon' } | { page: 'switch'; level: number; endless?: boolean };
 let menuPage: MenuPage | null = null;
 let pausedBeforeMenu = false;
 function openMenu(p: MenuPage = { page: 'main' }) {
@@ -393,17 +402,22 @@ function renderMenu() {
   } else if (menuPage.page === 'confirmNew') {
     h = `<h2>Start over?</h2><p>Your cleared organs${career.gold ? ', gold' : ''} and the game in progress will be lost.</p>
       <div class="menuButtons"><button data-menu="newYes" class="primary danger">Start a new career</button><button data-menu="back">Keep my career</button></div>`;
+  } else if (menuPage.page === 'abandon') {
+    h = `<h2>End this endless run?</h2><p>You are on stage ${s.stage}, the ${esc(organTitle(s.level).toLowerCase())}, with ${s.stage - 1} stage${s.stage === 2 ? '' : 's'} cleared. Ending it puts it on your leaderboard and starts a new run from the heart.</p>
+      <div class="menuButtons"><button data-menu="abandonYes" class="primary danger">End it and start again</button><button data-menu="close">Carry on</button></div>`;
   } else if (menuPage.page === 'difficulty') {
     h = `<h2>Choose a difficulty</h2><p class="sub">It stays for the whole career; to change it later, start a new one. Each keeps its own endless leaderboard. This career: ${esc(CONFIG.difficulty[career.difficulty].name)}.</p>
       <div class="menuButtons">${DIFFICULTIES.map((d) => `<button data-menu="newMode" data-mode="${d}" ${d === 'normal' ? 'class="primary"' : ''}>${esc(CONFIG.difficulty[d].name)}<small>${esc(CONFIG.difficulty[d].blurb)}</small></button>`).join('')}<button data-menu="back">Back</button></div>`;
   } else {
     const L = levelDef(s), same = menuPage.level === s.level && !menuPage.endless && !s.endless;
-    if (menuPage.endless) h = `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).</p>
+    // what leaving ends: an endless run (it goes on the board), or this organ's game
+    const ends = s.endless ? `This ends your endless run on stage ${s.stage} (${s.stage - 1} cleared); it goes on your leaderboard.` : `This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).`;
+    if (menuPage.endless) h = `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>${ends}</p>
       <div class="menuButtons"><button data-menu="switchEndless" class="primary">Start an endless run</button><button data-menu="close">Stay</button></div>`;
     else h = same
       ? `<h2>Start the ${esc(L.organ.toLowerCase())} again?</h2><p>This ends your run at wave ${s.wave}.</p>
       <div class="menuButtons"><button data-menu="switchYes" data-level="${menuPage.level}">Start again from wave 1</button><button data-menu="close" class="primary">Carry on at wave ${s.wave}</button></div>`
-      : `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).</p>
+      : `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>${ends}</p>
       <div class="menuButtons"><button data-menu="switchYes" data-level="${menuPage.level}" class="primary">Play ${esc(LEVELS[menuPage.level].title)}</button><button data-menu="close">Stay</button></div>`;
   }
   menuEl.innerHTML = `<div class="plate">${h}</div>`;
@@ -440,6 +454,11 @@ function buyWithGold(what: 'no' | 'cell') {
   if (!(what === 'no' ? buyNo(s) : buyCell(s))) return;
   career.gold -= price; sfx.coin();
   if (s.phase === 'prep') career.run = snapshot(s);
+  // mid-wave, the save is the build phase this wave began from: it gets what was paid for, so a reload loses nothing
+  else if (career.run) {
+    if (what === 'cell') career.run.extraCells = s.extraCells;
+    else career.run.no = Math.min(s.perks.noMax + CONFIG.goldBuys.no.amount, career.run.no + CONFIG.goldBuys.no.amount);
+  }
   saveNow(); lastSig = '';
   toast(what === 'no' ? `+${CONFIG.goldBuys.no.amount} NO (−${price} gold).` : `A white cell joins you for the rest of this organ (−${price} gold).`);
 }
@@ -460,6 +479,7 @@ overlay.addEventListener('click', (e) => {
   if (a?.dataset.act === 'shop') openMenu({ page: 'shop' });
   if (a?.dataset.act === 'endlessBoard') openMenu({ page: 'endless' });
   if (a?.dataset.act === 'nextStage') nextStage();
+  if (a?.dataset.act === 'endlessStart') playEndless(true);
 });
 $('btnMenu').addEventListener('click', () => (menuPage ? closeMenu() : openMenu()));
 menuEl.addEventListener('click', (e) => {
@@ -472,6 +492,11 @@ menuEl.addEventListener('click', (e) => {
   } else if (a === 'new') { if (careerStarted()) openMenu({ page: 'confirmNew' }); else openMenu({ page: 'difficulty' }); }
   else if (a === 'newYes') openMenu({ page: 'difficulty' });
   else if (a === 'newMode') startCareer(el.dataset.mode as Difficulty);
+  else if (a === 'abandonYes') {
+    // the run so far goes on the board, as if it had fallen here
+    closeEndlessRun();
+    gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false; restart();
+  }
   else if (a === 'organs') openMenu({ page: 'organs' });
   else if (a === 'endless') openMenu({ page: 'endless' });
   else if (a === 'playEndless') playEndless();
@@ -514,7 +539,8 @@ $('btnSound').addEventListener('click', toggleSound);
 // browsers only allow sound after the player has touched the page
 window.addEventListener('pointerdown', unlockAudio, { capture: true });
 window.addEventListener('keydown', unlockAudio, { capture: true });
-$('btnRestart').addEventListener('click', restart);
+// Restart mid-way through an endless run would throw the run away: ask first, and put it on the board if it goes
+$('btnRestart').addEventListener('click', () => { const live = s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall'; if (s.endless && live && (s.stage > 1 || runInProgress())) openMenu({ page: 'abandon' }); else restart(); });
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
   const keyed = e.key.length === 1 && ROUTE_KEYS.includes(e.key) ? map.VESSEL_IDS[ROUTE_KEYS.indexOf(e.key)] : undefined;
@@ -601,7 +627,7 @@ let organTagFor = '';
 function renderOrganTag() {
   const key = `${s.level}:${s.stage}`, L = levelDef(s);
   // shown through the first build and the first seconds of wave 1; a click puts it away
-  const want = gameShown && !menuPage && s.wave === 1 && (s.phase === 'prep' || (s.phase === 'combat' && s.waveTime < 8)) && organTagFor !== `${key}:shut`;
+  const want = gameShown && !menuPage && !tut && s.wave === 1 && (s.phase === 'prep' || (s.phase === 'combat' && s.waveTime < 8)) && organTagFor !== `${key}:shut`;
   if (!want) { organTag.hidden = true; return; }
   if (organTagFor !== key) {
     organTagFor = key;
@@ -721,7 +747,7 @@ function renderOverlay() {
     lastSig = '';
     const next = s.level + 1 < LEVELS.length ? s.level + 1 : -1;
     overlay.hidden = false; overlay.className = 'victory';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>${lastFirstClear ? 'Unlocked' : 'Next'}: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : '<p><b>Every organ is safe.</b> The whole body has been defended.</p><button data-act="restart" class="primary">Play again</button>'}</div>`;
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>${lastFirstClear ? 'Unlocked' : 'Next'}: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : `<p><b>Every organ is safe.</b> The whole body has been defended.${lastFirstClear ? ' <b>Endless is open</b>: organ after organ, each bigger than the last.' : ''}</p><button data-act="endlessStart" class="primary">Start endless</button> <button data-act="restart">Play again</button>`}</div>`;
   } else if (s.phase === 'defeat' && s.endless) {
     // an endless run ends here: how far it got, and where that puts it on the board
     const stages = s.stage - 1, board = career.endless[career.difficulty] ?? [], best = board[0]?.stages ?? stages;

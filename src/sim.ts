@@ -179,6 +179,8 @@ export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
   s.no = Math.max(0, Math.min(perks.noMax + CONFIG.goldBuys.no.amount, run.no));
   s.borrowed = (run.borrowed ?? []).filter((b, i, a) => CONFIG.pathogens[b]?.taxon && a.indexOf(b) === i);
   s.bile = (run.bile ?? []).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y)).slice(0, 8);
+  // a save of an organ not yet begun (the next endless stage) keeps the fresh organ's own starting nodes
+  if (!run.nodes.length && s.wave === 1) return s;
   s.nodes = [];
   for (const n of run.nodes) {
     const site = SITES.find((x) => x.id === n.site);

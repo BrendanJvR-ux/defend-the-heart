@@ -193,6 +193,8 @@ function parse(raw: string): Career | null {
     c.bought[k as UpgradeId] = Math.min(n as number, UPGRADES[k as UpgradeId].prices.length);
   }
   c.run = validRun(o.run) ? o.run : null;
+  // a run from the old one-organ endless (it had no stages) can't be continued in the endless of organ after organ
+  if (c.run && (c.run as { endless?: unknown }).endless === true && !c.run.stage) c.run = null;
   // older saves had no flag: a player who has cleared an organ has no need of the tutorial
   c.tutorialSeen = typeof o.tutorialSeen === 'boolean' ? o.tutorialSeen : c.cleared.some(Boolean);
   c.tips = Array.isArray(o.tips) ? o.tips.filter((x): x is string => typeof x === 'string').slice(0, 50) : [];
@@ -265,7 +267,12 @@ export function onOrganEnd(c: Career, s: State, date = new Date().toISOString())
     if (s.phase === 'victory') {
       paid = Math.round(CONFIG.endless.goldPerStage * CONFIG.difficulty[c.difficulty].gold);
       c.gold += paid;
-    } else lastPlace = recordEndless(c, s.stage - 1, Math.max(0, s.wave - 1), date);
+      // the run goes on: saved as the next stage's start, so leaving now and coming back carries on from there
+      const k = s.stage + 1, next = LEVELS[(k - 1) % LEVELS.length];
+      c.run = { level: (k - 1) % LEVELS.length, wave: 1, heartHp: next.hp, energy: Math.round(next.startEnergy * CONFIG.difficulty[c.difficulty].energy), no: s.perks.noMax, nodes: [], stage: k };
+      return paid;
+    }
+    lastPlace = recordEndless(c, s.stage - 1, Math.max(0, s.wave - 1), date);
     c.run = null;
     return paid;
   }
