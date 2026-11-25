@@ -19,6 +19,7 @@ export function playSounds(s: State, dt: number) {
     else if (r.kind === 'knock') sfx.knock();
     else if (r.kind === 'lodge') sfx.lodge();
     else if (r.kind === 'cancel') sfx.cancel();
+    else if (r.kind === 'burst') sfx.burst();
   }
   // one horn for a boss wave, not one for every vessel's boss
   for (const p of s.pathogens) if (CONFIG.pathogens[p.type].boss && !heardBosses.has(p.id)) { if (!s.pathogens.some((q) => q !== p && heardBosses.has(q.id) && q.hp > 0)) sfx.boss(); heardBosses.add(p.id); }

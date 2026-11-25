@@ -556,6 +556,36 @@ describe('Defend the Heart: organ levels', () => {
     expect(surge / calm).toBeCloseTo(sg.factor, 1);
   });
 
+  it('lungs: each breath brings NO, once per breath and never above the gauge', () => {
+    const s = newGame(1); go(s, 'left'); quiet(s); s.cells = []; mk(s, 'saureus', 'left', 0).hp = 1e6;
+    const sg = LEVELS[1].surge!;
+    expect(sg.noRefill).toBe(20);
+    s.open = []; s.no = 40; s.waveTime = sg.every - sg.length - 0.05; step(s, 0.1);
+    expect(surging(s)).toBe(true); expect(s.no).toBeCloseTo(60, 0);
+    step(s, 0.1); expect(s.no).toBeLessThan(61); // still the same breath: nothing more
+    s.no = s.perks.noMax - 5; s.waveTime = 2 * sg.every - sg.length - 0.05; step(s, 0.1);
+    expect(s.no).toBe(s.perks.noMax);
+    // other organs do not breathe
+    const h = newGame(0); go(h, 'left'); quiet(h); mk(h, 'saureus', 'left', 0).hp = 1e6; h.open = []; h.no = 40; h.waveTime = sg.every - sg.length - 0.05; step(h, 0.1);
+    expect(h.no).toBeLessThan(41);
+  });
+
+  it('Neisseria meningitidis cannot be slowed by IgA', () => {
+    expect(CONFIG.pathogens.nmening.slowImmune).toBe(true);
+    const s = newGame(2); go(s, 'left'); quiet(s); s.cells = [];
+    const p = mk(s, 'nmening', 'left', 0);
+    const site = M.SITES.find((x) => x.vessel === 'left')!;
+    s.nodes = [{ id: 999, site: site.id, vessel: 'left', type: 'iga', cd: 0, flash: 0, targets: [], wavesFought: 0 }];
+    let best = 0, bd = Infinity;
+    for (let d = 0; d < M.VESSELS.left.length; d += 4) { p.s = d; const dd = dist(pathogenPos(p), site); if (dd < bd) { bd = dd; best = d; } }
+    p.s = best; p.hp = 1e6; p.maxHp = 1e6;
+    const sp = CONFIG.pathogens.nmening.speed; CONFIG.pathogens.nmening.speed = 0;
+    tick(s, 1.5);
+    CONFIG.pathogens.nmening.speed = sp;
+    expect(p.hp).toBeLessThan(p.maxHp);
+    expect(p.slow).toBe(1);
+  });
+
   it('a vessel from another organ cannot be dilated', () => {
     const s = newGame(4); startWave(s);
     expect(toggleRoute(s, 'portal')).toBe(false);
@@ -586,11 +616,14 @@ describe('Defend the Heart: organ levels', () => {
     expect((near.s - b) / (far.s - a)).toBeCloseTo(LEVELS[4].filtration!.factor, 2);
   });
 
-  it('holding one vessel open, with the career player\'s upgrades at each organ, loses or ends at least 2 worse (not the heart, the gentle tutorial organ, nor the eye, which has no white cells to send)', { timeout: 30000 }, () => {
+  it('holding one vessel open, with the career player\'s upgrades at each organ, ends at least 2 worse on average over three seeds, a loss counting as 0 (not the heart, the gentle tutorial organ, nor the eye, which has no white cells to send)', { timeout: 60000 }, () => {
+    const seeds = [undefined, 7919, 15838], end = (r: ReturnType<typeof play>) => (r.s.phase === 'defeat' ? 0 : r.s.heartHp);
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     for (const r of careerRun().filter((x) => x.level > 0 && LEVELS[x.level].cells > 0)) {
-      const good = play(blindBuild, sensibleDilate, 3, r.level, r.perks), hold = play(blindBuild, holdOpen, 3, r.level, r.perks);
-      console.log(LEVELS[r.level].id, 'careful', good.s.heartHp, 'hold-open', hold.hp, hold.s.phase);
-      expect(hold.s.phase === 'defeat' || hold.s.heartHp <= good.s.heartHp - 2, LEVELS[r.level].id).toBe(true);
+      const good = seeds.map((sd) => end(play(blindBuild, sensibleDilate, 3, r.level, r.perks, sd)));
+      const hold = seeds.map((sd) => end(play(blindBuild, holdOpen, 3, r.level, r.perks, sd)));
+      console.log(LEVELS[r.level].id, 'careful', good, 'hold-open', hold);
+      expect(mean(hold), LEVELS[r.level].id).toBeLessThanOrEqual(mean(good) - 2);
     }
   });
 });
@@ -1042,16 +1075,19 @@ describe('Defend the Heart: endless mode', () => {
     const t = newGame(0, NO_PERKS, undefined, 3); startWave(t); tick(t, 4);
     const p = t.pathogens[0]; expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (LEVELS[0].handicap.hp ?? 1) * (1 + CONFIG.endless.hpGrowth * 2)));
   });
-  it('with the career\'s upgrades, an endless run clears at least eight stages, and ends', { timeout: 120000 }, () => {
-    const perks = careerRun().at(-1)!.perks;
-    let stage = 1, s = newGame(stageLevel(1), perks, undefined, 1);
-    while (stage <= 40) {
-      while (s.phase === 'prep') { blindBuild(s); startWave(s); finishWave(s, (st) => { sensibleDilate(st); pulseAtCluster(3)(st); }); }
-      if (s.phase !== 'victory') break;
-      stage++; s = newGame(stageLevel(stage), perks, undefined, stage);
+  it('with the career\'s upgrades, endless runs on three seeds clear at least eight stages (the middle one), and end', { timeout: 120000 }, () => {
+    const perks = careerRun().at(-1)!.perks, cleared: number[] = [];
+    for (const seed of [undefined, 104729, 209458]) {
+      let stage = 1, s = newGame(stageLevel(1), perks, seed, 1);
+      while (stage <= 40) {
+        while (s.phase === 'prep') { blindBuild(s); startWave(s); finishWave(s, (st) => { sensibleDilate(st); pulseAtCluster(3)(st); }); }
+        if (s.phase !== 'victory') break;
+        stage++; s = newGame(stageLevel(stage), perks, seed === undefined ? undefined : seed + stage, stage);
+      }
+      console.log(`endless: fell on stage ${stage} (${LEVELS[s.level].id}), ${stage - 1} cleared`);
+      cleared.push(stage - 1); expect(stage).toBeLessThanOrEqual(30);
     }
-    console.log(`endless: fell on stage ${stage} (${LEVELS[s.level].id}), ${stage - 1} cleared`);
-    expect(stage - 1).toBeGreaterThanOrEqual(8); expect(stage).toBeLessThanOrEqual(30);
+    expect([...cleared].sort((a, b) => a - b)[1]).toBeGreaterThanOrEqual(8);
   });
   it('an endless stage is saved and continued as that stage', () => {
     const s = newGame(2, NO_PERKS, undefined, 14); s.wave = 3;

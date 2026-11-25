@@ -42,8 +42,9 @@ export interface LymphNode {
   broad?: boolean;
 }
 export interface Shot { type: NodeType; targets: BacteriumType[]; broad?: boolean; power: number; vessel: VesselId; x: number; y: number; sx: number; sy: number; targetId: number; t: number; dur: number }
-export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' | 'sacrifice' | 'struck' | 'jump' | 'knock' | 'lodge' | 'cancel' }
-export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number }
+export interface Ring { x: number; y: number; r: number; t: number; dur: number; kind: 'pulse' | 'pop' | 'cellDown' | 'heart' | 'infect' | 'build' | 'sacrifice' | 'struck' | 'jump' | 'knock' | 'lodge' | 'cancel' | 'burst' | 'bile';
+  /** Bile: where the spray came from. */ from?: Vec }
+export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number; /** Seconds shown (1.4 if not given). */ life?: number }
 /** A pathogen due to enter: when, up which route, and (skin wounds) how far along it, as a share of its length. */
 export interface Spawn { type: PathogenType; vessel: VesselId; at: number; pos?: number }
 
@@ -233,6 +234,13 @@ export function surging(s: State): boolean {
   const sg = LEVELS[s.level].surge;
   if (!sg || s.phase !== 'combat') return false;
   return s.waveTime % sg.every >= sg.every - sg.length;
+}
+/** Lungs: each breath (the start of a surge) also brings NO, up to the gauge's top. */
+function breathe(s: State, wasSurging: boolean) {
+  const sg = LEVELS[s.level].surge;
+  if (!sg?.noRefill || wasSurging || !surging(s) || s.no >= s.perks.noMax) return;
+  s.no = Math.min(s.perks.noMax, s.no + sg.noRefill);
+  s.floaters.push({ x: HEART.x, y: HEART.y + LEVELS[s.level].map.ry + 34, text: `Breath: +${sg.noRefill} NO`, t: 0, color: '#1e5a78', size: 18 });
 }
 /** Kidney: true when a pathogen is in the filtered last stretch of its vessel. */
 export function filtered(s: State, p: { vessel: VesselId; s: number }): boolean {
@@ -700,20 +708,27 @@ function loseCell(s: State) {
   s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `The spleen will remake it in ${r.after} s`, t: 0, color: '#1e6a8a' });
 }
 
+/** Liver: where the gallbladder sits, just outside the bead of health at which it bursts. */
+export function gallbladderAt(level: number): Vec {
+  const L = LEVELS[level], gb = L.gallbladder!, n = L.hp, at = Math.floor(n * gb.at), a = -Math.PI / 2 + ((at - 0.5) / n) * Math.PI * 2;
+  return { x: HEART.x + Math.cos(a) * (L.map.rx + 82), y: HEART.y + 4 + Math.sin(a) * (L.map.ry + 82) };
+}
 /** Liver: the first time its health falls to the threshold, the gallbladder bursts and bile destroys lymph nodes
  *  at random (chosen with the game's seeded random source), leaving green stains where they stood. */
 export function burstGallbladder(s: State) {
   const gb = LEVELS[s.level].gallbladder;
   if (!gb || s.bile.length || s.heartHp <= 0 || s.heartHp > LEVELS[s.level].hp * gb.at) return;
-  const pool = [...s.nodes];
+  const pool = [...s.nodes], from = gallbladderAt(s.level);
+  // the burst itself: a big green splash where the gallbladder was, then bile sprays out to the nodes it destroys
+  s.rings.push({ x: from.x, y: from.y, r: 110, t: 0, dur: 1.6, kind: 'burst' });
   for (let i = 0; i < gb.nodes && pool.length; i++) {
     const n = pool.splice(Math.floor(rand(s) * pool.length), 1)[0], site = siteById(n.site);
     s.nodes = s.nodes.filter((x) => x !== n);
     s.bile.push({ x: site.x, y: site.y });
-    s.rings.push({ x: site.x, y: site.y, r: 40, t: 0, dur: 0.9, kind: 'pop' });
+    s.rings.push({ x: site.x, y: site.y, r: 60, t: 0, dur: 1.4, kind: 'bile', from });
   }
   if (!s.bile.length) s.bile.push({ x: HEART.x, y: HEART.y }); // nothing to destroy: it has still burst
-  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: 'The gallbladder bursts! Bile destroys lymph nodes', t: 0, color: '#3e6a1e' });
+  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: 'The gallbladder bursts! Bile destroys lymph nodes', t: 0, color: '#3e6a1e', size: 30, life: 3.5 });
   s.heartKick = 1;
 }
 
@@ -813,14 +828,16 @@ export function step(s: State, dtRaw: number) {
   for (const r of s.rings) r.t += dt;
   s.rings = s.rings.filter((r) => r.t < r.dur);
   for (const f of s.floaters) f.t += dt;
-  s.floaters = s.floaters.filter((f) => f.t < 1.4);
+  s.floaters = s.floaters.filter((f) => f.t < (f.life ?? 1.4));
   for (const n of s.nodes) n.flash = Math.max(0, n.flash - dt * 2);
   s.heartKick = Math.max(0, s.heartKick - dt * 2.5);
   easeWidths(s, dt);
   if (s.phase === 'recall') { recall(s, dt); return; }
   if (s.phase !== 'combat') return;
 
+  const wasSurging = surging(s);
   s.waveTime += dt;
+  breathe(s, wasSurging);
   while (s.spawns.length && s.spawns[0].at <= s.waveTime) {
     const sp = s.spawns.shift()!, at = sp.pos ? sp.pos * VESSELS[sp.vessel].length : 0;
     newPathogen(s, sp.type, sp.vessel, at);

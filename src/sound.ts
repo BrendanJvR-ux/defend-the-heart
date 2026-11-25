@@ -73,6 +73,8 @@ export const sfx = {
   lodge() { tone(110, 0.7, { type: 'sawtooth', vol: 0.05, attack: 0.05, slide: 0.85 }); tone(117, 0.7, { type: 'sawtooth', vol: 0.04, attack: 0.05, slide: 0.85 }); },
   /** A node cancelled: the pen scratch, backwards and lower. */
   cancel() { noise(0.07, 1400, 1.5, 0.35); tone(600, 0.12, { type: 'triangle', vol: 0.06, slide: 0.6 }); },
+  /** The gallbladder bursts: a wet pop, then a sloshing splash. */
+  burst() { tone(70, 0.4, { vol: 0.3, slide: 0.5 }); noise(0.5, 500, 0.8, 0.4); noise(0.35, 1400, 1.2, 0.2); tone(220, 0.5, { type: 'triangle', vol: 0.08, slide: 0.4, delay: 0.08 }); },
   /** Gold spent: two bright coin notes. */
   coin() { tone(1568, 0.12, { type: 'square', vol: 0.04 }); tone(2093, 0.25, { type: 'square', vol: 0.04, delay: 0.07 }); },
   /** A wave begins. */

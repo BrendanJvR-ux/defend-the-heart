@@ -6,7 +6,7 @@ import { drawBacterium } from './bacteria';
 import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, noGauge, KEY_W, type MapLabel } from './labels';
-import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed } from './sim';
+import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed, gallbladderAt } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode, drawSkin, drawEye } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
@@ -349,17 +349,25 @@ function drawHealthBeads(ctx: CanvasRenderingContext2D, s: State) {
       ctx.strokeStyle = INKC; ctx.lineWidth = 1.6; ctx.stroke();
     } else { ctx.strokeStyle = 'rgba(35,26,20,0.4)'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]); }
   }
-  // the liver's gallbladder: a green drop on the ring at the health where it bursts, pulsing as health nears it
+  // the liver's gallbladder: a swollen green sac by the bead of health at which it bursts, always labelled,
+  // straining and pulsing harder as health nears it
   const gb = LEVEL.gallbladder;
   if (gb && !s.bile.length) {
-    const at = Math.floor(n * gb.at), a = -Math.PI / 2 + ((at - 0.5) / n) * Math.PI * 2;
-    const x = HEART.x + Math.cos(a) * (rx + 22), y = HEART.y + 4 + Math.sin(a) * (ry + 22);
-    const near = s.heartHp - at <= 3, k = near ? 1 + 0.25 * Math.abs(Math.sin(performance.now() / 160)) : 1;
-    ctx.save(); ctx.translate(x, y); ctx.scale(k, k); ctx.rotate(a + Math.PI / 2);
-    ctx.beginPath(); ctx.moveTo(0, -11); ctx.bezierCurveTo(7, -2, 8, 4, 0, 8); ctx.bezierCurveTo(-8, 4, -7, -2, 0, -11); ctx.closePath();
-    ctx.fillStyle = near ? 'rgba(120,170,40,0.95)' : 'rgba(150,190,80,0.8)'; ctx.fill(); ctx.strokeStyle = INKC; ctx.lineWidth = 1.3; ctx.stroke();
+    const at = Math.floor(n * gb.at), { x, y } = gallbladderAt(s.level), left = s.heartHp - at;
+    const near = left <= 3, k = near ? 1 + (0.12 + 0.06 * (3 - left)) * Math.abs(Math.sin(performance.now() / (near && left <= 1 ? 90 : 160))) : 1;
+    const a = Math.atan2(y - HEART.y, x - HEART.x);
+    ctx.save(); ctx.translate(x, y); ctx.scale(k * 2.6, k * 2.6); ctx.rotate(a - Math.PI / 2);
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.bezierCurveTo(8, -2, 9, 5, 0, 9); ctx.bezierCurveTo(-9, 5, -8, -2, 0, -11); ctx.closePath();
+    ctx.fillStyle = near ? 'rgba(120,170,40,0.95)' : 'rgba(150,190,80,0.85)'; ctx.fill(); ctx.strokeStyle = INKC; ctx.lineWidth = 1.1; ctx.stroke();
+    // a duct back to the organ, and a highlight
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.quadraticCurveTo(3, -17, 0, -22); ctx.strokeStyle = 'rgba(62,106,30,0.8)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.ellipse(-3, 0, 2, 4, 0.3, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-    if (near) inkText(ctx, 'gallbladder', x, y - 16, '#3e6a1e', 14);
+    // how close it is: the ring bead it bursts at is circled in green
+    const ba = -Math.PI / 2 + ((at - 0.5) / n) * Math.PI * 2;
+    ctx.save(); ctx.strokeStyle = near ? '#5a8a1e' : 'rgba(90,138,30,0.6)'; ctx.lineWidth = near ? 3 : 2; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.arc(HEART.x + Math.cos(ba) * rx, HEART.y + 4 + Math.sin(ba) * ry, 14, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    inkText(ctx, left <= 0 ? 'gallbladder' : near ? `gallbladder: bursts in ${left} hit${left === 1 ? '' : 's'}!` : `gallbladder (bursts at ${at})`, x, y + 46, near ? '#6e2622' : '#3e6a1e', near ? 26 : 20);
   }
 }
 
@@ -801,6 +809,30 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     } else if (r.kind === 'cellDown' || r.kind === 'infect' || r.kind === 'jump' || r.kind === 'knock' || r.kind === 'lodge') {
       ctx.strokeStyle = r.kind === 'cellDown' ? `rgba(110,38,34,${1 - k})` : `rgba(90,40,120,${1 - k})`; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]);
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.5 + k), 0, Math.PI * 2); ctx.stroke();
+    } else if (r.kind === 'burst') {
+      // the gallbladder bursts: a green flash over the whole organ, then a splash of bile with drops flying out
+      const R = seeded(Math.round(r.x * 5 + r.y * 11)), e = 1 - Math.pow(1 - Math.min(1, k * 2), 3);
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(140,190,40,${0.28 * Math.max(0, 1 - k * 2.5)})`; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore();
+      ctx.globalAlpha = 1 - k * k;
+      ctx.beginPath();
+      for (let i = 0; i <= 20; i++) { const a = (i / 20) * Math.PI * 2, rr = r.r * e * (0.55 + R() * 0.45); i ? ctx.lineTo(r.x + Math.cos(a) * rr, r.y + Math.sin(a) * rr) : ctx.moveTo(r.x + Math.cos(a) * rr, r.y + Math.sin(a) * rr); }
+      ctx.closePath(); ctx.fillStyle = 'rgba(130,176,40,0.7)'; ctx.fill(); ctx.strokeStyle = 'rgba(50,70,20,0.9)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = 'rgba(90,130,30,0.9)';
+      for (let i = 0; i < 16; i++) { const a = R() * Math.PI * 2, d = r.r * (0.8 + R() * 0.8) * e; ctx.beginPath(); ctx.arc(r.x + Math.cos(a) * d, r.y + Math.sin(a) * d, 3 + R() * 4, 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = `rgba(62,106,30,${1 - k})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.4 + 1.2 * k), 0, Math.PI * 2); ctx.stroke();
+    } else if (r.kind === 'bile' && r.from) {
+      // a jet of bile from the gallbladder to the node it destroys, then a splash there
+      const f = r.from, e = Math.min(1, k * 2.2), hx = f.x + (r.x - f.x) * e, hy = f.y + (r.y - f.y) * e;
+      ctx.globalAlpha = k < 0.6 ? 1 : (1 - k) / 0.4; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(110,160,30,0.85)'; ctx.lineWidth = 9 * (1 - 0.5 * e);
+      ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(hx, hy); ctx.stroke();
+      ctx.fillStyle = 'rgba(110,160,30,0.95)'; ctx.beginPath(); ctx.arc(hx, hy, 8, 0, Math.PI * 2); ctx.fill();
+      if (e >= 1) {
+        const q = Math.min(1, (k - 1 / 2.2) * 3);
+        ctx.strokeStyle = 'rgba(62,106,30,0.9)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.3 + 0.7 * q), 0, Math.PI * 2); ctx.stroke();
+        inkText(ctx, 'dissolved', r.x, r.y - 44, '#3e6a1e', 16);
+      }
     } else if (r.kind === 'build') {
       ctx.strokeStyle = `rgba(35,26,20,${1 - k})`; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.6 + k), 0, Math.PI * 2); ctx.stroke();
@@ -824,7 +856,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     }
     y = Math.max(size + 8, y);
     avoid.push({ x: x - tw / 2, y: y - 24, w: tw, h: 30 });
-    ctx.globalAlpha = Math.max(0, 1 - f.t / 1.4);
+    ctx.globalAlpha = Math.max(0, 1 - f.t / (f.life ?? 1.4));
     inkText(ctx, f.text, x, y, f.color, size);
     ctx.globalAlpha = 1;
   }

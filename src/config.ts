@@ -164,13 +164,14 @@ export const CONFIG = {
 
   /** NO: capacity, opening cost, drain a second while a vessel is open, refill a second while all are closed, the top-up
    *  after a cleared wave. Every vessel opened beyond the first costs and drains less (`extraOpenCost`, `extraDrainPerSec`). */
-  no: { max: 100, openCost: 15, drainPerSec: 8, regenPerSec: 3, waveTopUp: 35, minOpenSeconds: 1, extraOpenCost: 8, extraDrainPerSec: 3 },
+  no: { max: 100, openCost: 15, drainPerSec: 7, regenPerSec: 3, waveTopUp: 35, minOpenSeconds: 1, extraOpenCost: 8, extraDrainPerSec: 3 },
 
   pathogens: {
     saureus: { name: 'Staphylococcus aureus', plural: 'S. aureus', short: 'Gram+ coccus, in clusters', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '+', shape: 'coccus', species: 'saureus' } },
     spneumo: { name: 'Streptococcus pneumoniae', plural: 'S. pneumoniae', short: 'Gram+ coccus, in pairs', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '+', shape: 'coccus', species: 'spneumo' } },
     listeria: { name: 'Listeria monocytogenes', plural: 'Listeria', short: 'Gram+ rod', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '+', shape: 'rod', species: 'listeria' } },
-    nmening: { name: 'Neisseria meningitidis', plural: 'N. meningitidis', short: 'Gram− coccus, in pairs', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'coccus', species: 'nmening' } },
+    nmening: { name: 'Neisseria meningitidis', plural: 'N. meningitidis', short: 'Gram− coccus, in pairs', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'coccus', species: 'nmening' },
+      slowImmune: true, blurb: 'Its thick capsule shrugs off IgA: nothing slows it. Aim IgG at N. meningitidis instead.' },
     ecoli: { name: 'Escherichia coli', plural: 'E. coli', short: 'Gram− rod', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'rod', species: 'ecoli' } },
     kpneumo: { name: 'Klebsiella pneumoniae', plural: 'Klebsiella', short: 'Gram− rod, capsulated', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'rod', species: 'kpneumo' } },
     virus: { name: 'Virus', plural: 'Viruses', hp: 10, speed: 74, heartDamage: 1, contactDps: 2, bounty: 2 },
@@ -251,8 +252,9 @@ export interface LevelDef {
   cells: number;
   /** Nodes placed before the first wave besides the free IgM every vessel gets (none of the organs use this now). */
   startingNodes?: { vessel: VesselId; site: number; type: NodeType }[];
-  /** Lungs: every `every` seconds the blood surges for `length` seconds, pathogens move ×`factor`. */
-  surge?: { every: number; length: number; factor: number };
+  /** Lungs: every `every` seconds the blood surges for `length` seconds, pathogens move ×`factor`; each breath also
+   *  refills `noRefill` NO. */
+  surge?: { every: number; length: number; factor: number; noRefill?: number };
   /** Liver: organ health regained after every cleared wave. */
   regenPerWave?: number;
   /** Kidney: on the last `fraction` of every vessel, pathogens are filtered to ×`factor` speed. */
@@ -367,11 +369,11 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'lungs', title: 'The Lungs', organ: 'Lung', tagline: 'Every breath drags the infection deeper.',
-    twist: 'Breathing: every few seconds the lungs inhale and everything in the vessels surges forward.',
-    feature: 'Breathing surges',
+    twist: 'Breathing: every few seconds the lungs inhale and everything in the vessels surges forward, but every breath also brings 20 NO.',
+    feature: 'Breathing surges; each breath brings 20 NO',
     handicap: { text: 'Short of breath: NO refills 25% slower.', noRegen: 0.75 },
     hp: 20, startEnergy: 120, cells: 2,
-    surge: { every: 6, length: 1.4, factor: 2.2 },
+    surge: { every: 6, length: 1.4, factor: 2.2, noRefill: 20 },
     map: {
       center: { x: 800, y: 450 }, rx: 225, ry: 175, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -420,7 +422,7 @@ export const LEVELS: LevelDef[] = [
         groups: [g('spneumo', 'lowerLeft', 9, 1, 3.4), g('virus', 'left', 15, 4, 0.35), g('virus', 'midLeft', 12, 10, 0.35)] },
       { title: 'Crossing over', hint: 'Viruses come up the lower-right vessel, which forks: at the fork they take the branch you have not opened. Nodes on the shared stem guard both.',
         groups: [g('saureus', 'right', 9, 1, 3.2), g('virus', 'lowerRight', 15, 6, 0.3), g('virus', 'left', 12, 14, 0.3), g('listeria', 'midLeft', 7, 4, 3.2)] },
-      { title: 'Meningitis', hint: 'Meningococci (Gram-negative cocci) and pneumococci on two vessels, and the first hijackers.',
+      { title: 'Meningitis', hint: 'Meningococci (Gram-negative cocci) and pneumococci on two vessels, and the first hijackers. IgA cannot slow meningococci: aim IgG at them.',
         groups: [g('nmening', 'left', 9, 1, 3), g('spneumo', 'lowerRight', 9, 3, 3), g('virus', 'right', 18, 10, 0.3), g('hijacker', 'lowerLeft', 7, 16, 1), g('virus', 'midLeft', 15, 8, 0.3)] },
       { title: 'Fever', hint: 'Everything at once. The brain cannot take many hits.',
         groups: [g('listeria', 'lowerLeft', 12, 1, 2.6), g('hijacker', 'left', 5, 3, 1), g('virus', 'lowerRight', 18, 6, 0.3), g('hijacker', 'right', 7, 9, 1), g('virus', 'left', 12, 20, 0.3), g('nmening', 'midLeft', 7, 12, 3)] },
