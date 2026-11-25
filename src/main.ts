@@ -528,6 +528,8 @@ function startCareer(mode: Difficulty = 'normal') {
   toast(`A new career on ${CONFIG.difficulty[mode].name.toLowerCase()}: defend the heart.`);
 }
 $('btnPause').addEventListener('click', togglePause);
+// switching away mid-wave (another tab, a phone call) pauses the game, so it waits rather than carrying on on return
+document.addEventListener('visibilitychange', () => { if (document.hidden && !menuPage && s.phase === 'combat' && !s.paused) { s.paused = true; lastSig = ''; } });
 // phones: zoom the map to twice its size inside its frame, and swipe to move around it (remembered)
 const mapScroll = $('mapScroll'), btnZoom = $('btnZoom');
 function setZoom(on: boolean) {
@@ -869,7 +871,8 @@ if (career.run) prepareOrgan(career.run.level);
 refresh(performance.now());
 requestAnimationFrame(frame);
 
-Object.assign(window, {
+// test hooks for driving the game from the console: the dev server only, never the published game
+if (import.meta.env.DEV) Object.assign(window, {
   __heart: () => s,
   __level: (i: number) => { unlocked = Math.max(unlocked, i + 1); playLevel(i); return levelDef(s).id; },
   __advance: (sec: number) => { for (let t = 0; t < sec && !s.paused; t += 1 / 30) { if (tut) tutorialTick(tut, s); if (tut && tutorialHolds(tut, s)) break; step(s, 1 / 30); autosave(); } refresh(performance.now()); return { phase: s.phase, wave: s.wave, hp: s.heartHp }; },
