@@ -968,7 +968,10 @@ export function step(s: State, dtRaw: number) {
   for (const p of s.pathogens) {
     if (p.hp > 0 && p.s >= VESSELS[p.vessel].length) {
       p.hp = 0;
-      const st = CONFIG.pathogens[p.type], L = LEVELS[s.level], dmg = Math.round(st.heartDamage * (L.damageMul?.[p.type] ?? 1));
+      // a boss that comes up every vessel carries a share of the boss, and does that share of its harm: one leak too
+      // many costs a few health, not a third of the organ
+      const st = CONFIG.pathogens[p.type], L = LEVELS[s.level], share = st.boss ? CONFIG.bossEveryVessel.hpShare : 1;
+      const dmg = Math.round(st.heartDamage * share * (L.damageMul?.[p.type] ?? 1));
       // some lodge in the organ, and go on costing health at every wave's end
       if (st.lodges && (!st.lodges.only || st.lodges.only === L.id)) {
         s.lodged[p.type] = (s.lodged[p.type] ?? 0) + 1;

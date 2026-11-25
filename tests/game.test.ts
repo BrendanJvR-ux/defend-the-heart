@@ -441,13 +441,16 @@ describe('Defend the Heart: balance', () => {
     for (let i = 1; i < runs.length; i++) { expect(cleared[i]).toBeLessThanOrEqual(cleared[i - 1]); if (cleared[i] === cleared[i - 1]) expect(kept[i]).toBeLessThanOrEqual(kept[i - 1]); }
     expect(cleared[3]).toBeGreaterThanOrEqual(1); // even Brutal's first organ can be won
   }, 120000);
-  it('no organ is on a cliff: with the career\'s upgrades, each is still won with 10% less or 10% more starting energy', async () => {
+  it('no organ is on a cliff: with the career\'s upgrades, each is won from 10% less to 10% more starting energy, and a 5% step never costs more than half its health', async () => {
     const career = careerRun(); await breathe();
-    for (const r of career) for (const k of [0.9, 1.1]) {
-      const L = LEVELS[r.level], keep = L.startEnergy;
-      L.startEnergy = Math.round(keep * k);
-      try { expect(play(blindBuild, sensibleDilate, 3, r.level, r.perks).s.phase, `${L.id} at ×${k}`).toBe('victory'); } finally { L.startEnergy = keep; }
-      await breathe();
+    for (const r of career) {
+      const L = LEVELS[r.level], keep = L.startEnergy, kept: number[] = [];
+      for (const k of [0.9, 0.95, 1, 1.05, 1.1]) {
+        L.startEnergy = Math.round(keep * k);
+        try { const g = play(blindBuild, sensibleDilate, 3, r.level, r.perks).s; expect(g.phase, `${L.id} at ×${k}`).toBe('victory'); kept.push(g.heartHp); } finally { L.startEnergy = keep; }
+        await breathe();
+      }
+      for (let i = 1; i < kept.length; i++) expect(Math.abs(kept[i] - kept[i - 1]), `${L.id}: ${kept.join(', ')}`).toBeLessThanOrEqual(L.hp / 2);
     }
   }, 120000);
   it('holding gold back to spend during organs (white cells, NO) does no better than buying upgrades with it', async () => {
@@ -1149,6 +1152,11 @@ describe('Defend the Heart: the new rules', () => {
     expect(inspectHtml(s, inf)).toContain('Going for the lymph node');
     const heart = newGame(0); expect(inspectHtml(heart, mk(heart, 'hpylori', 'left', 10))).not.toContain('Lodges'); // only in the stomach
   });
+  it('a boss that comes up every vessel does its share of the boss\'s harm when it gets through', () => {
+    const s = newGame(1); startWave(s); quiet(s); const v = M.VESSEL_IDS[0];
+    const hp = s.heartHp, b = mk(s, 'flu', v, M.VESSELS[v].length - 0.1); b.hp = 9999; mk(s, 'saureus', M.VESSEL_IDS[1], 0); step(s, 1 / 30);
+    expect(hp - s.heartHp).toBe(Math.round(CONFIG.pathogens.flu.heartDamage * CONFIG.bossEveryVessel.hpShare));
+  });
   it('the boss of the brain is stronger; every boss wave\'s bosses carry 55% of their health each', () => {
     expect(CONFIG.pathogens.meningo.hp).toBe(400); expect(CONFIG.bossEveryVessel.hpShare).toBe(0.55);
   });
@@ -1343,7 +1351,8 @@ describe('Defend the Heart: the spleen', () => {
     const s = newGame(SPLEEN); startWave(s); quiet(s); const v = M.VESSEL_IDS[0];
     const { every, for: span } = CONFIG.pathogens.plasmodium.hides!; s.waveTime = every - span + 0.01;
     const hp = s.heartHp; mk(s, 'plasmodium', v, M.VESSELS[v].length - 0.1); step(s, 1 / 30);
-    expect(s.heartHp).toBe(hp - CONFIG.pathogens.plasmodium.heartDamage);
+    // (one of the boss wave's bosses: it does its share of the boss's harm)
+    expect(s.heartHp).toBe(hp - Math.round(CONFIG.pathogens.plasmodium.heartDamage * CONFIG.bossEveryVessel.hpShare));
   });
 });
 
