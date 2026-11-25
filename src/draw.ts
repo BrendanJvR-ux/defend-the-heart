@@ -125,10 +125,10 @@ function inkText(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.fillStyle = col; ctx.fillText(text, x, y); ctx.restore();
 }
 
-function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: View, t: number, flowT: number) {
-  const ves = VESSELS[v], w = vesselWidth(s, v), open = s.width[v];
+/** A vessel's body: its outline, wash, hatched walls and lumen, at width w (and the hover glow, if hovered). */
+function drawVesselBody(ctx: CanvasRenderingContext2D, ves: Vessel, w: number, hover: boolean) {
   ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (view.hoverVessel === v && s.phase === 'combat') { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; course(ctx, ves); ctx.stroke(); }
+  if (hover) { ctx.strokeStyle = 'rgba(74,184,216,0.35)'; ctx.lineWidth = w + 34; course(ctx, ves); ctx.stroke(); }
   // pen-and-ink: a firm outline, a pale rose wash, the walls hatched, a paler lumen down the middle
   ctx.strokeStyle = C.ink; ctx.lineWidth = w + 14; course(ctx, ves); ctx.stroke();
   ctx.strokeStyle = '#e6c2b6'; ctx.lineWidth = w + 9.5; course(ctx, ves); ctx.stroke();
@@ -137,6 +137,33 @@ function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: 
   ctx.strokeStyle = 'rgba(35,26,20,0.55)'; ctx.lineWidth = w + 1.2; course(ctx, ves); ctx.stroke();
   ctx.strokeStyle = '#efd2c6'; ctx.lineWidth = w; course(ctx, ves); ctx.stroke();
   ctx.strokeStyle = '#f2ddd2'; ctx.lineWidth = w * 0.55; course(ctx, ves); ctx.stroke();
+  ctx.restore();
+}
+
+/** Is a vessel drawn as it rests (so its body can come from the cached layer)? */
+const atRest = (s: State, v: VesselId, view: View) => s.width[v] <= 0.001 && !(view.hoverVessel === v && s.phase === 'combat');
+
+/** The map's background with every vessel's body at rest, drawn once per map and canvas size: redrawing the long
+ *  winding vessels stroke by stroke every frame was most of a frame's cost. */
+let restLayer: { key: unknown; w: number; h: number; canvas: HTMLCanvasElement } | null = null;
+function restingMap(ctx: CanvasRenderingContext2D): HTMLCanvasElement {
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  if (restLayer && restLayer.key === VESSELS && restLayer.w === w && restLayer.h === h) return restLayer.canvas;
+  const c = restLayer?.canvas ?? document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d')!;
+  x.setTransform(w / W, 0, 0, h / H, 0, 0);
+  x.drawImage(background(), 0, 0, W, H);
+  for (const v of VESSEL_IDS) drawVesselBody(x, VESSELS[v], CONFIG.vesselRestWidth, false);
+  restLayer = { key: VESSELS, w, h, canvas: c };
+  return c;
+}
+
+function drawVessel(ctx: CanvasRenderingContext2D, s: State, v: VesselId, view: View, t: number, flowT: number) {
+  const ves = VESSELS[v], w = vesselWidth(s, v), open = s.width[v];
+  // a resting vessel's body is already on the cached layer; an open, opening or hovered one is drawn over it
+  if (!atRest(s, v, view)) drawVesselBody(ctx, ves, w, view.hoverVessel === v && s.phase === 'combat');
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (open > 0.02) {
     ctx.globalAlpha = Math.min(1, open * 1.4) * 0.85;
     ctx.strokeStyle = 'rgba(35,26,20,0.5)'; ctx.lineWidth = 1.6;
@@ -612,7 +639,7 @@ let labelCache: { level: unknown; keys: boolean; labels: MapLabel[] } = { level:
 export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: number) {
   const dt = Math.max(0, Math.min(0.1, t - lastT)); lastT = t;
   flowT += dt * (surging(s) ? LEVEL.surge!.factor * 1.6 : 1);
-  ctx.drawImage(background(), 0, 0, W, H);
+  ctx.drawImage(restingMap(ctx), 0, 0, W, H);
   // the open route last, so its widened stem lies over its sibling's
   const order = [...VESSEL_IDS].sort((a, b) => (s.open.includes(a) ? 1 : 0) - (s.open.includes(b) ? 1 : 0));
   for (const v of order) drawVessel(ctx, s, v, view, t, flowT);
