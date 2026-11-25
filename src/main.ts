@@ -13,6 +13,7 @@ import { unlockAudio, isMuted, setMuted } from './sound';
 import { playSounds } from './soundEvents';
 import { pathogenAt, inspectHtml } from './inspect';
 import { esc } from './text';
+import { ROUTE_KEYS } from './labels';
 import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, prepareOrgan, type View } from './draw';
 
 // ── The career: organs cleared, the game in progress, saved in this browser ──
@@ -491,7 +492,7 @@ window.addEventListener('keydown', unlockAudio, { capture: true });
 $('btnRestart').addEventListener('click', restart);
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
-  const keyed = /^[1-9]$/.test(e.key) ? map.VESSEL_IDS[Number(e.key) - 1] : undefined;
+  const keyed = e.key.length === 1 && ROUTE_KEYS.includes(e.key) ? map.VESSEL_IDS[ROUTE_KEYS.indexOf(e.key)] : undefined;
   if ((e.key === 'm' || e.key === 'M') && tag !== 'INPUT') { toggleSound(); return; }
   if (menuPage) { if (e.key === 'Escape' && gameShown && menuPage.page !== 'switch') { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); } return; }
   if (keyed) choose(keyed);
@@ -594,7 +595,7 @@ function renderPanel() {
     h = `<h2><small>Defend · ${s.endless ? `endless, wave ${s.wave}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
       <section class="card"><h3>Dilate <span class="count"><span data-no>${Math.floor(s.no)}</span> / ${s.perks.noMax} NO</span></h3>
         <p class="nogauge ${noLow ? 'low' : ''}" role="img" aria-label="NO ${Math.floor(s.no)} of ${s.perks.noMax}${noLow ? ', too low to open a vessel' : ''}"><i data-nobar style="width:${(s.no / s.perks.noMax) * 100}%"></i></p>${noLow ? '<p class="hint small needs">NO is too low to open a vessel: it refills while every vessel is closed.</p>' : ''}
-        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? `open · key ${i + 1} closes` : `resting · key ${i + 1}`}</small></button>`).join('')}</div>
+        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? (view.touch ? 'open · tap to close' : `open · key ${ROUTE_KEYS[i]} closes`) : (view.touch ? 'resting' : `resting · key ${ROUTE_KEYS[i]}`)}</small></button>`).join('')}</div>
         <p class="hint">Open as many vessels as you have white cells: they are split evenly among them. Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), and an open vessel drains ${CONFIG.no.drainPerSec} a second; each more vessel costs only ${CONFIG.no.extraOpenCost} to open and drains ${CONFIG.no.extraDrainPerSec} more a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out every vessel closes.</p></section>
       <section class="card"><h3>White cells <span class="count">${cells} of ${levelDef(s).cells}</span></h3>
         <p class="cells">${Array.from({ length: levelDef(s).cells }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 30)}</span>`).join('')}</p>
@@ -746,6 +747,8 @@ function frame(now: number) {
   if (!s.paused && !(tut && tutorialHolds(tut, s))) advance(s, dt);
   autosave();
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
+  // the boss banner runs across the top of the map: while one is up (or on its way), messages go to the bottom
+  if (toastT > 0) toastEl.classList.toggle('low', s.phase === 'combat' && [...s.pathogens, ...s.spawns].some((p) => CONFIG.pathogens[p.type].boss));
   refresh(now);
   updateInspect();
   describeMap();

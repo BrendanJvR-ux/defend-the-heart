@@ -79,6 +79,7 @@ button.pulse { width: 100%; min-height: 58px; font-size: 19px; font-weight: 700;
 .cells .lost { opacity: 0.25; filter: grayscale(1); }
 #toast { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); box-shadow: 2px 2px 0 rgba(35, 26, 20, 0.8); font-style: italic; padding: 6px 14px; border-radius: var(--sketch-sm); font-size: 15px; opacity: 0; transition: opacity 0.2s; pointer-events: none; max-width: 90%; text-align: center; }
 #toast.on { opacity: 1; }
+#toast.low { top: auto; bottom: 12px; }
 #overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(42, 30, 24, 0.35); }
 .plate { background: var(--paper); border: 2px solid var(--ink); padding: 20px 28px; text-align: center; max-width: min(440px, 90%); }
 .plate h2 { margin: 2px 0 8px; color: var(--red-dark); font-style: italic; }

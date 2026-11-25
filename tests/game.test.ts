@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type LevelDef, type NodeType, type PathogenType } from '../src/config';
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
-import { layoutLabels, type Box } from '../src/labels';
+import { layoutLabels, ROUTE_KEYS, type Box } from '../src/labels';
 import { organCacheKey, organImageScale } from '../src/organCache';
 import { NO_PERKS, perksOf, freshCareer, snapshot, type Perks } from '../src/career';
 // live bindings: always the currently loaded organ
@@ -765,7 +765,7 @@ describe('Defend the Heart: map labels', () => {
     return Math.hypot(nx - c.x, ny - c.y) < r;
   };
   for (let i = 0; i < LEVELS.length; i++) {
-    it(`${LEVELS[i].title}: every vessel label (and its DILATED tag) clears the build sites, the other labels and the map edge`, () => {
+    it(`${LEVELS[i].title}: every vessel label (and its DILATED tag) clears the build sites, the other labels and the map edge, and names its key`, () => {
       newGame(i);
       const labels = layoutLabels(widthOf);
       // one per vessel entering the map, plus one per branch of each fork
@@ -776,8 +776,17 @@ describe('Defend the Heart: map labels', () => {
         expect(l.box.x + l.box.w).toBeLessThanOrEqual(M.W); expect(l.box.y + l.box.h).toBeLessThanOrEqual(M.H);
         for (const o of labels) if (o !== l) expect(overlaps(l.box, o.box), `${l.text} over ${o.text}`).toBe(false);
       }
+      // every route's name carries the key that opens it (1 to 9, then 0, - and =), each once; a fork's stem has none
+      const keys = labels.filter((l) => l.key).map((l) => l.key);
+      expect(keys.sort()).toEqual(M.VESSEL_IDS.map((_, k) => ROUTE_KEYS[k]).sort());
+      for (const l of labels) if (l.key) expect(ROUTE_KEYS.indexOf(l.key)).toBe(M.VESSEL_IDS.indexOf(l.v));
+      // on a touch screen there are no keys to show
+      expect(layoutLabels(widthOf, false).every((l) => !l.key)).toBe(true);
     });
   }
+  it('every organ has at most 12 routes, so every route has a key', () => {
+    for (let i = 0; i < LEVELS.length; i++) { newGame(i); expect(M.VESSEL_IDS.length, LEVELS[i].id).toBeLessThanOrEqual(ROUTE_KEYS.length); }
+  });
 });
 
 describe('Defend the Heart: upgrades in play', () => {

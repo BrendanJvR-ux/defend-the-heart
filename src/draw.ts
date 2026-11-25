@@ -5,7 +5,7 @@ import { W, H, HEART, LEVEL, VESSELS, VESSEL_IDS, SITES, pointAt, entryOf, forkA
 import { drawBacterium } from './bacteria';
 import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
-import { layoutLabels, type MapLabel } from './labels';
+import { layoutLabels, KEY_W, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode, drawSkin, drawEye } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
@@ -557,7 +557,7 @@ function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, fra
 
 
 let flowT = 0, lastT = 0;
-let labelCache: { level: unknown; labels: MapLabel[] } = { level: null, labels: [] };
+let labelCache: { level: unknown; keys: boolean; labels: MapLabel[] } = { level: null, keys: true, labels: [] };
 export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: number) {
   const dt = Math.max(0, Math.min(0.1, t - lastT)); lastT = t;
   flowT += dt * (surging(s) ? LEVEL.surge!.factor * 1.6 : 1);
@@ -568,14 +568,24 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   for (const v of VESSEL_IDS) if (isFinite(forkAt(v)) && routesOf(entryOf(v))[0] === v) drawJunction(ctx, s, v);
   // vessel names, laid out once per organ to clear the sites, the organ, the next-wave tags and each other
   ctx.font = '700 24px Palatino, Georgia, serif'; ctx.textAlign = 'center';
-  if (labelCache.level !== LEVEL) labelCache = { level: LEVEL, labels: layoutLabels((text) => ctx.measureText(text).width) };
+  // the key rings only where there is a keyboard
+  if (labelCache.level !== LEVEL || labelCache.keys === view.touch) labelCache = { level: LEVEL, keys: !view.touch, labels: layoutLabels((text) => ctx.measureText(text).width, !view.touch) };
   const avoid: { x: number; y: number; w: number; h: number }[] = [];
-  for (const { v, lx, ly, text, branch } of labelCache.labels) {
+  for (const { v, lx, ly, text, key, branch } of labelCache.labels) {
     ctx.font = '700 24px Palatino, Georgia, serif';
-    const tw = ctx.measureText(text).width;
-    avoid.push({ x: lx - tw / 2 - 10, y: ly - 23, w: tw + 20, h: s.open.includes(v) ? 66 : 32 });
-    ctx.fillStyle = 'rgba(244,234,216,0.9)'; ctx.fillRect(lx - tw / 2 - 10, ly - 23, tw + 20, 32);
-    ctx.fillStyle = C.ink; ctx.fillText(text, lx, ly);
+    const nw = ctx.measureText(text).width, tw = nw + (key ? KEY_W : 0), left = lx - tw / 2;
+    avoid.push({ x: left - 10, y: ly - 23, w: tw + 20, h: s.open.includes(v) ? 66 : 32 });
+    ctx.fillStyle = 'rgba(244,234,216,0.9)'; ctx.fillRect(left - 10, ly - 23, tw + 20, 32);
+    ctx.fillStyle = C.ink; ctx.fillText(text, left + tw - nw / 2, ly);
+    if (key) {
+      // the key that opens this route in a wave, in a small inked ring before its name
+      const bx = left + 11, by = ly - 8;
+      ctx.beginPath(); ctx.arc(bx, by, 12, 0, Math.PI * 2);
+      ctx.fillStyle = s.phase === 'combat' ? WASH.blue : 'rgba(244,234,216,1)'; ctx.fill();
+      ctx.strokeStyle = INK_BLUE; ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.fillStyle = INK_BLUE; ctx.font = '700 17px Palatino, Georgia, serif'; ctx.fillText(key, bx, by + 6);
+      ctx.font = '700 24px Palatino, Georgia, serif';
+    }
     // the DILATED tag goes on the open route's own label: a branch's, or an unforked vessel's
     if (s.open.includes(v) && (branch || routesOf(entryOf(v)).length === 1)) {
       inkTag(ctx, lx - 58, ly + 13, 116, 30, WASH.blue, 8);
@@ -590,7 +600,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     ctx.strokeStyle = INKC; ctx.lineWidth = 7;
     ctx.beginPath(); ctx.moveTo(q.x - nx * 28 - tx * 6, q.y - ny * 28 - ty * 6); ctx.lineTo(q.x + nx * 28 + tx * 6, q.y + ny * 28 + ty * 6); ctx.stroke();
     ctx.strokeStyle = '#8a1e24'; ctx.lineWidth = 4; ctx.stroke();
-    inkText(ctx, 'wound', q.x + nx * 40, q.y + ny * 40, '#6e2622', 14);
+    inkText(ctx, 'wound', q.x + nx * 48, q.y + ny * 48, '#6e2622', 20);
     ctx.restore();
   }
   // bile from the burst gallbladder: green stains where its lymph nodes were destroyed
