@@ -430,24 +430,30 @@ describe('Defend the Heart: balance', () => {
     expect(sighted.filter((x) => x.level !== skin).every((x) => x.phase === 'victory')).toBe(true); expect(multi[0].phase).toBe('victory');
   }, 60000);
 
-  it('the difficulties are in order: Easy wins every organ, and each harder one clears no more organs and keeps no more health', () => {
-    const runs = DIFFICULTIES.map((mode) => careerRun(blindBuild, sensibleDilate, { mode }));
+  // these play whole careers: they yield between them, so the test worker is never blocked for long
+  const breathe = () => new Promise((r) => setTimeout(r, 0));
+  it('the difficulties are in order: Easy wins every organ, and each harder one clears no more organs and keeps no more health', async () => {
+    const runs: ReturnType<typeof careerRun>[] = [];
+    for (const mode of DIFFICULTIES) { runs.push(careerRun(blindBuild, sensibleDilate, { mode })); await breathe(); }
     const cleared = runs.map((r) => r.filter((x) => x.phase === 'victory').length), kept = runs.map((r) => r.filter((x) => x.phase === 'victory').reduce((a, x) => a + x.hp[x.hp.length - 1], 0));
     console.log('difficulty careers:', DIFFICULTIES.map((d, i) => `${d} ${cleared[i]} organs, ${kept[i]} health`).join('; '));
     expect(cleared[0]).toBe(LEVELS.length); expect(cleared[1]).toBe(LEVELS.length);
     for (let i = 1; i < runs.length; i++) { expect(cleared[i]).toBeLessThanOrEqual(cleared[i - 1]); if (cleared[i] === cleared[i - 1]) expect(kept[i]).toBeLessThanOrEqual(kept[i - 1]); }
     expect(cleared[3]).toBeGreaterThanOrEqual(1); // even Brutal's first organ can be won
   }, 120000);
-  it('no organ is on a cliff: with the career\'s upgrades, each is still won with 10% less or 10% more starting energy', () => {
-    for (const r of careerRun()) for (const k of [0.9, 1.1]) {
+  it('no organ is on a cliff: with the career\'s upgrades, each is still won with 10% less or 10% more starting energy', async () => {
+    const career = careerRun(); await breathe();
+    for (const r of career) for (const k of [0.9, 1.1]) {
       const L = LEVELS[r.level], keep = L.startEnergy;
       L.startEnergy = Math.round(keep * k);
       try { expect(play(blindBuild, sensibleDilate, 3, r.level, r.perks).s.phase, `${L.id} at ×${k}`).toBe('victory'); } finally { L.startEnergy = keep; }
+      await breathe();
     }
   }, 120000);
-  it('holding gold back to spend during organs (white cells, NO) does no better than buying upgrades with it', () => {
+  it('holding gold back to spend during organs (white cells, NO) does no better than buying upgrades with it', async () => {
     const score = (r: ReturnType<typeof careerRun>) => r.filter((x) => x.phase === 'victory').reduce((a, x) => a + 100 + x.hp[x.hp.length - 1], 0);
-    const base = score(careerRun()), spenders = [0.3, 0.6].map((keep) => score(careerRun(blindBuild, sensibleDilate, { keep })));
+    const base = score(careerRun()), spenders: number[] = [];
+    for (const keep of [0.3, 0.6]) { await breathe(); spenders.push(score(careerRun(blindBuild, sensibleDilate, { keep }))); }
     console.log('gold spent in organs:', base, 'with upgrades only;', spenders.join(', '), 'holding back 30% / 60%');
     for (const x of spenders) expect(x).toBeLessThanOrEqual(base);
   }, 120000);
