@@ -8,7 +8,7 @@ export type VesselId = string;
 /** The named bacteria. */
 export type BacteriumType = 'saureus' | 'spneumo' | 'listeria' | 'nmening' | 'ecoli' | 'kpneumo' | 'mtb' | 'hpylori' | 'salmonella' | 'spyogenes' | 'paeruginosa' | 'chlamydia';
 export const BACTERIA: BacteriumType[] = ['saureus', 'spneumo', 'listeria', 'nmening', 'ecoli', 'kpneumo', 'mtb', 'hpylori', 'salmonella', 'spyogenes', 'paeruginosa', 'chlamydia'];
-export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'infected' | BossType;
+export type PathogenType = BacteriumType | 'virus' | 'hijacker' | 'jumper' | 'infected' | BossType;
 /** What an IgG antibody recognises: Gram stain, shape and species. */
 export interface Taxon { gram: '+' | '-'; shape: 'coccus' | 'rod'; species: BacteriumType }
 /** One boss per organ, met in that organ's last wave. */
@@ -65,7 +65,17 @@ export interface PathogenStats {
   /** Goes dormant the first `times` times its health falls to half: out of reach for `for` seconds, regaining `heal`
    *  of its full health. */
   dormant?: { times: number; for: number; heal: number };
+  /** Jumps once to another vessel (one not of its own fork) when it is `at` of the way along its route, landing as far
+   *  along the new one. */
+  jumps?: { at: number };
+  /** Lodges in the organ when it reaches it: from then on, every wave's end costs `perWave` organ health for each one
+   *  lodged, until the organ ends. `only`: just on that organ; `cancer`: drawn as a small cancer on the organ. */
+  lodges?: { perWave: number; only?: OrganKind; cancer?: boolean };
 }
+
+/** The four difficulty modes, chosen for a career: pathogen health, how many come, energy and gold, as multipliers. */
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'brutal';
+export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'brutal'];
 
 export interface NodeStats {
   name: string;
@@ -118,25 +128,39 @@ export const CONFIG = {
 
   /** The immune pulse: every white cell out on a vessel and touching a pathogen destroys it (a boss loses
    *  `bossShare` of its full health instead) and dies doing it. Once per wave. */
-  immunePulse: { perWave: 1, bossShare: 1 / 3, ringSeconds: 0.45 },
+  immunePulse: { perWave: 1, bossShare: 1 / 4, ringSeconds: 0.45 },
 
   /** Nitric oxide: the fuel that holds a vessel open during a wave. */
   /** IgG damage multipliers: the single best match applies. */
   iggMatch: { species: 3, shape: 2.5, gram: 2, unrelated: 0.5, nonBacterium: 0.25 },
   /** Energy to re-aim a placed IgG node between waves. */
   iggRetarget: 20,
-  /** Endless mode on a cleared organ: its waves come round again, each time with `countGrowth` more pathogens in
-   *  every group and `hpGrowth` more health per wave already fought; its boss comes every `bossEvery` waves. A run
-   *  pays `goldPerWave` for every wave cleared; each organ keeps your best `boardSize` runs. */
-  endless: { countGrowth: 0.12, hpGrowth: 0.06, bossEvery: 5, goldPerWave: 5, boardSize: 10 },
+  /** Endless (once the eye is cleared): organ after organ, from the heart round again, each a stage. Every stage
+   *  cleared, the vessels wind `windGrowth` longer (up to `maxWind` times their corner points), every `sitesEvery`
+   *  stages each vessel gets another build site, pathogens have `hpGrowth` more health and come `countGrowth` more
+   *  in every group, and bosses turn up at random: `bosses` of them in the first stage, one more every `bossEvery`.
+   *  A stage cleared pays `goldPerStage`; each difficulty keeps your best `boardSize` runs. */
+  endless: { windGrowth: 0.08, maxWind: 1.9, sitesEvery: 2, hpGrowth: 0.1, countGrowth: 0.06, bosses: 1, bossEvery: 2, goldPerStage: 20, boardSize: 10 },
   /** The last wave sends its boss up every vessel, a few seconds apart; each has this share of the boss's health. */
-  bossEveryVessel: { gap: 3, hpShare: 0.45 },
-  /** At most this many IgG nodes may be aimed at any one bacterium on an organ (a dual node counts for both). */
+  bossEveryVessel: { gap: 3, hpShare: 0.55 },
+  /** Difficulty modes: pathogen health, group sizes, starting energy and income, and gold earned. Normal is the game
+   *  as tuned. */
+  difficulty: {
+    easy: { name: 'Easy', blurb: 'Weaker pathogens, fewer of them, more energy.', hp: 0.8, count: 0.85, energy: 1.15, gold: 1.15 },
+    normal: { name: 'Normal', blurb: 'The game as designed.', hp: 1, count: 1, energy: 1, gold: 1 },
+    hard: { name: 'Hard', blurb: 'Tougher pathogens, more of them, less gold.', hp: 1.2, count: 1.1, energy: 0.95, gold: 0.85 },
+    brutal: { name: 'Brutal', blurb: 'Much tougher, many more, and little to spare.', hp: 1.4, count: 1.2, energy: 0.9, gold: 0.7 },
+  } as Record<Difficulty, { name: string; blurb: string; hp: number; count: number; energy: number; gold: number }>,
+  /** Bought with gold during an organ: `no` adds NO at once (it may go past the gauge's top); `cell` adds a white cell
+   *  for the rest of the organ, at most `max`. */
+  goldBuys: { no: { gold: 20, amount: 40 }, cell: { gold: 50, max: 3 } },
+  /** At most this many IgG nodes may be aimed at any one bacterium on an organ . */
   iggPerTarget: 2,
   /** Gold to borrow an IgG target for the rest of one organ (gone when it ends; a permanent target costs 120). */
   borrowTargetGold: 30,
-  /** Energy for an IgG node aimed at two targets (career upgrade). */
-  dualIggCost: 80,
+  /** Energy for a broad IgG node (career upgrade): it hits every bacterium of its target's Gram stain as if it
+   *  matched the shape (×2.5). */
+  broadIggCost: 60,
 
   /** NO: capacity, opening cost, drain a second while a vessel is open, refill a second while all are closed, the top-up
    *  after a cleared wave. Every vessel opened beyond the first costs and drains less (`extraOpenCost`, `extraDrainPerSec`). */
@@ -150,22 +174,25 @@ export const CONFIG = {
     ecoli: { name: 'Escherichia coli', plural: 'E. coli', short: 'Gram− rod', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'rod', species: 'ecoli' } },
     kpneumo: { name: 'Klebsiella pneumoniae', plural: 'Klebsiella', short: 'Gram− rod, capsulated', hp: 70, speed: 30, heartDamage: 3, contactDps: 3, bounty: 7, taxon: { gram: '-', shape: 'rod', species: 'kpneumo' } },
     virus: { name: 'Virus', plural: 'Viruses', hp: 10, speed: 74, heartDamage: 1, contactDps: 2, bounty: 2 },
+    jumper: { name: 'Jumping virus', plural: 'Jumping viruses', hp: 14, speed: 64, heartDamage: 1, contactDps: 2, bounty: 3, jumps: { at: 0.35 } },
     hijacker: { name: 'Hijacker virus', plural: 'Hijacker viruses', hp: 16, speed: 58, heartDamage: 1, contactDps: 0, bounty: 4, infects: true },
     infected: { name: 'Infected white cell', plural: 'Infected white cells', hp: 55, speed: 46, heartDamage: 3, contactDps: 4, bounty: 6 },
     colony: { name: 'Staph colony', plural: 'Staph colonies', hp: 380, speed: 15, heartDamage: 6, contactDps: 3, bounty: 60, boss: true, taxon: { gram: '+', shape: 'coccus', species: 'saureus' },
       splitInto: { type: 'saureus', count: 3, hpFactor: 0.5 }, blurb: 'A grape-bunch of S. aureus. Burst it and three weakened staph spill out. IgG aimed at S. aureus hits it three times as hard.' },
     flu: { name: 'Mother virus', plural: 'Mother viruses', hp: 420, speed: 20, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
       sheds: { type: 'virus', every: 2.4 }, blurb: 'Releases a new virus every few seconds as it travels. Kill it fast: IgM and IgE do it best.' },
-    meningo: { name: 'Meningococcus', plural: 'Meningococci', hp: 290, speed: 20, heartDamage: 6, contactDps: 7, bounty: 60, boss: true, taxon: { gram: '-', shape: 'coccus', species: 'nmening' },
+    meningo: { name: 'Meningococcus', plural: 'Meningococci', hp: 400, speed: 20, heartDamage: 7, contactDps: 9, bounty: 60, boss: true, taxon: { gram: '-', shape: 'coccus', species: 'nmening' },
       slowImmune: true, blurb: 'A giant N. meningitidis. IgA cannot slow it; IgG aimed at N. meningitidis hits it three times as hard.' },
     hepatitis: { name: 'Hepatitis giant', plural: 'Hepatitis giants', hp: 520, speed: 17, heartDamage: 6, contactDps: 6, bounty: 60, boss: true,
       regen: 9, blurb: 'Heals itself as it travels. Damage must outpace its regrowth: IgM and IgE, not IgG.' },
     sepsis: { name: 'Sepsis hijacker', plural: 'Sepsis hijackers', hp: 340, speed: 19, heartDamage: 8, contactDps: 0, bounty: 60, boss: true,
       infects: true, infectsMany: true, blurb: 'A giant hijacker: it infects every white cell it touches and keeps going.' },
-    mtb: { name: 'Mycobacterium tuberculosis', plural: 'M. tuberculosis', short: 'Acid-fast rod, slow and tough', hp: 95, speed: 24, heartDamage: 3, contactDps: 3, bounty: 9, taxon: { gram: '+', shape: 'rod', species: 'mtb' } },
+    mtb: { name: 'Mycobacterium tuberculosis', plural: 'M. tuberculosis', short: 'Acid-fast rod, slow and tough', hp: 120, speed: 24, heartDamage: 3, contactDps: 4, bounty: 10, taxon: { gram: '+', shape: 'rod', species: 'mtb' },
+      lodges: { perWave: 2 } },
     granuloma: { name: 'Tuberculous granuloma', plural: 'Granulomas', hp: 500, speed: 14, heartDamage: 8, contactDps: 4, bounty: 60, boss: true, taxon: { gram: '+', shape: 'rod', species: 'mtb' },
       walled: { hits: 40, factor: 0.25 }, blurb: 'M. tuberculosis walled in by the body\'s own cells. Every antibody strike chips the wall; until it breaks, everything does a quarter damage. A pulse breaks it at once.' },
-    hpylori: { name: 'Helicobacter pylori', plural: 'H. pylori', short: 'Gram− curved rod, acid-proof', hp: 90, speed: 28, heartDamage: 3, contactDps: 3, bounty: 8, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' } },
+    hpylori: { name: 'Helicobacter pylori', plural: 'H. pylori', short: 'Gram− curved rod, acid-proof', hp: 90, speed: 28, heartDamage: 3, contactDps: 3, bounty: 8, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' },
+      lodges: { perWave: 1, only: 'stomach', cancer: true } },
     salmonella: { name: 'Salmonella enterica', plural: 'Salmonella', short: 'Gram− rod, fast, in groups', hp: 55, speed: 46, heartDamage: 2, contactDps: 3, bounty: 6, taxon: { gram: '-', shape: 'rod', species: 'salmonella' } },
     burrower: { name: 'H. pylori swarm', plural: 'H. pylori swarms', hp: 620, speed: 15, heartDamage: 8, contactDps: 5, bounty: 60, boss: true, acidProof: true, taxon: { gram: '-', shape: 'rod', species: 'hpylori' },
       burrows: { every: 5, for: 1.6, speed: 3 }, blurb: 'A swarm of H. pylori, untouched by acid. Every few seconds it burrows into the stomach lining, where nothing can touch it, and tunnels on three times as fast.' },
@@ -191,6 +218,19 @@ type P = { x: number; y: number };
 export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
 export interface VesselDef { id: VesselId; name: string; label: string; pts: P[]; fork?: { branches: [BranchDef, BranchDef] } }
 
+/** An organ's slight disadvantage: `text` says it; the rest change the rules (multipliers default to 1, additions to 0). */
+export interface Handicap {
+  text: string;
+  /** Pathogen speed ×. */ speed?: number;
+  /** Pathogen health ×. */ hp?: number;
+  /** NO refill ×, and NO drain ×. */ noRegen?: number; noDrain?: number;
+  /** Lymph node reach ×, and time between shots ×. */ range?: number; cooldown?: number;
+  /** Energy added to every node's cost. */ nodeCost?: number;
+  /** Energy income ×. */ income?: number;
+  /** White cell speed ×, and health ×. */ cellSpeed?: number; cellHp?: number;
+  /** Waves added to an IgE node's life (negative: it burns out sooner). */ igeLife?: number;
+}
+
 export interface LevelDef {
   id: OrganKind;
   /** Shown in the level list: "Level 2 · The Lungs". */
@@ -200,6 +240,12 @@ export interface LevelDef {
   tagline: string;
   /** The one rule that makes this organ different, in a sentence for the panel. */
   twist: string;
+  /** Its unique feature in a few words, for the label at the organ's start. */
+  feature: string;
+  /** A slight disadvantage of this organ's own, shown with its feature. Multipliers (1 = none) and additions. */
+  handicap: Handicap;
+  /** Pathogens that hit this organ harder: heart damage and contact damage ×. */
+  damageMul?: Partial<Record<PathogenType, number>>;
   hp: number;
   startEnergy: number;
   cells: number;
@@ -228,8 +274,6 @@ export interface LevelDef {
   /** Skin: pathogens enter through wounds, partway along their vessels: each group starts between `from` and `to`
    *  (shares of the route's length). */
   wounds?: { from: number; to: number };
-  /** Endless mode: how fast this organ's endless waves grow, as a share of the usual rate (1 = as configured). */
-  endlessPace?: number;
   /** Kidney: pathogens grow tougher every wave: health ×(1 + `waveHpGrowth` × waves before this one). */
   waveHpGrowth?: number;
   map: {
@@ -253,7 +297,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'heart', title: 'The Heart', organ: 'Heart', tagline: 'Four vessels, one beating target.',
     twist: 'The first organ: learn lymph nodes, dilating with NO during the wave, and the pulse.',
-    endlessPace: 1.6, hp: 20, startEnergy: 100, cells: 2,
+    feature: 'Four vessels, one beating target',
+    handicap: { text: 'Racing pulse: pathogens move 5% faster.', speed: 1.05 },
+    hp: 20, startEnergy: 100, cells: 2,
     map: {
       center: { x: 800, y: 480 }, rx: 100, ry: 100, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
       vessels: [
@@ -322,7 +368,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'lungs', title: 'The Lungs', organ: 'Lung', tagline: 'Every breath drags the infection deeper.',
     twist: 'Breathing: every few seconds the lungs inhale and everything in the vessels surges forward.',
-    endlessPace: 0.9, hp: 20, startEnergy: 100, cells: 2,
+    feature: 'Breathing surges',
+    handicap: { text: 'Short of breath: NO refills 25% slower.', noRegen: 0.75 },
+    hp: 20, startEnergy: 100, cells: 2,
     surge: { every: 6, length: 1.4, factor: 2.2 },
     map: {
       center: { x: 800, y: 450 }, rx: 225, ry: 175, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -350,9 +398,11 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'brain', title: 'The Brain', organ: 'Brain', tagline: 'Little room to build, nothing to spare.',
     twist: 'The blood–brain barrier: only two lymph node sites guard each route and less health, but you get three white cells. The lower-right vessel forks.',
-    endlessPace: 0.55, hp: 18, startEnergy: 200, cells: 3,
+    feature: 'Few sites, three white cells',
+    handicap: { text: 'Tight skull: lymph nodes reach 10% less far.', range: 0.9 },
+    hp: 18, startEnergy: 200, cells: 3,
     map: {
-      center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.3, 0.5, 0.7],
+      center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.3, 0.52, 0.72],
       vessels: [
         { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 240 }, { x: 190, y: 200 }, { x: 380, y: 270 }, { x: 574, y: 350 }] },
         { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 240 }, { x: 1410, y: 200 }, { x: 1220, y: 270 }, { x: 1026, y: 350 }] },
@@ -381,7 +431,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave. Fall to half health and the gallbladder bursts: bile destroys two of your lymph nodes.',
-    endlessPace: 1.8, hp: 24, startEnergy: 360, cells: 2, regenPerWave: 3, income: 0.7, gallbladder: { at: 0.5, nodes: 2 },
+    feature: 'Regrows; the gallbladder can burst',
+    handicap: { text: 'Fatty liver: every lymph node costs 5 more energy.', nodeCost: 5 },
+    hp: 24, startEnergy: 200, cells: 2, regenPerWave: 2, income: 0.65, gallbladder: { at: 0.5, nodes: 2 },
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
       vessels: [
@@ -416,7 +468,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 20% tougher.',
-    endlessPace: 0.7, hp: 20, startEnergy: 380, cells: 2, income: 0.7, waveHpGrowth: 0.2,
+    feature: 'Filtration; tougher every wave',
+    handicap: { text: 'Poor blood supply: 10% less energy.', income: 0.9 },
+    hp: 20, startEnergy: 320, cells: 2, income: 0.7, waveHpGrowth: 0.2,
     filtration: { fraction: 0.28, factor: 0.6 },
     map: {
       center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -456,7 +510,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'spleen', title: 'The Spleen', organ: 'Spleen', tagline: 'The body\'s own immune organ.',
     twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
-    endlessPace: 1.4, hp: 22, startEnergy: 160, cells: 2, income: 0.7,
+    feature: 'Remakes lost white cells',
+    handicap: { text: 'Enlarged: white cells move 15% slower.', cellSpeed: 0.85 },
+    hp: 22, startEnergy: 100, cells: 2, income: 0.55,
     respawn: { after: 8, cost: 1 },
     map: {
       center: { x: 800, y: 480 }, rx: 150, ry: 210, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -497,7 +553,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'marrow', title: 'The Bone Marrow', organ: 'Marrow', tagline: 'Where white cells are born.',
     twist: 'It makes white cells: you start with 2, and every cleared wave adds one more, up to 5.',
-    endlessPace: 2.1, hp: 24, startEnergy: 260, cells: 2, income: 0.7,
+    feature: 'A white cell more every wave',
+    handicap: { text: 'Brittle bone: IgE burns out a wave sooner.', igeLife: -1 },
+    hp: 24, startEnergy: 180, cells: 2, income: 0.8,
     cellGrowth: { perWave: 1, max: 5 },
     map: {
       center: { x: 800, y: 480 }, rx: 260, ry: 120, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -541,8 +599,11 @@ export const LEVELS: LevelDef[] = [
   },
   {
     id: 'stomach', title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
+    damageMul: { hpylori: 2 },
     twist: 'Acid: on the last third of every vessel, pathogens lose 3 health a second. H. pylori feeds on it and gains health there instead.',
-    endlessPace: 0.75, hp: 24, startEnergy: 260, cells: 2, income: 0.55,
+    feature: 'Acid; H. pylori feeds on it',
+    handicap: { text: 'Churning: NO drains 15% faster.', noDrain: 1.15 },
+    hp: 24, startEnergy: 280, cells: 2, income: 0.55,
     acid: { fraction: 0.33, dps: 3 },
     map: {
       center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -577,10 +638,10 @@ export const LEVELS: LevelDef[] = [
         groups: [g('salmonella', 'left', 9, 1, 1.8), g('saureus', 'right', 7, 4, 3), g('virus', 'top', 9, 8, 0.35)] },
       { title: 'Acid-proof', hint: 'H. pylori shrugs off acid: it must be killed before it reaches the stomach.',
         groups: [g('hpylori', 'topLeft', 11, 1, 3.2), g('salmonella', 'right', 15, 3, 1.8), g('saureus', 'left', 10, 6, 3), g('virus', 'top', 15, 10, 0.3)] },
-      { title: 'Ulcer', hint: 'H. pylori from both upper sides, hijackers from above.',
-        groups: [g('hpylori', 'topRight', 18, 1, 3), g('hpylori', 'topLeft', 13, 5, 3.2), g('salmonella', 'left', 23, 3, 1.6), g('hijacker', 'top', 10, 9, 1), g('saureus', 'right', 14, 2, 3), g('virus', 'bottomRight', 25, 14, 0.3)] },
+      { title: 'Ulcer', hint: 'H. pylori from both upper sides, hijackers from above, and jumping viruses: a third of the way in, each leaps once to another vessel.',
+        groups: [g('hpylori', 'topRight', 18, 1, 3), g('hpylori', 'topLeft', 13, 5, 3.2), g('salmonella', 'left', 23, 3, 1.6), g('hijacker', 'top', 10, 9, 1), g('saureus', 'right', 14, 2, 3), g('jumper', 'bottomRight', 15, 14, 0.4)] },
       { title: 'Every side', hint: 'Everything at once. The acid helps against all but H. pylori.',
-        groups: [g('hpylori', 'bottomLeft', 14, 1, 3.2), g('salmonella', 'topRight', 23, 2, 1.6), g('saureus', 'left', 14, 4, 2.8), g('hpylori', 'right', 14, 6, 3), g('hijacker', 'topLeft', 10, 10, 1), g('virus', 'bottomRight', 30, 14, 0.3)] },
+        groups: [g('hpylori', 'bottomLeft', 14, 1, 3.2), g('salmonella', 'topRight', 23, 2, 1.6), g('saureus', 'left', 14, 4, 2.8), g('hpylori', 'right', 14, 6, 3), g('hijacker', 'topLeft', 10, 10, 1), g('jumper', 'bottomRight', 18, 14, 0.4)] },
       { title: 'Boss: the burrowing swarm', hint: 'A swarm of H. pylori: acid-proof, and every few seconds it burrows into the lining, where nothing can touch it, and tunnels on three times as fast. Hit it hard while it is out.',
         groups: [g('burrower', 'topLeft', 1, 2, 1), g('hpylori', 'bottomLeft', 14, 4, 3), g('salmonella', 'bottomRight', 19, 6, 1.6), g('virus', 'right', 25, 12, 0.3)] },
     ],
@@ -588,7 +649,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'lymphnode', title: 'The Lymph Node', organ: 'Node', tagline: 'The finale: your own defences are the target.',
     twist: 'Every pathogen that reaches the node weakens the lymph nodes guarding its vessel by 10% until the wave ends. The boss, HIV, switches off every lymph node it passes.',
-    endlessPace: 0.4, hp: 26, startEnergy: 140, cells: 3, income: 0.6,
+    feature: 'Leaks weaken your nodes; HIV',
+    handicap: { text: 'Fever: white cells have 20% less health.', cellHp: 0.8 },
+    hp: 26, startEnergy: 340, cells: 3, income: 0.6,
     weakens: { per: 0.1, min: 0.5 },
     map: {
       center: { x: 800, y: 500 }, rx: 190, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -628,9 +691,9 @@ export const LEVELS: LevelDef[] = [
       { title: 'Swollen glands', hint: 'From the upper left and lower right; hijackers from above.',
         groups: [g('spyogenes', 'topLeft', 8, 1, 2.6), g('saureus', 'bottomRight', 7, 3, 3), g('ecoli', 'left', 6, 6, 3), g('hijacker', 'top', 3, 9, 1), g('virus', 'right', 10, 12, 0.3)] },
       { title: 'Drainage', hint: 'Everything the body drains comes here: from every side now.',
-        groups: [g('spyogenes', 'topRight', 9, 1, 2.4), g('ecoli', 'bottomLeft', 7, 3, 3), g('saureus', 'left', 7, 2, 3), g('hijacker', 'right', 4, 9, 1), g('virus', 'bottomRight', 12, 12, 0.3)] },
+        groups: [g('spyogenes', 'topRight', 9, 1, 2.4), g('ecoli', 'bottomLeft', 7, 3, 3), g('saureus', 'left', 7, 2, 3), g('hijacker', 'right', 4, 9, 1), g('jumper', 'bottomRight', 8, 12, 0.4)] },
       { title: 'Overwhelmed', hint: 'The last wave before the boss. Keep your lymph nodes from being worn down.',
-        groups: [g('spyogenes', 'bottomLeft', 10, 1, 2.2), g('saureus', 'topRight', 8, 2, 2.6), g('ecoli', 'topLeft', 8, 4, 2.8), g('spyogenes', 'right', 6, 6, 2.6), g('hijacker', 'bottomRight', 5, 10, 1), g('virus', 'top', 14, 14, 0.3)] },
+        groups: [g('spyogenes', 'bottomLeft', 10, 1, 2.2), g('saureus', 'topRight', 8, 2, 2.6), g('ecoli', 'topLeft', 8, 4, 2.8), g('spyogenes', 'right', 6, 6, 2.6), g('hijacker', 'bottomRight', 5, 10, 1), g('jumper', 'top', 9, 14, 0.4)] },
       { title: 'Boss: HIV', hint: 'HIV attacks the immune system itself: white cells can\'t touch it, and every lymph node it passes is switched off for the rest of the wave. Kill it early, with IgM and IgE.',
         groups: [g('hiv', 'topLeft', 1, 2, 1), g('spyogenes', 'bottomRight', 8, 6, 2.6), g('virus', 'left', 10, 12, 0.3)] },
     ],
@@ -638,7 +701,9 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'skin', title: 'The Skin', organ: 'Skin', tagline: 'The body\'s first wall, broken open.',
     twist: 'Open wounds: pathogens enter through cuts, partway along their vessels, not from the edge of the map.',
-    endlessPace: 0.7, hp: 24, startEnergy: 360, cells: 3, income: 0.25,
+    feature: 'Pathogens enter through wounds',
+    handicap: { text: 'Inflamed: pathogens have 10% more health.', hp: 1.1 },
+    hp: 24, startEnergy: 520, cells: 3, income: 0.25,
     wounds: { from: 0.2, to: 0.5 },
     map: {
       center: { x: 800, y: 430 }, rx: 280, ry: 110, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: 136,
@@ -673,17 +738,19 @@ export const LEVELS: LevelDef[] = [
       { title: 'Burn wound', hint: 'Pseudomonas, the burn-ward bacterium: tough, and quick through wounds.',
         groups: [g('paeruginosa', 'right', 7, 1, 3), g('saureus', 'left', 7, 3, 2.8), g('spyogenes', 'bottomMid', 5, 6, 3), g('virus', 'bottomRight', 9, 10, 0.3)] },
       { title: 'Infected cut', hint: 'Pseudomonas from two sides, hijackers through a wound from below.',
-        groups: [g('paeruginosa', 'left', 10, 1, 2.8), g('paeruginosa', 'bottomRight', 8, 4, 3), g('spyogenes', 'topMid', 9, 6, 2.8), g('hijacker', 'bottomMid', 5, 9, 1), g('saureus', 'bottomLeft', 9, 3, 2.8), g('virus', 'right', 14, 14, 0.3)] },
+        groups: [g('paeruginosa', 'left', 10, 1, 2.8), g('paeruginosa', 'bottomRight', 8, 4, 3), g('spyogenes', 'topMid', 9, 6, 2.8), g('hijacker', 'bottomMid', 5, 9, 1), g('saureus', 'bottomLeft', 9, 3, 2.8), g('jumper', 'right', 9, 14, 0.4)] },
       { title: 'Cellulitis', hint: 'The infection spreads under the skin: every vessel at once.',
-        groups: [g('paeruginosa', 'bottomLeft', 13, 1, 2.6), g('saureus', 'right', 13, 2, 2.4), g('spyogenes', 'bottomRight', 12, 4, 2.6), g('paeruginosa', 'topMid', 10, 6, 2.8), g('hijacker', 'left', 7, 10, 1), g('virus', 'bottomMid', 19, 14, 0.3)] },
+        groups: [g('paeruginosa', 'bottomLeft', 11, 1, 2.6), g('saureus', 'right', 11, 2, 2.4), g('spyogenes', 'bottomRight', 10, 4, 2.6), g('paeruginosa', 'topMid', 9, 6, 2.8), g('hijacker', 'left', 7, 10, 1), g('jumper', 'bottomMid', 12, 14, 0.4)] },
       { title: 'Boss: flesh-eating strep', hint: 'Necrotising fasciitis. Every antibody strike makes it faster, up to more than twice its speed: slow it with IgA, or hit it hard and fast with IgE.',
-        groups: [g('necrotizer', 'left', 1, 2, 1), g('paeruginosa', 'bottomRight', 11, 6, 2.8), g('virus', 'right', 17, 12, 0.3)] },
+        groups: [g('necrotizer', 'left', 1, 2, 1), g('paeruginosa', 'bottomRight', 9, 6, 2.8), g('virus', 'right', 17, 12, 0.3)] },
     ],
   },
   {
     id: 'eye', title: 'The Eye', organ: 'Eye', tagline: 'Immune-privileged: you defend it alone.',
     twist: 'Immune privilege: no white cells come to the eye, so there is no pulse. Only your lymph nodes defend it.',
-    endlessPace: 0.47, hp: 22, startEnergy: 200, cells: 0, income: 0.45,
+    feature: 'No white cells: nodes alone',
+    handicap: { text: 'Blurred: lymph nodes fire 10% slower.', cooldown: 1.1 },
+    hp: 22, startEnergy: 160, cells: 0, income: 0.35,
     map: {
       center: { x: 800, y: 500 }, rx: 150, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: -200,
       vessels: [
@@ -712,9 +779,9 @@ export const LEVELS: LevelDef[] = [
       { title: 'Trachoma', hint: 'Chlamydia, the commonest infectious cause of blindness: aim IgG at it.',
         groups: [g('chlamydia', 'left', 8, 1, 2.8), g('paeruginosa', 'bottom', 6, 3, 3), g('saureus', 'right', 6, 6, 3), g('virus', 'topLeft', 9, 10, 0.3)] },
       { title: 'Contact-lens ulcer', hint: 'Pseudomonas on the cornea: tough and fast.',
-        groups: [g('paeruginosa', 'right', 10, 1, 2.8), g('chlamydia', 'topRight', 9, 3, 2.8), g('saureus', 'left', 9, 2, 3), g('virus', 'bottom', 14, 12, 0.3)] },
+        groups: [g('paeruginosa', 'right', 10, 1, 2.8), g('chlamydia', 'topRight', 9, 3, 2.8), g('saureus', 'left', 9, 2, 3), g('jumper', 'bottom', 9, 12, 0.4)] },
       { title: 'Red eye', hint: 'From every side: nothing but your nodes stands in the way.',
-        groups: [g('chlamydia', 'topLeft', 11, 1, 2.6), g('paeruginosa', 'left', 10, 2, 2.6), g('saureus', 'bottom', 10, 4, 2.6), g('chlamydia', 'right', 8, 6, 2.8), g('virus', 'topRight', 18, 12, 0.3)] },
+        groups: [g('chlamydia', 'topLeft', 11, 1, 2.6), g('paeruginosa', 'left', 10, 2, 2.6), g('saureus', 'bottom', 10, 4, 2.6), g('chlamydia', 'right', 8, 6, 2.8), g('jumper', 'topRight', 11, 12, 0.4)] },
       { title: 'Boss: herpes', hint: 'Herpes simplex hides in nerves. Twice, when its health falls to half, it goes dormant for 3 s, out of reach, and comes back a quarter healed. IgM and IgE.',
         groups: [g('herpes', 'topRight', 1, 2, 1), g('chlamydia', 'left', 9, 6, 2.8), g('virus', 'right', 14, 12, 0.3)] },
     ],

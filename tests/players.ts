@@ -57,15 +57,14 @@ export function sensibleBuild(s: State) {
     if (!placed) break;
   }
 }
-/** The IgG aim (one target, or two with dual-target) from the unlocked targets that does the most to this
- *  vessel's wave — or null when IgG would do no better on average than an IgM's ×1. */
+/** The IgG aim (one target) from the unlocked targets that does the most to this vessel's wave — or null when IgG
+ *  would do no better on average than an IgM's ×1. */
 export function bestAim(s: State, n: number, v: VesselId): BacteriumType[] | null {
   const sp = spawnsFor(n, v), total = sp.reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
   if (!total) return null;
   const score = (ts: BacteriumType[]) => sp.reduce((a, x) => a + CONFIG.pathogens[x.type].hp * iggMultiplier(ts, x.type), 0) / total;
-  const ts = s.perks.targets, options: BacteriumType[][] = ts.map((b) => [b]);
-  if (s.perks.dual) for (let i = 0; i < ts.length; i++) for (let j = i + 1; j < ts.length; j++) options.push([ts[i], ts[j]]);
-  const best = options.sort((a, b) => score(b) - score(a) || a.length - b.length)[0];
+  const options: BacteriumType[][] = s.perks.targets.map((b) => [b]);
+  const best = options.sort((a, b) => score(b) - score(a))[0];
   return best && score(best) > 1.4 ? best : null;
 }
 export const nodeOn = (s: State, v: VesselId, t: NodeType) => s.nodes.some((x) => guarding(v).some((g) => g.id === x.site) && x.type === t);
@@ -97,7 +96,8 @@ export function blindBuild(s: State) {
       if (!site) continue;
       const aims = bugs.filter((b) => hasTarget(s, b) && aimedAt(s, b) < CONFIG.iggPerTarget);
       const want: NodeType = guards(v) % 3 === 2 ? 'iga' : aims.length ? 'igg' : 'igm';
-      if (placeNode(s, site.id, want, want === 'igg' ? [aims[0]] : undefined) || placeNode(s, site.id, 'igm')) placed = true;
+      // with the Broad upgrade, its IgG are broad (they hit every bacterium of the Gram stain harder)
+      if (placeNode(s, site.id, want, want === 'igg' ? [aims[0]] : undefined, want === 'igg' && s.perks.broad) || placeNode(s, site.id, 'igm')) placed = true;
     }
     if (!placed) break;
   }
@@ -131,14 +131,14 @@ export function play(prep: (s: State) => void, dilate: (s: State) => void = sens
 }
 
 /** Every upgrade at its top level. */
-export const ALL_PERKS: Perks = { dmg: { igm: 1.45, igg: 1.45, iga: 1.45, ige: 1.45 }, targets: [...BACTERIA], dual: true, noMax: 140, extraNode: true, cheapFirst: true };
+export const ALL_PERKS: Perks = { dmg: { igm: 1.45, igg: 1.45, iga: 1.45, ige: 1.45 }, targets: [...BACTERIA], broad: true, mode: 'normal', noMax: 140, extraNode: true, cheapFirst: true };
 
 /** The bacteria an organ's waves bring (bosses counted as their species). */
 export const organSpecies = (i: number) => [...new Set(LEVELS[i].waves.flatMap((w) => w.groups.map((g) => CONFIG.pathogens[g.type].taxon?.species)).filter((x): x is BacteriumType => !!x))];
 
 /** A career played by the sensible player: organs in order, gold banked, upgrades bought before each organ by a
  *  fixed policy — first the IgG targets for that organ's bacteria, then damage for the node types it built most
- *  last time, then dual-target, NO, the extra starting node and the cheaper first node. */
+ *  last time, then broad IgG, NO, the extra starting node and the cheaper first node. */
 export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: State) => void = sensibleDilate) {
   const c = freshCareer(); const built: Record<NodeType, number> = { igm: 2, igg: 1, iga: 1, ige: 0 };
   const out: { level: number; phase: string; hp: number[]; goldBefore: number; bought: string[]; perks: Perks }[] = [];
@@ -147,7 +147,7 @@ export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: St
     const wish: UpgradeId[] = [
       ...organSpecies(i).filter((b) => b !== 'saureus').map((b) => `target-${b}` as UpgradeId),
       ...(Object.entries(built) as [NodeType, number][]).sort((a, b) => b[1] - a[1]).flatMap(([t]) => [`dmg-${t}`, `dmg-${t}`, `dmg-${t}`] as UpgradeId[]),
-      'dual', 'no', 'no', 'extraNode', 'cheapFirst',
+      'broad', 'no', 'no', 'extraNode', 'cheapFirst',
     ];
     for (const id of wish) if (buy(c, id).ok) bought.push(id);
     const perks = perksOf(c);

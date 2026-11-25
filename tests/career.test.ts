@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { CONFIG, LEVELS } from '../src/config';
 import * as M from '../src/level';
 import { newGame, placeNode, nodeAt, startWave, step, resumeGame, type State } from '../src/sim';
-import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, organBacteria, missingTargets, recordEndless, type KV } from '../src/career';
+import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, organBacteria, missingTargets, recordEndless, endlessOpen, type KV } from '../src/career';
 
 /** An in-memory store standing in for localStorage. */
 function memory(init: Record<string, string> = {}): KV & { data: Record<string, string> } {
@@ -132,14 +132,15 @@ describe('Career: continuing a game', () => {
 });
 
 describe('Career: gold and the shop', () => {
-  it('gold: 100 × level + 5 × health left on a first clear, a quarter on a replay', () => {
-    expect(goldFor(0, 12, true)).toBe(160); expect(goldFor(4, 10, true)).toBe(550); expect(goldFor(4, 10, false)).toBe(137);
+  it('gold: 70 × level + 4 × health left on a first clear, a quarter on a replay, scaled by the difficulty', () => {
+    expect(goldFor(0, 12, true)).toBe(118); expect(goldFor(4, 10, true)).toBe(390); expect(goldFor(4, 10, false)).toBe(97);
+    expect(goldFor(4, 10, true, 'easy')).toBe(448); expect(goldFor(4, 10, true, 'brutal')).toBe(273);
   });
 
   it('winning pays gold: full on the first clear, a quarter on a replay', () => {
     const c = freshCareer(); const s = newGame(0); s.phase = 'victory'; s.heartHp = 12;
-    expect(onOrganEnd(c, s)).toBe(160); expect(c.gold).toBe(160);
-    expect(onOrganEnd(c, s)).toBe(40); expect(c.gold).toBe(200);
+    expect(onOrganEnd(c, s)).toBe(118); expect(c.gold).toBe(118);
+    expect(onOrganEnd(c, s)).toBe(29); expect(c.gold).toBe(147);
     const l = newGame(1); l.phase = 'defeat'; expect(onOrganEnd(c, l)).toBe(0);
   });
 
@@ -155,19 +156,24 @@ describe('Career: gold and the shop', () => {
   it('prices match the design', () => {
     expect(UPGRADES['dmg-igg'].prices).toEqual([80, 160, 240]);
     expect(UPGRADES['target-ecoli'].prices).toEqual([120]);
-    expect(UPGRADES.dual.prices).toEqual([600]);
+    expect(UPGRADES.broad.prices).toEqual([400]);
     expect(UPGRADES.no.prices).toEqual([100, 200]);
     expect([UPGRADES.extraNode.prices, UPGRADES.cheapFirst.prices]).toEqual([[150], [150]]);
     expect('target-saureus' in UPGRADES).toBe(false);
   });
 
-  it('perks: damage +15% per level, targets, dual, NO capacity', () => {
+  it('perks: damage +15% per level, targets, broad IgG, NO capacity, the difficulty', () => {
     const c = freshCareer(); expect(perksOf(c)).toEqual(NO_PERKS);
-    c.bought = { 'dmg-iga': 2, 'target-ecoli': 1, dual: 1, no: 2, extraNode: 1, cheapFirst: 1 };
+    c.bought = { 'dmg-iga': 2, 'target-ecoli': 1, broad: 1, no: 2, extraNode: 1, cheapFirst: 1 }; c.difficulty = 'hard';
     const p = perksOf(c);
     expect(p.dmg.iga).toBeCloseTo(1.3); expect(p.dmg.igm).toBe(1);
     expect(p.targets).toEqual(['saureus', 'ecoli']);
-    expect([p.dual, p.noMax, p.extraNode, p.cheapFirst]).toEqual([true, 140, true, true]);
+    expect([p.broad, p.noMax, p.extraNode, p.cheapFirst, p.mode]).toEqual([true, 140, true, true, 'hard']);
+  });
+  it('a save that bought dual-target IgG has broad IgG instead; the difficulty is read back, normal if missing', () => {
+    const c = loadCareer(memory({ [SAVE_KEY]: JSON.stringify({ version: 1, bought: { dual: 1 }, difficulty: 'brutal' }) }));
+    expect(c.bought).toEqual({ broad: 1 }); expect(c.difficulty).toBe('brutal');
+    expect(loadCareer(memory({ [SAVE_KEY]: JSON.stringify({ version: 1, difficulty: 'impossible' }) })).difficulty).toBe('normal');
   });
 });
 
@@ -181,7 +187,7 @@ describe('Career: hostile saves', () => {
   it('upgrade levels in a save must be whole numbers within range, for known upgrades only', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 500, bought: { 'dmg-igm': -1, 'dmg-iga': 1.5, 'dmg-igg': 9, dual: 1, nonsense: 2 } }) });
     const c = loadCareer(kv);
-    expect(c.bought).toEqual({ 'dmg-igg': 3, dual: 1 });
+    expect(c.bought).toEqual({ 'dmg-igg': 3, broad: 1 }); // dual-target became broad
     expect(buy(c, 'dmg-igm').ok).toBe(true); expect(Number.isFinite(c.gold)).toBe(true);
   });
 });
@@ -198,16 +204,15 @@ describe('Career: more hostile saves', () => {
     expect(Object.keys(kv.data).filter((k) => k.startsWith(BACKUP_KEY)).length).toBe(2);
   });
 
-  it('resumed IgG nodes only keep targets this career has unlocked', () => {
-    const s = newGame(1, { ...NO_PERKS, targets: ['saureus', 'spneumo', 'ecoli'], dual: true }); s.energy = 999;
+  it('resumed IgG nodes only keep targets this career has unlocked, and broad only with the upgrade', () => {
+    const s = newGame(1, { ...NO_PERKS, targets: ['saureus', 'spneumo', 'ecoli'], broad: true }); s.energy = 999;
     const free = M.SITES.filter((x) => !nodeAt(s, x.id));
-    placeNode(s, free[0].id, 'igg', ['spneumo', 'ecoli']); placeNode(s, free[1].id, 'igg', ['spneumo']);
+    placeNode(s, free[0].id, 'igg', ['ecoli'], true); placeNode(s, free[1].id, 'igg', ['spneumo']);
     const run = snapshot(s);
-    const r = resumeGame(run, NO_PERKS); // nothing unlocked but S. aureus, no dual
-    const igg = r.nodes.filter((n) => n.type === 'igg').map((n) => n.targets.join('+'));
-    expect(igg).toEqual(['saureus', 'saureus']);
-    const d = resumeGame(run, { ...NO_PERKS, targets: ['saureus', 'ecoli'] }); // ecoli unlocked, still no dual
-    expect(d.nodes.filter((n) => n.type === 'igg').map((n) => n.targets.join('+'))).toEqual(['ecoli', 'saureus']);
+    const r = resumeGame(run, NO_PERKS); // nothing unlocked but S. aureus, no broad
+    expect(r.nodes.filter((n) => n.type === 'igg').map((n) => `${n.targets.join('+')}${n.broad ? ' broad' : ''}`)).toEqual(['saureus', 'saureus']);
+    const d = resumeGame(run, { ...NO_PERKS, targets: ['saureus', 'ecoli'], broad: true });
+    expect(d.nodes.filter((n) => n.type === 'igg').map((n) => `${n.targets.join('+')}${n.broad ? ' broad' : ''}`)).toEqual(['ecoli broad', 'saureus']);
   });
 });
 
@@ -219,7 +224,7 @@ describe('Career: a sixth organ', () => {
     expect(unlockedCount(c)).toBe(5);
     c.cleared[4] = true; expect(unlockedCount(c)).toBe(6);
   });
-  it('the spleen pays 600 + 5 per health left on a first clear', () => { expect(goldFor(5, 10, true)).toBe(650); });
+  it('the spleen pays 420 + 4 per health left on a first clear', () => { expect(goldFor(5, 10, true)).toBe(460); });
   it('a six-organ save gets a seventh, locked organ: the bone marrow opens once the spleen is cleared', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 5, cleared: [true, true, true, true, true, false], best: [1, 2, 3, 4, 5, 0] }) });
     const c = loadCareer(kv);
@@ -229,27 +234,34 @@ describe('Career: a sixth organ', () => {
 });
 
 describe('Career: endless leaderboard', () => {
-  it('keeps the best ten runs per organ, most waves first; an equal later run goes below; reports the place', () => {
+  it('keeps the best ten runs per difficulty, most stages first (then waves); an equal later run goes below; reports the place', () => {
     const c = freshCareer();
-    const places = [5, 9, 3, 9].map((w, i) => recordEndless(c, 1, w, `2026-11-0${i + 1}T10:00:00Z`));
+    const places = [[2, 1], [4, 0], [1, 3], [4, 0]].map(([st, w], i) => recordEndless(c, st, w, `2026-11-0${i + 1}T10:00:00Z`));
     expect(places).toEqual([1, 1, 3, 2]);
-    expect(c.endless.lungs.map((r) => r.waves)).toEqual([9, 9, 5, 3]);
-    expect(c.endless.lungs[0].date).toBe('2026-11-02');
-    for (let i = 0; i < 12; i++) recordEndless(c, 1, 20 + i, '2026-11-20');
-    expect(c.endless.lungs.length).toBe(10);
-    expect(recordEndless(c, 1, 1, '2026-11-21')).toBe(0); // off the board
+    expect(c.endless.normal!.map((r) => r.stages)).toEqual([4, 4, 2, 1]);
+    expect(c.endless.normal![0].date).toBe('2026-11-02');
+    for (let i = 0; i < 12; i++) recordEndless(c, 10 + i, 0, '2026-11-20');
+    expect(c.endless.normal!.length).toBe(10);
+    expect(recordEndless(c, 0, 1, '2026-11-21')).toBe(0); // off the board
+    c.difficulty = 'hard'; expect(recordEndless(c, 1, 0, '2026-11-22')).toBe(1); // a board of its own
   });
-  it('an endless run that falls goes on the board and pays gold per wave cleared, without clearing anything', () => {
-    const c = freshCareer(); const s = newGame(1, undefined, undefined, true); s.wave = 8; s.phase = 'defeat';
-    const paid = onOrganEnd(c, s, '2026-11-24T09:00:00Z');
-    expect(paid).toBe(7 * CONFIG.endless.goldPerWave); expect(c.gold).toBe(paid);
-    expect(c.endless.lungs).toEqual([{ waves: 7, date: '2026-11-24' }]);
-    expect(c.cleared[1]).toBe(false); expect(c.run).toBeNull();
+  it('an endless stage won pays a little gold and the run goes on; a stage lost puts the run on the board', () => {
+    const c = freshCareer(); const s = newGame(3, undefined, undefined, 4); s.phase = 'victory';
+    expect(onOrganEnd(c, s)).toBe(CONFIG.endless.goldPerStage); expect(c.gold).toBe(CONFIG.endless.goldPerStage);
+    expect(c.cleared[3]).toBe(false); expect(c.endless).toEqual({});
+    const t = newGame(4, undefined, undefined, 5); t.wave = 3; t.phase = 'defeat';
+    expect(onOrganEnd(c, t, '2026-11-24T09:00:00Z')).toBe(0);
+    expect(c.endless.normal).toEqual([{ stages: 4, waves: 2, date: '2026-11-24' }]); expect(c.run).toBeNull();
   });
-  it('a saved board is read back, junk dropped', () => {
-    const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, endless: { lungs: [{ waves: 4, date: '2026-11-01' }, { waves: -2, date: 'x' }, { waves: 1.5, date: 'y' }, 'junk'], nowhere: [{ waves: 3, date: 'z' }] } }) });
+  it('endless opens once the eye is cleared', () => {
+    const c = freshCareer(); expect(endlessOpen(c)).toBe(false);
+    c.cleared = c.cleared.map(() => true); c.cleared[10] = false; expect(endlessOpen(c)).toBe(false);
+    c.cleared[10] = true; expect(endlessOpen(c)).toBe(true);
+  });
+  it('a saved board is read back, junk and old one-organ boards dropped', () => {
+    const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, endless: { normal: [{ stages: 4, waves: 1, date: '2026-11-01' }, { stages: -2, waves: 0, date: 'x' }, { stages: 1.5, waves: 0, date: 'y' }, 'junk'], lungs: [{ waves: 3, date: 'z' }] } }) });
     const c = loadCareer(kv);
-    expect(c.endless).toEqual({ lungs: [{ waves: 4, date: '2026-11-01' }] });
+    expect(c.endless).toEqual({ normal: [{ stages: 4, waves: 1, date: '2026-11-01' }] });
   });
 });
 
