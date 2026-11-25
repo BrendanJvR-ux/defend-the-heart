@@ -140,7 +140,7 @@ export const CONFIG = {
    *  stages each vessel gets another build site, pathogens have `hpGrowth` more health and come `countGrowth` more
    *  in every group, and bosses turn up at random: `bosses` of them in the first stage, one more every `bossEvery`.
    *  A stage cleared pays `goldPerStage`; each difficulty keeps your best `boardSize` runs. */
-  endless: { windGrowth: 0.08, maxWind: 1.9, sitesEvery: 2, hpGrowth: 0.1, countGrowth: 0.06, bosses: 1, bossEvery: 2, goldPerStage: 20, boardSize: 10 },
+  endless: { windGrowth: 0.08, maxWind: 1.9, sitesEvery: 2, hpGrowth: 0.06, countGrowth: 0.04, bosses: 1, bossEvery: 2, goldPerStage: 20, boardSize: 10 },
   /** The last wave sends its boss up every vessel, a few seconds apart; each has this share of the boss's health. */
   bossEveryVessel: { gap: 3, hpShare: 0.55 },
   /** Difficulty modes: pathogen health, group sizes, starting energy and income, and gold earned. Normal is the game
@@ -148,8 +148,8 @@ export const CONFIG = {
   difficulty: {
     easy: { name: 'Easy', blurb: 'Weaker pathogens, fewer of them, more energy.', hp: 0.8, count: 0.85, energy: 1.15, gold: 1.15 },
     normal: { name: 'Normal', blurb: 'The game as designed.', hp: 1, count: 1, energy: 1, gold: 1 },
-    hard: { name: 'Hard', blurb: 'Tougher pathogens, more of them, less gold.', hp: 1.2, count: 1.1, energy: 0.95, gold: 0.85 },
-    brutal: { name: 'Brutal', blurb: 'Much tougher, many more, and little to spare.', hp: 1.4, count: 1.2, energy: 0.9, gold: 0.7 },
+    hard: { name: 'Hard', blurb: 'Tougher pathogens, more of them, less gold.', hp: 1.1, count: 1.05, energy: 1, gold: 0.85 },
+    brutal: { name: 'Brutal', blurb: 'Much tougher, many more, and little to spare.', hp: 1.15, count: 1.1, energy: 0.95, gold: 0.7 },
   } as Record<Difficulty, { name: string; blurb: string; hp: number; count: number; energy: number; gold: number }>,
   /** Bought with gold during an organ: `no` adds NO at once (it may go past the gauge's top); `cell` adds a white cell
    *  for the rest of the organ, at most `max`. */
@@ -370,7 +370,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Breathing: every few seconds the lungs inhale and everything in the vessels surges forward.',
     feature: 'Breathing surges',
     handicap: { text: 'Short of breath: NO refills 25% slower.', noRegen: 0.75 },
-    hp: 20, startEnergy: 100, cells: 2,
+    hp: 20, startEnergy: 120, cells: 2,
     surge: { every: 6, length: 1.4, factor: 2.2 },
     map: {
       center: { x: 800, y: 450 }, rx: 225, ry: 175, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -400,7 +400,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'The blood–brain barrier: only two lymph node sites guard each route and less health, but you get three white cells. The lower-right vessel forks.',
     feature: 'Few sites, three white cells',
     handicap: { text: 'Tight skull: lymph nodes reach 10% less far.', range: 0.9 },
-    hp: 18, startEnergy: 200, cells: 3,
+    hp: 18, startEnergy: 260, cells: 3,
     map: {
       center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.3, 0.52, 0.72],
       vessels: [
@@ -433,7 +433,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave. Fall to half health and the gallbladder bursts: bile destroys two of your lymph nodes.',
     feature: 'Regrows; the gallbladder can burst',
     handicap: { text: 'Fatty liver: every lymph node costs 5 more energy.', nodeCost: 5 },
-    hp: 24, startEnergy: 195, cells: 2, regenPerWave: 2, income: 0.65, gallbladder: { at: 0.5, nodes: 2 },
+    hp: 24, startEnergy: 260, cells: 2, regenPerWave: 2, income: 0.65, gallbladder: { at: 0.5, nodes: 2 },
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
       vessels: [
@@ -470,7 +470,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 20% tougher.',
     feature: 'Filtration; tougher every wave',
     handicap: { text: 'Poor blood supply: 10% less energy.', income: 0.9 },
-    hp: 20, startEnergy: 360, cells: 2, income: 0.7, waveHpGrowth: 0.2,
+    hp: 20, startEnergy: 420, cells: 2, income: 0.4, waveHpGrowth: 0.2,
     filtration: { fraction: 0.28, factor: 0.6 },
     map: {
       center: { x: 800, y: 470 }, rx: 130, ry: 190, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -603,7 +603,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Acid: on the last third of every vessel, pathogens lose 2 health a second. H. pylori feeds on it and gains health there instead.',
     feature: 'Acid; H. pylori feeds on it',
     handicap: { text: 'Churning: NO drains 15% faster.', noDrain: 1.15 },
-    hp: 24, startEnergy: 300, cells: 2, income: 0.55,
+    hp: 24, startEnergy: 340, cells: 2, income: 0.45,
     acid: { fraction: 0.33, dps: 2 },
     map: {
       center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -703,7 +703,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Open wounds: pathogens enter through cuts, partway along their vessels, not from the edge of the map.',
     feature: 'Pathogens enter through wounds',
     handicap: { text: 'Inflamed: pathogens have 10% more health.', hp: 1.1 },
-    hp: 24, startEnergy: 520, cells: 3, income: 0.25,
+    hp: 24, startEnergy: 560, cells: 3, income: 0.25,
     wounds: { from: 0.2, to: 0.5 },
     map: {
       center: { x: 800, y: 430 }, rx: 280, ry: 110, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: 136,

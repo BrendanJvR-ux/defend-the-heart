@@ -210,7 +210,8 @@ const hash = (a: number, b: number, c = 0) => { const x = Math.sin(a * 12.9898 +
 export function endlessWave(level: number, n: number, stage: number): WaveDef {
   const L = LEVELS[level], E = CONFIG.endless, base = L.waves[n - 1], k = 1 + E.countGrowth * (stage - 1);
   const groups: WaveGroup[] = base.groups.map((g) => ({ ...g, count: CONFIG.pathogens[g.type].boss ? g.count : Math.max(1, Math.round(g.count * k)) }));
-  const ordinary = Array.from({ length: L.waves.length - 1 }, (_, i) => i + 1).sort((a, b) => hash(stage, a) - hash(stage, b));
+  // never in the first wave (little is built yet), nor the organ's own boss wave
+  const ordinary = Array.from({ length: L.waves.length - 2 }, (_, i) => i + 2).sort((a, b) => hash(stage, a) - hash(stage, b));
   const bosses = Math.min(ordinary.length, E.bosses + Math.floor((stage - 1) / E.bossEvery));
   let extra = '', hint = base.hint;
   if (ordinary.slice(0, bosses).includes(n)) {
@@ -673,7 +674,7 @@ function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pa
   const st = CONFIG.pathogens[type];
   const grow = LEVELS[s.level].waveHpGrowth;
   let hp = grow ? st.hp * (1 + grow * (s.wave - 1)) : st.hp;
-  if (st.boss && bossWave(s.level, s.wave)) hp *= CONFIG.bossEveryVessel.hpShare; // one comes up every vessel
+  if (st.boss) hp *= CONFIG.bossEveryVessel.hpShare; // one comes up every vessel (an endless stage's random boss is one of them)
   hp *= diffOf(s.perks).hp * (hc(s).hp ?? 1); // the difficulty, and the organ's own handicap
   if (s.endless) hp *= 1 + CONFIG.endless.hpGrowth * (s.stage - 1); // endless stages grow tougher
   hp = Math.round(hp);

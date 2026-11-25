@@ -29,12 +29,15 @@
       </header>
       <main id="layout">
         <section id="field" aria-label="The organ and its vessels">
-          <canvas id="board" aria-label="Map: the organ in the centre with vessels approaching it; sites beside each vessel for lymph nodes."></canvas>
+          <div id="mapScroll">
+            <canvas id="board" aria-label="Map: the organ in the centre with vessels approaching it; sites beside each vessel for lymph nodes."></canvas>
+            <div id="popover" class="popover" hidden></div>
+            <div id="inspect" class="popover inspect" hidden role="dialog" aria-label="Pathogen details"></div>
+            <div id="coach" hidden role="status" aria-live="polite"></div>
+          </div>
+          <button id="btnZoom" type="button" aria-pressed="false" title="Zoom the map in: swipe to move around it">Zoom</button>
           <div id="toast" aria-live="polite"></div>
-          <div id="popover" class="popover" hidden></div>
-          <div id="inspect" class="popover inspect" hidden role="dialog" aria-label="Pathogen details"></div>
           <div id="overlay" hidden></div>
-          <div id="coach" hidden role="status" aria-live="polite"></div>
           <div id="menu" hidden role="dialog" aria-label="Menu"></div>
         </section>
         <div id="tip" hidden role="status" aria-live="polite"></div>

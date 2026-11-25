@@ -1,11 +1,11 @@
 // The scripted players the balance tests use, and the small helpers that drive a game in a test.
 // The career player can't see what the next wave brings (blindBuild), like a real one; the "sensible" builder can,
 // and is kept for comparison and for the rule tests that need a known build.
-import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type NodeType, type PathogenType, type VesselId } from '../src/config';
+import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type Difficulty, type NodeType, type PathogenType, type VesselId } from '../src/config';
 import * as M from '../src/level';
 import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, organBacteria, type Perks, type UpgradeId } from '../src/career';
 import {
-  newGame, toggleRoute, dilateCheck, covers, startWave, step, pulseTargets, firePulse, waveSpawns, placeNode, hasTarget, aimedAt, nodeAt, iggMultiplier,
+  newGame, toggleRoute, dilateCheck, covers, startWave, step, pulseTargets, firePulse, waveSpawns, placeNode, hasTarget, aimedAt, nodeAt, iggMultiplier, buyCell, buyNo,
   type State, type Pathogen,
 } from '../src/sim';
 
@@ -123,10 +123,10 @@ export function clumsyDilate(s: State) {
   const v = late.sort((a, b) => count(b) - count(a))[0];
   if (v && s.no >= CONFIG.no.openCost + CONFIG.no.drainPerSec) toggleRoute(s, v);
 }
-export function play(prep: (s: State) => void, dilate: (s: State) => void = sensibleDilate, pulseMin = 3, level = 0, perks: Perks = NO_PERKS) {
-  const s = newGame(level, perks); const hp: number[] = [];
+export function play(prep: (s: State) => void, dilate: (s: State) => void = sensibleDilate, pulseMin = 3, level = 0, perks: Perks = NO_PERKS, seed?: number, each?: (s: State) => void) {
+  const s = newGame(level, perks, seed); const hp: number[] = [];
   const pulse = pulseAtCluster(pulseMin);
-  while (s.phase === 'prep') { prep(s); startWave(s); finishWave(s, (st) => { dilate(st); pulse(st); }); hp.push(s.heartHp); }
+  while (s.phase === 'prep') { prep(s); startWave(s); finishWave(s, (st) => { dilate(st); pulse(st); each?.(st); }); hp.push(s.heartHp); }
   return { s, hp };
 }
 
@@ -139,8 +139,11 @@ export const organSpecies = (i: number) => [...new Set(LEVELS[i].waves.flatMap((
 /** A career played by the sensible player: organs in order, gold banked, upgrades bought before each organ by a
  *  fixed policy — first the IgG targets for that organ's bacteria, then damage for the node types it built most
  *  last time, then broad IgG, NO, the extra starting node and the cheaper first node. */
-export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: State) => void = sensibleDilate) {
+/** `mode`: the difficulty. `keep`: the share of its gold the career holds back from the shop before each organ, to
+ *  spend during it: white cells at the start (as many as allowed), then NO whenever it runs low in a wave. */
+export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: State) => void = sensibleDilate, opts: { mode?: Difficulty; keep?: number } = {}) {
   const c = freshCareer(); const built: Record<NodeType, number> = { igm: 2, igg: 1, iga: 1, ige: 0 };
+  c.difficulty = opts.mode ?? 'normal';
   const out: { level: number; phase: string; hp: number[]; goldBefore: number; bought: string[]; perks: Perks }[] = [];
   for (let i = 0; i < LEVELS.length; i++) {
     const goldBefore = c.gold, bought: string[] = [];
@@ -149,9 +152,17 @@ export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: St
       ...(Object.entries(built) as [NodeType, number][]).sort((a, b) => b[1] - a[1]).flatMap(([t]) => [`dmg-${t}`, `dmg-${t}`, `dmg-${t}`] as UpgradeId[]),
       'broad', 'no', 'no', 'extraNode', 'cheapFirst',
     ];
+    const held = Math.floor(c.gold * (opts.keep ?? 0)); c.gold -= held;
     for (const id of wish) if (buy(c, id).ok) bought.push(id);
+    c.gold += held;
     const perks = perksOf(c);
-    const { s, hp } = play(build, dilate, 3, i, perks);
+    // a spender buys white cells as the organ starts, and NO whenever it is low in a wave, while its gold lasts
+    const spend = (st: State) => {
+      if (!opts.keep) return;
+      while (st.phase === 'prep' && c.gold >= CONFIG.goldBuys.cell.gold && buyCell(st)) { c.gold -= CONFIG.goldBuys.cell.gold; bought.push('cell'); }
+      if (st.phase === 'combat' && st.no < 25 && c.gold >= CONFIG.goldBuys.no.gold && buyNo(st)) { c.gold -= CONFIG.goldBuys.no.gold; bought.push('NO'); }
+    };
+    const { s, hp } = play((st) => { spend(st); build(st); }, dilate, 3, i, perks, undefined, spend);
     for (const n of s.nodes) built[n.type]++;
     onOrganEnd(c, s);
     out.push({ level: i, phase: s.phase, hp, goldBefore, bought, perks });

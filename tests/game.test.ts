@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type LevelDef, type NodeType, type PathogenType } from '../src/config';
+import { CONFIG, LEVELS, BACTERIA, DIFFICULTIES, type BacteriumType, type LevelDef, type NodeType, type PathogenType } from '../src/config';
 import * as map from '../src/level';
 import { siteById, dist } from '../src/level';
 import { layoutLabels, ROUTE_KEYS, type Box } from '../src/labels';
@@ -429,6 +429,28 @@ describe('Defend the Heart: balance', () => {
     expect(sighted.length).toBeGreaterThanOrEqual(skin + 1);
     expect(sighted.filter((x) => x.level !== skin).every((x) => x.phase === 'victory')).toBe(true); expect(multi[0].phase).toBe('victory');
   }, 60000);
+
+  it('the difficulties are in order: Easy wins every organ, and each harder one clears no more organs and keeps no more health', () => {
+    const runs = DIFFICULTIES.map((mode) => careerRun(blindBuild, sensibleDilate, { mode }));
+    const cleared = runs.map((r) => r.filter((x) => x.phase === 'victory').length), kept = runs.map((r) => r.filter((x) => x.phase === 'victory').reduce((a, x) => a + x.hp[x.hp.length - 1], 0));
+    console.log('difficulty careers:', DIFFICULTIES.map((d, i) => `${d} ${cleared[i]} organs, ${kept[i]} health`).join('; '));
+    expect(cleared[0]).toBe(LEVELS.length); expect(cleared[1]).toBe(LEVELS.length);
+    for (let i = 1; i < runs.length; i++) { expect(cleared[i]).toBeLessThanOrEqual(cleared[i - 1]); if (cleared[i] === cleared[i - 1]) expect(kept[i]).toBeLessThanOrEqual(kept[i - 1]); }
+    expect(cleared[3]).toBeGreaterThanOrEqual(1); // even Brutal's first organ can be won
+  }, 120000);
+  it('no organ is on a cliff: with the career\'s upgrades, each is still won with 10% less or 10% more starting energy', () => {
+    for (const r of careerRun()) for (const k of [0.9, 1.1]) {
+      const L = LEVELS[r.level], keep = L.startEnergy;
+      L.startEnergy = Math.round(keep * k);
+      try { expect(play(blindBuild, sensibleDilate, 3, r.level, r.perks).s.phase, `${L.id} at ×${k}`).toBe('victory'); } finally { L.startEnergy = keep; }
+    }
+  }, 120000);
+  it('holding gold back to spend during organs (white cells, NO) does no better than buying upgrades with it', () => {
+    const score = (r: ReturnType<typeof careerRun>) => r.filter((x) => x.phase === 'victory').reduce((a, x) => a + 100 + x.hp[x.hp.length - 1], 0);
+    const base = score(careerRun()), spenders = [0.3, 0.6].map((keep) => score(careerRun(blindBuild, sensibleDilate, { keep })));
+    console.log('gold spent in organs:', base, 'with upgrades only;', spenders.join(', '), 'holding back 30% / 60%');
+    for (const x of spenders) expect(x).toBeLessThanOrEqual(base);
+  }, 120000);
 
   it('never building loses every organ, even with every upgrade', () => {
     for (let i = 0; i < LEVELS.length; i++) expect(play(noBuild, sensibleDilate, 3, i, ALL_PERKS).s.phase, LEVELS[i].id).toBe('defeat');
@@ -1011,7 +1033,7 @@ describe('Defend the Heart: endless mode', () => {
     const t = newGame(0, NO_PERKS, undefined, 3); startWave(t); tick(t, 4);
     const p = t.pathogens[0]; expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * (LEVELS[0].handicap.hp ?? 1) * (1 + CONFIG.endless.hpGrowth * 2)));
   });
-  it('with the career\'s upgrades, an endless run gets past the first organs and ends', { timeout: 120000 }, () => {
+  it('with the career\'s upgrades, an endless run clears at least eight stages, and ends', { timeout: 120000 }, () => {
     const perks = careerRun().at(-1)!.perks;
     let stage = 1, s = newGame(stageLevel(1), perks, undefined, 1);
     while (stage <= 40) {
@@ -1020,7 +1042,7 @@ describe('Defend the Heart: endless mode', () => {
       stage++; s = newGame(stageLevel(stage), perks, undefined, stage);
     }
     console.log(`endless: fell on stage ${stage} (${LEVELS[s.level].id}), ${stage - 1} cleared`);
-    expect(stage - 1).toBeGreaterThanOrEqual(3); expect(stage).toBeLessThanOrEqual(30);
+    expect(stage - 1).toBeGreaterThanOrEqual(8); expect(stage).toBeLessThanOrEqual(30);
   });
   it('an endless stage is saved and continued as that stage', () => {
     const s = newGame(2, NO_PERKS, undefined, 14); s.wave = 3;

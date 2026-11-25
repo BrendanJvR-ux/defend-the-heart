@@ -215,3 +215,11 @@ details.borrow summary { font-size: 13px; }
 #organTag span { display: block; }
 #organTag small { display: block; font-size: 12px; }
 @media (max-width: 700px) { #organTag { font-size: 12px; padding: 4px 7px; } #organTag small { font-size: 11px; } }
+
+/* the map scrolls inside its frame when zoomed (phones): the canvas, and what is pinned to places on it */
+#mapScroll { position: relative; aspect-ratio: 16 / 10; overflow: hidden; }
+#mapScroll.zoomed { overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+#mapScroll.zoomed #board { width: 200%; }
+#btnZoom { display: none; position: absolute; right: 8px; top: 8px; z-index: 4; min-height: 36px; padding: 4px 10px; font-size: 14px; }
+#btnZoom[aria-pressed="true"] { background: var(--blue-wash, #a8d4e6); }
+@media (max-width: 760px) { #btnZoom { display: block; } }

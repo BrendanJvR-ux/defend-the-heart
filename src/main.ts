@@ -76,12 +76,12 @@ function updateInspect() {
   if (!q || s.phase !== 'combat') { closeInspect(); return; }
   const html = inspectHtml(s, q);
   if (html !== inspectSig) { inspectEl.innerHTML = html; inspectSig = html; }
-  // keep the card beside the pathogen, inside the map
-  const r = canvas.getBoundingClientRect(), f = $('field').getBoundingClientRect(), pos = pathogenPos(q);
-  const x = r.left - f.left + (pos.x / W) * r.width, y = r.top - f.top + (pos.y / H) * r.height;
+  // keep the card beside the pathogen, inside the map (in the map's own coordinates, so it scrolls with a zoomed map)
+  const fw = canvas.clientWidth, fh = canvas.clientHeight, pos = pathogenPos(q);
+  const x = (pos.x / W) * fw, y = (pos.y / H) * fh;
   const w = inspectEl.offsetWidth, h = inspectEl.offsetHeight;
-  inspectEl.style.left = `${Math.max(6, Math.min(f.width - w - 6, x + (x + w + 40 > f.width ? -w - 30 : 30)))}px`;
-  inspectEl.style.top = `${Math.max(6, Math.min(f.height - h - 6, y - h / 2))}px`;
+  inspectEl.style.left = `${Math.max(6, Math.min(fw - w - 6, x + (x + w + 40 > fw ? -w - 30 : 30)))}px`;
+  inspectEl.style.top = `${Math.max(6, Math.min(fh - h - 6, y - h / 2))}px`;
 }
 inspectEl.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('[data-act=closeInspect]')) closeInspect(); });
 
@@ -169,8 +169,8 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
       }).join('')}</div>`;
   }
   popover.hidden = false;
-  // beside the site, on the side with more room, kept wholly inside the map
-  const field = canvas.parentElement!, fw = field.clientWidth, fh = field.clientHeight;
+  // beside the site, on the side with more room, kept wholly inside the map (its own coordinates: a zoomed map scrolls)
+  const fw = canvas.clientWidth, fh = canvas.clientHeight;
   const pw = popover.offsetWidth, ph = popover.offsetHeight;
   const cx = (site.x / W) * fw, cy = (site.y / H) * fh;
   const left = site.x > W * 0.6 ? cx - pw - 30 : cx + 30;
@@ -283,7 +283,7 @@ function renderCoach() {
   coachEl.innerHTML = `<h3>${esc(text.title)}</h3><p>${esc(text.body)}</p><div class="coachButtons">${manualStep(tut) && text.button ? `<button data-coach="next" class="primary">${esc(text.button)}</button>` : ''}${tut.step !== 'done' ? '<button data-coach="skip">Skip tutorial</button>' : ''}</div>`;
   coachEl.hidden = false;
   // beside the map point it is about, else at the bottom of the map
-  const field = canvas.parentElement!, fw = field.clientWidth, fh = field.clientHeight, cw = coachEl.offsetWidth, ch = coachEl.offsetHeight;
+  const fw = canvas.clientWidth, fh = canvas.clientHeight, cw = coachEl.offsetWidth, ch = coachEl.offsetHeight;
   if (target?.at) {
     const x = (target.at.x / W) * fw, y = (target.at.y / H) * fh;
     const left = target.at.x > W * 0.5 ? x - cw - 40 : x + 40;
@@ -497,6 +497,17 @@ function startCareer(mode: Difficulty = 'normal') {
   toast(`A new career on ${CONFIG.difficulty[mode].name.toLowerCase()}: defend the heart.`);
 }
 $('btnPause').addEventListener('click', togglePause);
+// phones: zoom the map to twice its size inside its frame, and swipe to move around it (remembered)
+const mapScroll = $('mapScroll'), btnZoom = $('btnZoom');
+function setZoom(on: boolean) {
+  mapScroll.classList.toggle('zoomed', on); btnZoom.setAttribute('aria-pressed', String(on)); btnZoom.textContent = on ? 'Zoom out' : 'Zoom';
+  try { localStorage.setItem('dth-zoom', on ? 'on' : 'off'); } catch { /* no storage */ }
+  // centre on the organ
+  if (on) requestAnimationFrame(() => mapScroll.scrollTo({ left: (map.HEART.x / W) * canvas.clientWidth - mapScroll.clientWidth / 2, top: (map.HEART.y / H) * canvas.clientHeight - mapScroll.clientHeight / 2 }));
+  closeSite();
+}
+btnZoom.addEventListener('click', () => setZoom(!mapScroll.classList.contains('zoomed')));
+try { if (localStorage.getItem('dth-zoom') === 'on' && matchMedia('(max-width: 760px)').matches) setZoom(true); } catch { /* no storage */ }
 $('btnSpeed').addEventListener('click', () => { s.speed = nextSpeed(s.speed); });
 const toggleSound = () => { unlockAudio(); setMuted(!isMuted()); toast(isMuted() ? 'Sound off.' : 'Sound on.'); };
 $('btnSound').addEventListener('click', toggleSound);
