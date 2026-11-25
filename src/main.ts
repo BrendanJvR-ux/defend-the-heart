@@ -295,14 +295,17 @@ function renderCoach() {
 /** Leaving an endless run still in play (for another organ, a new run, or Restart): it goes on the board, as if it
  *  had fallen where it was. */
 function closeEndlessRun() {
-  if (!s.endless || !(s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall')) return;
-  recordEndless(career, s.stage - 1, Math.max(0, s.wave - 1), new Date().toISOString()); career.run = null; saveNow();
+  if (!s.endless || s.phase === 'defeat') return; // a run that has fallen is on the board already
+  // at a stage-cleared screen the run has cleared this stage too (the next is saved, waiting)
+  if (s.phase === 'victory') recordEndless(career, s.stage, 0, new Date().toISOString());
+  else recordEndless(career, s.stage - 1, Math.max(0, s.wave - 1), new Date().toISOString());
+  career.run = null; saveNow();
 }
 
 /** Endless (once the eye is cleared): a run through organ after organ, from the heart, each stage bigger. */
 function playEndless(confirmed = false) {
   if (!endlessOpen(career)) { toast('Clear the eye, the last organ, to open endless.'); return; }
-  if (!confirmed && runInProgress()) { openMenu({ page: 'switch', level: 0, endless: true }); return; }
+  if (!confirmed && (runInProgress() || (s.endless && s.stage > 1 && s.phase !== 'defeat'))) { openMenu({ page: 'switch', level: 0, endless: true }); return; }
   closeEndlessRun();
   const sp = s.speed; s = newGame(stageLevel(1), perksOf(career), undefined, 1); s.speed = sp;
   closeSite(); closeMenu(); lastSig = ''; overlaySig = ''; lastPhase = ''; spentToasted = 0; gameShown = true; s.paused = false; pausedBeforeMenu = false; organTagFor = '';
@@ -411,7 +414,10 @@ function renderMenu() {
   } else {
     const L = levelDef(s), same = menuPage.level === s.level && !menuPage.endless && !s.endless;
     // what leaving ends: an endless run (it goes on the board), or this organ's game
-    const ends = s.endless ? `This ends your endless run on stage ${s.stage} (${s.stage - 1} cleared); it goes on your leaderboard.` : `This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).`;
+    const ends = !s.endless ? `This ends your ${esc(organTitle(s.level).toLowerCase())} run (wave ${s.wave}).`
+      : s.phase === 'defeat' ? 'Your endless run is over (it is on your leaderboard).'
+      : s.phase === 'victory' ? `This ends your endless run after stage ${s.stage}; it goes on your leaderboard.`
+      : `This ends your endless run on stage ${s.stage} (${s.stage - 1} cleared); it goes on your leaderboard.`;
     if (menuPage.endless) h = `<h2>Leave the ${esc(L.organ.toLowerCase())}?</h2><p>${ends}</p>
       <div class="menuButtons"><button data-menu="switchEndless" class="primary">Start an endless run</button><button data-menu="close">Stay</button></div>`;
     else h = same

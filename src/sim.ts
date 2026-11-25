@@ -525,7 +525,8 @@ export function waveSpawns(n: number, level = LEVEL_INDEX, stage = 0, mode: Perk
   // skin: each group comes in through its own wound, a fixed (seeded) way along its vessel
   const wound = (gi: number) => { const w = L.wounds; if (!w) return undefined; const x = Math.sin(n * 12.9898 + gi * 78.233) * 43758.5453; return w.from + (w.to - w.from) * (x - Math.floor(x)); };
   def.groups.forEach((g, gi) => {
-    const boss = CONFIG.pathogens[g.type].boss, pos = boss ? undefined : wound(gi), count = boss ? g.count : Math.max(1, Math.round(g.count * dc));
+    // bosses and jumping viruses come in from the edge, not through wounds (a jumper would leap on arrival)
+    const boss = CONFIG.pathogens[g.type].boss, pos = boss || CONFIG.pathogens[g.type].jumps ? undefined : wound(gi), count = boss ? g.count : Math.max(1, Math.round(g.count * dc));
     for (let i = 0; i < count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.start + i * g.interval, pos });
   });
   // a boss wave sends its boss up every vessel, one after another
@@ -737,7 +738,8 @@ export function infect(s: State, c: WhiteCell, virus: Pathogen) {
   let best: LymphNode | null = null, bd = Infinity;
   for (const n of s.nodes) {
     const site = siteById(n.site);
-    if (n.off || !covers(n.vessel, enemy, site.stem)) continue;
+    // only a node on its own route (or the shared stem): an undecided cell on a stem doesn't go for the other branch
+    if (n.off || entryOf(n.vessel) !== entryOf(enemy.vessel) || !(n.vessel === enemy.vessel || site.stem)) continue;
     const d = Math.abs(site.at - c.s);
     if (d < bd) { bd = d; best = n; }
   }

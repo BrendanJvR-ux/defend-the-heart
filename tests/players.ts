@@ -27,8 +27,9 @@ export const guarding = (r: VesselId) => M.SITES.filter((x) => x.vessel === r ||
 export function quiet(s: State) { s.spawns = []; s.pathogens = []; }
 
 /** The wave's pathogens entering by route v's vessel (a fork's two branches share them). */
-export const spawnsFor = (n: number, v: VesselId) => waveSpawns(n).filter((x) => M.entryOf(x.vessel) === M.entryOf(v));
-export const threat = (n: number, v: VesselId) => spawnsFor(n, v).reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
+/** (Given the game, it sees that game's waves: an endless stage's, at its difficulty.) */
+export const spawnsFor = (n: number, v: VesselId, s?: State) => waveSpawns(n, M.LEVEL_INDEX, s?.stage ?? 0, s?.perks.mode ?? 'normal').filter((x) => M.entryOf(x.vessel) === M.entryOf(v));
+export const threat = (n: number, v: VesselId, s?: State) => spawnsFor(n, v, s).reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
 /** The scripted players' pulse: spend the white cells only on a boss, or on something tough (40+ health left)
  *  that is about to reach the organ. `min` 999 = never pulse. */
 export const pulseAtCluster = (min: number) => (s: State) => {
@@ -40,14 +41,14 @@ export const pulseAtCluster = (min: number) => (s: State) => {
  *  IgG where bacteria come, IgA where viruses swarm, IgM otherwise; pulse into clusters. */
 export function sensibleBuild(s: State) {
   const n = s.wave;
-  const ranked = [...M.VESSEL_IDS].sort((a, b) => threat(n, b) - threat(n, a));
+  const ranked = [...M.VESSEL_IDS].sort((a, b) => threat(n, b, s) - threat(n, a, s));
   // spend energy round-robin on the threatened vessels: the least defended first, then the busiest
   const guards = (v: VesselId) => s.nodes.filter((x) => guarding(v).some((g) => g.id === x.site)).length;
-  const order = ranked.filter((v) => threat(n, v) > 0).sort((a, b) => guards(a) - guards(b) || threat(n, b) - threat(n, a));
+  const order = ranked.filter((v) => threat(n, v, s) > 0).sort((a, b) => guards(a) - guards(b) || threat(n, b, s) - threat(n, a, s));
   for (let guard = 0; guard < 3; guard++) { // at most three rounds: a sensible player keeps energy for later waves
     let placed = false;
     for (const v of order) {
-      const types = new Set(spawnsFor(n, v).map((x) => x.type));
+      const types = new Set(spawnsFor(n, v, s).map((x) => x.type));
       const aim = bestAim(s, n, v);
       const want: NodeType = aim && !nodeOn(s, v, 'igg') ? 'igg' : (types.has('virus') || types.has('hijacker')) && !nodeOn(s, v, 'iga') ? 'iga' : 'igm';
       const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
@@ -60,7 +61,7 @@ export function sensibleBuild(s: State) {
 /** The IgG aim (one target) from the unlocked targets that does the most to this vessel's wave — or null when IgG
  *  would do no better on average than an IgM's ×1. */
 export function bestAim(s: State, n: number, v: VesselId): BacteriumType[] | null {
-  const sp = spawnsFor(n, v), total = sp.reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
+  const sp = spawnsFor(n, v, s), total = sp.reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
   if (!total) return null;
   const score = (ts: BacteriumType[]) => sp.reduce((a, x) => a + CONFIG.pathogens[x.type].hp * iggMultiplier(ts, x.type), 0) / total;
   const options: BacteriumType[][] = s.perks.targets.map((b) => [b]);
@@ -174,6 +175,6 @@ export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: St
 /** Holds the route with the most wave threat open: opens it as soon as it can, never closes it. */
 export function holdOpen(s: State) {
   if (s.phase !== 'combat' || s.open.length) return;
-  const e = [...M.ENTRY_IDS].sort((a, b) => threat(s.wave, b) - threat(s.wave, a))[0];
+  const e = [...M.ENTRY_IDS].sort((a, b) => threat(s.wave, b, s) - threat(s.wave, a, s))[0];
   if (s.no >= CONFIG.no.openCost) toggleRoute(s, M.routesOf(e)[0]);
 }

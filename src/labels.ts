@@ -49,7 +49,7 @@ export function noGauge(): { y: number; box: Box } {
  *  names already placed. */
 export function layoutLabels(widthOf: (text: string) => number, withKeys = true): MapLabel[] {
   const out: MapLabel[] = [];
-  const tags = [...ENTRY_IDS.map((e) => previewTagBox(e, 242)), noGauge().box, noGauge().box];
+  const tags = ENTRY_IDS.map((e) => previewTagBox(e, 242)), gauge = noGauge().box;
   const place = (v: VesselId, from: number, to: number, start: number, text: string, top: boolean, branch: boolean, sibling?: VesselId) => {
     const key = withKeys && (branch || !isFinite(forkAt(v))) ? routeKey(v) : '';
     const ves = VESSELS[v], tw = widthOf(text) + (key ? KEY_W : 0), half = tw / 2;
@@ -70,7 +70,7 @@ export function layoutLabels(widthOf: (text: string) => number, withKeys = true)
         for (const i of sides) {
           const s = spots[i], lx = Math.max(half + 24, Math.min(W - half - 24, s.x));
           const label = { v, text, key, branch, lx, ly: s.y, box: labelBox(lx, s.y, tw) };
-          const c = cost(label.box, out, tags);
+          const c = cost(label.box, out, tags) + (overlaps(label.box, gauge) ? 2 : 0); // the NO gauge counts double: it is up all wave
           if (c < bestCost) { bestCost = c; best = label; }
           if (c === 0) { out.push(label); return; }
         }

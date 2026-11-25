@@ -217,7 +217,10 @@ function validRun(r: unknown): r is RunSave {
     && [x.wave, x.heartHp, x.energy, x.no].every((n) => typeof n === 'number' && Number.isFinite(n)) && Array.isArray(x.nodes)
     && x.nodes.every((n) => n && typeof n.site === 'string' && typeof n.type === 'string' && Array.isArray(n.targets)
       && n.targets.every((b) => (BACTERIA as string[]).includes(b)))
-    && (x.borrowed === undefined || (Array.isArray(x.borrowed) && x.borrowed.every((b) => (BACTERIA as string[]).includes(b))));
+    && (x.borrowed === undefined || (Array.isArray(x.borrowed) && x.borrowed.every((b) => (BACTERIA as string[]).includes(b))))
+    // the newer fields: whole, non-negative counts where present
+    && [x.stage, x.extraCells].every((n) => n === undefined || (Number.isInteger(n) && n >= 0))
+    && (x.lodged === undefined || (typeof x.lodged === 'object' && x.lodged !== null && Object.values(x.lodged).every((n) => Number.isInteger(n) && (n as number) >= 0)));
 }
 
 /** Furthest first: more stages, then more waves into the next. */

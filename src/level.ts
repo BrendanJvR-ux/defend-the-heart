@@ -142,8 +142,12 @@ export function pointAt(v: Vessel, s: number): Vec & { angle: number } {
 
 /** The nearest point of a route's winding course to `p`: how far along the route, and how far away. */
 export function nearestOnVessel(v: Vessel, p: Vec): { s: number; d: number } {
+  // a coarse pass over every 4th sample finds the stretch, then the samples round it are projected onto exactly
+  const n = v.cx.length;
+  let bi = 0, bd = Infinity;
+  for (let i = 0; i < n; i += 4) { const d = (v.cx[i] - p.x) ** 2 + (v.cy[i] - p.y) ** 2; if (d < bd) { bd = d; bi = i; } }
   let best = { s: 0, d: Infinity };
-  for (let i = 1; i < v.cx.length; i++) {
+  for (let i = Math.max(1, bi - 6); i <= Math.min(n - 1, bi + 6); i++) {
     const pr = projectOnSegment(p, { x: v.cx[i - 1], y: v.cy[i - 1] }, { x: v.cx[i], y: v.cy[i] });
     if (pr.d < best.d) best = { s: Math.min(v.length, (i - 1 + pr.t) * STEP), d: pr.d };
   }
