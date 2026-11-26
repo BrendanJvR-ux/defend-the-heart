@@ -44,6 +44,35 @@ const menuEl = $('menu');
 let toastT = 0;
 function toast(text: string) { toastEl.textContent = text; toastEl.classList.add('on'); toastT = 2.6; }
 
+// ── The wave's hint: a message over the map as each wave starts, long enough to read; a tap puts it away ──
+const waveHintEl = document.createElement('div');
+waveHintEl.id = 'waveHint'; waveHintEl.hidden = true; waveHintEl.setAttribute('role', 'status'); waveHintEl.setAttribute('aria-live', 'polite');
+$('field').append(waveHintEl);
+waveHintEl.addEventListener('click', () => { waveHintT = 0; waveHintEl.hidden = true; });
+let waveHintT = 0, waveHintFor = '';
+function waveHint(dt: number) {
+  const key = `${s.level}:${s.stage}:${s.wave}`;
+  if (s.phase === 'combat' && waveHintFor !== key) {
+    waveHintFor = key;
+    const def = wave(s);
+    if (!tut && def.hint) {
+      waveHintEl.innerHTML = `<small>Wave ${s.wave} of ${totalWaves(s)}</small><b>${esc(def.title.replace(/^Stage \d+: /, ''))}</b><span>${esc(def.hint)}</span>`;
+      waveHintEl.hidden = false; waveHintEl.classList.remove('fade');
+      waveHintT = Math.min(10, 3.5 + def.hint.split(' ').length * 0.28);
+    }
+  }
+  if (s.phase === 'prep' && !waveHintEl.hidden) waveHintT = 0;
+  if (waveHintT > 0) {
+    if (!s.paused) waveHintT -= dt;
+    // paused: out of the way of the pause box and menus, and back with the rest of its time on resuming
+    waveHintEl.style.visibility = s.paused ? 'hidden' : '';
+    waveHintEl.classList.toggle('fade', waveHintT < 0.6);
+    // a boss banner runs across the top of the map: the hint goes to the bottom then
+    waveHintEl.classList.toggle('low', s.phase === 'combat' && [...s.pathogens, ...s.spawns].some((p) => CONFIG.pathogens[p.type].boss));
+    if (waveHintT <= 0) waveHintEl.hidden = true;
+  } else if (!waveHintEl.hidden) waveHintEl.hidden = true;
+}
+
 // ── Canvas sizing and input ─────────────────────────────────────────────────
 function resize() {
   const r = canvas.getBoundingClientRect();
@@ -883,6 +912,7 @@ function frame(now: number) {
   if (!s.paused && !(tut && tutorialHolds(tut, s))) advance(s, dt);
   autosave();
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
+  waveHint(dt);
   // the boss banner runs across the top of the map: while one is up (or on its way), messages go to the bottom
   if (toastT > 0) toastEl.classList.toggle('low', s.phase === 'combat' && [...s.pathogens, ...s.spawns].some((p) => CONFIG.pathogens[p.type].boss));
   refresh(now);
