@@ -8,14 +8,19 @@ import {
   hasTarget, borrowTarget, selectableTargets, aimedAt, openCost, pathogenPos, cancelCheck, cancelNode, igeLife, buyNo, buyNoCheck, buyCell, buyCellCheck,
   cellCount, lodgeCost, stageLevel,
 } from './sim';
-import { loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, recordEndless, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, endlessOpen, type Career, type KV, type UpgradeId } from './career';
+import { exportCareer, importCareer, loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, recordEndless, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, endlessOpen, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
 import { unlockAudio, isMuted, setMuted, sfx } from './sound';
 import { playSounds } from './soundEvents';
 import { pathogenAt, inspectHtml } from './inspect';
 import { esc } from './text';
 import { ROUTE_KEYS } from './labels';
-import { draw, drawPathogen, drawWhiteCell, drawNodeIcon, vesselWidth, prepareOrgan, type View } from './draw';
+import { draw, vesselWidth, prepareOrgan, type View } from './draw';
+import { icon, nodeIcon } from './icons';
+import { setUpLandscape } from './orientation';
+import { loadSettings, saveSettings, applySettings, watchSystemMotion, settingsHtml, type Settings } from './settings';
+import { howToPlayHtml } from './howto';
+import { createNotices } from './notices';
 
 // ── The career: organs cleared, the game in progress, saved in this browser ──
 const store: KV = {
@@ -41,37 +46,9 @@ const toastEl = $('toast');
 const popover = $('popover');
 const menuEl = $('menu');
 
-let toastT = 0;
-function toast(text: string) { toastEl.textContent = text; toastEl.classList.add('on'); toastT = 2.6; }
-
-// ── The wave's hint: a message over the map as each wave starts, long enough to read; a tap puts it away ──
-const waveHintEl = document.createElement('div');
-waveHintEl.id = 'waveHint'; waveHintEl.hidden = true; waveHintEl.setAttribute('role', 'status'); waveHintEl.setAttribute('aria-live', 'polite');
-$('field').append(waveHintEl);
-waveHintEl.addEventListener('click', () => { waveHintT = 0; waveHintEl.hidden = true; });
-let waveHintT = 0, waveHintFor = '';
-function waveHint(dt: number) {
-  const key = `${s.level}:${s.stage}:${s.wave}`;
-  if (s.phase === 'combat' && waveHintFor !== key) {
-    waveHintFor = key;
-    const def = wave(s);
-    if (!tut && def.hint) {
-      waveHintEl.innerHTML = `<small>Wave ${s.wave} of ${totalWaves(s)}</small><b>${esc(def.title.replace(/^Stage \d+: /, ''))}</b><span>${esc(def.hint)}</span>`;
-      waveHintEl.hidden = false; waveHintEl.classList.remove('fade');
-      waveHintT = Math.min(10, 3.5 + def.hint.split(' ').length * 0.28);
-    }
-  }
-  if (s.phase === 'prep' && !waveHintEl.hidden) waveHintT = 0;
-  if (waveHintT > 0) {
-    if (!s.paused) waveHintT -= dt;
-    // paused: out of the way of the pause box and menus, and back with the rest of its time on resuming
-    waveHintEl.style.visibility = s.paused ? 'hidden' : '';
-    waveHintEl.classList.toggle('fade', waveHintT < 0.6);
-    // a boss banner runs across the top of the map: the hint goes to the bottom then
-    waveHintEl.classList.toggle('low', s.phase === 'combat' && [...s.pathogens, ...s.spawns].some((p) => CONFIG.pathogens[p.type].boss));
-    if (waveHintT <= 0) waveHintEl.hidden = true;
-  } else if (!waveHintEl.hidden) waveHintEl.hidden = true;
-}
+const noticesEl = $('notices');
+const notices = createNotices(noticesEl, toastEl, $('bossBar'));
+const toast = notices.toast;
 
 // ── Canvas sizing and input ─────────────────────────────────────────────────
 function resize() {
@@ -85,11 +62,13 @@ function toMap(e: PointerEvent) {
   const r = canvas.getBoundingClientRect();
   return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
 }
+/** Map units in this many screen pixels: a finger's reach stays the same size however small the map is drawn. */
+const px = (n: number) => (n * W) / Math.max(1, canvas.clientWidth);
 function vesselAt(p: { x: number; y: number }): VesselId | null {
   let best: VesselId | null = null, bd = Infinity, onStem = false;
   for (const v of map.VESSEL_IDS) {
     const n = nearestOnVessel(map.VESSELS[v], p);
-    const reach = vesselWidth(s, v) / 2 + (view.touch ? 40 : 24);
+    const reach = vesselWidth(s, v) / 2 + (view.touch ? Math.max(40, px(18)) : 24);
     if (n.d <= reach && n.d < bd) { bd = n.d; best = v; onStem = n.s < map.forkAt(v); }
   }
   // the shared stem of a fork belongs to both branches: act on the open one, else the first
@@ -116,7 +95,7 @@ function updateInspect() {
 inspectEl.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('[data-act=closeInspect]')) closeInspect(); });
 
 function siteAt(p: { x: number; y: number }): string | null {
-  let best: string | null = null, bd = view.touch ? 52 : 40;
+  let best: string | null = null, bd = view.touch ? Math.max(52, px(24)) : 40;
   for (const site of map.SITES) { const d = dist(p, site); if (d < bd) { bd = d; best = site.id; } }
   return best;
 }
@@ -249,7 +228,7 @@ canvas.addEventListener('pointerdown', (e) => {
     closeSite();
     if (vesselAt(p)) toast('Dilate during the wave: start it, then open a vessel with NO.');
   } else if (s.phase === 'combat') {
-    const bug = pathogenAt(s, p, view.touch);
+    const bug = pathogenAt(s, p, view.touch ? Math.max(8, px(14) - 16) : 0);
     if (bug) { view.inspectId = bug.id; inspectSig = ''; inspectEl.hidden = false; updateInspect(); return; }
     closeInspect();
     const v = vesselAt(p);
@@ -375,8 +354,11 @@ function autosave() {
 }
 
 // ── The menu ────────────────────────────────────────────────────────────────
-type MenuPage = { page: 'main' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'abandon' } | { page: 'switch'; level: number; endless?: boolean };
+type MenuPage = { page: 'main' } | { page: 'howto' } | { page: 'settings' } | { page: 'backup' } | { page: 'importConfirm' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'abandon' } | { page: 'switch'; level: number; endless?: boolean };
 let menuPage: MenuPage | null = null;
+let pendingImport: Career | null = null;
+let settings: Settings = loadSettings();
+applySettings(settings); watchSystemMotion(() => settings);
 let pausedBeforeMenu = false;
 function openMenu(p: MenuPage = { page: 'main' }) {
   if (!menuPage) { pausedBeforeMenu = s.paused; s.paused = true; }
@@ -405,8 +387,27 @@ function renderMenu() {
         <button data-menu="endless" ${open ? '' : 'disabled'} ${lead === 'endless' ? 'class="primary"' : ''}>Endless<small>${open ? 'organ after organ, ever bigger · your leaderboard' : 'clear the eye, the last organ, first'}</small></button>
         <button data-menu="tutorial">Tutorial<small>a guided first wave on the heart</small></button>
         <button data-menu="shop">Upgrades<small>${career.gold} gold</small></button>
+        <button data-menu="howto">How to play<small>the whole game on one page</small></button>
+        <button data-menu="settings">Settings<small>text size, motion, back up your career</small></button>
         ${gameShown ? '<button data-menu="close">Back to the game</button>' : ''}
       </div>`;
+  } else if (menuPage.page === 'howto') {
+    h = howToPlayHtml();
+  } else if (menuPage.page === 'settings') {
+    h = settingsHtml(settings);
+  } else if (menuPage.page === 'backup') {
+    h = `<h2>Back up or restore</h2>
+      <p class="sub">Your career (organs cleared, gold, upgrades, endless runs, the game in progress) is kept in this browser only. Copy this code somewhere safe, or to another device, to bring it back there.</p>
+      <textarea id="exportCode" class="code" readonly rows="4" aria-label="Your career as a code">${esc(exportCareer(career))}</textarea>
+      <div class="menuButtons"><button data-menu="copyCode" class="primary">Copy the code</button></div>
+      <h3>Restore</h3><p class="sub">Paste a code here to replace this career with it.</p>
+      <textarea id="importCode" class="code" rows="4" placeholder="DTH1.…" aria-label="A career code to restore"></textarea>
+      <div class="menuButtons"><button data-menu="importCode">Restore from this code</button><button data-menu="settings">Back</button></div>`;
+  } else if (menuPage.page === 'importConfirm') {
+    const c = pendingImport ?? career, n = c.cleared.filter(Boolean).length;
+    h = `<h2>Replace your career?</h2><p>The code holds a career on <b>${esc(CONFIG.difficulty[c.difficulty].name)}</b>: ${n} of ${LEVELS.length} organs cleared, ${c.gold} gold${c.run ? `, a game in progress on the ${esc(organTitle(c.run.level).toLowerCase())}` : ''}.</p>
+      <p>This career (${cleared} cleared, ${career.gold} gold) will be replaced. Back it up first if you might want it again.</p>
+      <div class="menuButtons"><button data-menu="importYes" class="primary danger">Replace it</button><button data-menu="backup">Keep my career</button></div>`;
   } else if (menuPage.page === 'organs') {
     h = `<h2>Organs</h2><p class="sub">Clear an organ to unlock the next. Cleared organs can be replayed.</p>
       <div class="menuButtons">${LEVELS.map((l, i) => `<button data-menu="level" data-level="${i}" ${i < unlocked ? '' : 'disabled'}>${i + 1}. ${esc(organTitle(i))}<small>${i >= unlocked ? 'locked' : career.cleared[i] ? `cleared · best ${career.best[i]}/${l.hp}` : esc(l.tagline)}${i < unlocked && missingTargets(i, perksOf(career)).length ? `<br><b class="needs">no IgG target yet for ${missingTargets(i, perksOf(career)).map((b) => CONFIG.pathogens[b].plural).join(', ')}</b>` : ''}</small></button>`).join('')}</div>
@@ -556,6 +557,29 @@ menuEl.addEventListener('click', (e) => {
     const y = menuEl.scrollTop; renderMenu(); menuEl.scrollTop = y;
   }
   else if (a === 'back') openMenu({ page: 'main' });
+  else if (a === 'howto') openMenu({ page: 'howto' });
+  else if (a === 'settings') openMenu({ page: 'settings' });
+  else if (a === 'set') {
+    const k = el.dataset.key as keyof Settings, v = el.dataset.value!;
+    settings = { ...settings, [k]: v }; saveSettings(settings); applySettings(settings); renderMenu();
+  }
+  else if (a === 'backup') openMenu({ page: 'backup' });
+  else if (a === 'copyCode') {
+    const t = menuEl.querySelector<HTMLTextAreaElement>('#exportCode')!;
+    t.select();
+    navigator.clipboard?.writeText(t.value).then(() => toast('Career code copied.'), () => toast('Select the code and copy it.')) ?? toast('Select the code and copy it.');
+  }
+  else if (a === 'importCode') {
+    const c = importCareer(menuEl.querySelector<HTMLTextAreaElement>('#importCode')!.value);
+    if (!c) toast('That is not a career code (it starts DTH1.).');
+    else { pendingImport = c; openMenu({ page: 'importConfirm' }); }
+  }
+  else if (a === 'importYes' && pendingImport) {
+    career = pendingImport; pendingImport = null; unlocked = unlockedCount(career); saveNow();
+    const sp = s.speed; s = career.run ? resumeGame(career.run, perksOf(career)) : newGame(0, perksOf(career)); s.speed = sp;
+    lastPhase = ''; spentToasted = 0; organTagFor = ''; prepareOrgan(s.level); lastSig = '';
+    openMenu({ page: 'main' }); toast('Career restored.');
+  }
   else if (a === 'close') { gameShown = true; closeMenu(); }
   else if (a === 'level') { gameShown = true; playLevel(Number(el.dataset.level)); if (menuPage?.page !== 'switch') { s.paused = false; pausedBeforeMenu = false; } }
   else if (a === 'tutorial') { wantTutorial = true; gameShown = true; playLevel(0); if (menuPage?.page !== 'switch') { s.paused = false; pausedBeforeMenu = false; } }
@@ -584,14 +608,7 @@ function setZoom(on: boolean) {
 btnZoom.addEventListener('click', () => setZoom(!mapScroll.classList.contains('zoomed')));
 try { if (localStorage.getItem('dth-zoom') === 'on' && matchMedia('(max-width: 760px)').matches) setZoom(true); } catch { /* no storage */ }
 $('btnSpeed').addEventListener('click', () => { s.speed = nextSpeed(s.speed); });
-// phones play in landscape: where the browser allows it (Android), a button goes full screen and locks it sideways;
-// elsewhere the page asks the player to turn the phone
-const btnLandscape = $<HTMLButtonElement>('btnLandscape');
-const orient = screen.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined;
-if ('requestFullscreen' in document.documentElement && typeof orient?.lock === 'function') btnLandscape.hidden = false;
-btnLandscape.addEventListener('click', async () => {
-  try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); await orient!.lock!('landscape'); } catch { /* not allowed here: turning the phone still works */ }
-});
+setUpLandscape($<HTMLButtonElement>('btnLandscape'));
 const toggleSound = () => { unlockAudio(); setMuted(!isMuted()); toast(isMuted() ? 'Sound off.' : 'Sound on.'); };
 $('btnSound').addEventListener('click', toggleSound);
 // browsers only allow sound after the player has touched the page
@@ -602,7 +619,7 @@ $('btnRestart').addEventListener('click', () => { const live = s.phase === 'prep
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement).tagName;
   const keyed = e.key.length === 1 && ROUTE_KEYS.includes(e.key) ? map.VESSEL_IDS[ROUTE_KEYS.indexOf(e.key)] : undefined;
-  if ((e.key === 'm' || e.key === 'M') && tag !== 'INPUT') { toggleSound(); return; }
+  if ((e.key === 'm' || e.key === 'M') && tag !== 'INPUT' && tag !== 'TEXTAREA') { toggleSound(); return; }
   if (menuPage) { if (e.key === 'Escape' && gameShown && menuPage.page !== 'switch') { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); } return; }
   if (keyed) choose(keyed);
   // Esc closes a pathogen's details first, then steps back from the IgG target list, then closes the build menu
@@ -621,28 +638,6 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── Panel, HUD and overlays ─────────────────────────────────────────────────
-const icons = new Map<string, string>();
-function icon(kind: PathogenType | 'cell', size = 36): string {
-  const key = kind + size;
-  if (!icons.has(key)) {
-    const c = document.createElement('canvas'); const dpr = 2; c.width = size * dpr; c.height = size * dpr;
-    const x = c.getContext('2d')!; x.scale(dpr, dpr);
-    if (kind === 'cell') drawWhiteCell(x, size / 2, size / 2, 0, 0, size / 60);
-    else drawPathogen(x, kind, size / 2, size / 2, 0, 0, CONFIG.pathogens[kind].boss ? size / 100 : CONFIG.pathogens[kind].taxon ? size / 44 : size / 36);
-    icons.set(key, c.toDataURL());
-  }
-  return `<img class="ico" alt="" width="${size}" height="${size}" src="${icons.get(key)}">`;
-}
-function nodeIcon(t: NodeType): string {
-  const key = 'node-' + t;
-  if (!icons.has(key)) {
-    const c = document.createElement('canvas'); c.width = 88; c.height = 68;
-    const x = c.getContext('2d')!; x.scale(2, 2); drawNodeIcon(x, t, 22, 18, 0.48);
-    icons.set(key, c.toDataURL());
-  }
-  return icons.get(key)!;
-}
-
 let lastSig = '';
 function signature() {
   return JSON.stringify([career.gold, s.extraCells, lodgeCost(s), s.stage, s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.open.join(), s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
@@ -680,7 +675,7 @@ function lodgedHtml(): string {
 // ── The organ's label: its unique feature and its slight disadvantage, at its start ──
 const organTag = document.createElement('div');
 organTag.id = 'organTag'; organTag.hidden = true; organTag.setAttribute('role', 'note');
-$('field').append(organTag);
+noticesEl.append(organTag);
 organTag.addEventListener('click', () => { organTag.hidden = true; organTagFor = `${s.level}:${s.stage}:shut`; });
 let organTagFor = '';
 function renderOrganTag() {
@@ -735,7 +730,7 @@ function renderPanel() {
     const openNames = s.open.map((v) => esc(vesselName(v).toLowerCase()));
     const where = s.open.length ? (out ? `Patrolling the ${openNames.join(' and the ')}${s.open.length > 1 ? `, split ${s.open.length} ways` : ''}.` : `Heading home before setting out along the ${openNames.join(' and the ')}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
     const noLow = s.no < openNeed() && !s.open.length;
-    h = `<h2><small>${s.endless ? `Stage ${s.stage} · ` : ''}Wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>${lodgedHtml()}
+    h = `<h2 class="waveTitle"><small>${s.endless ? `Stage ${s.stage} · ` : ''}Wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>${lodgedHtml()}
       <section class="card"><h3>Dilate <span class="count"><span data-no>${Math.floor(s.no)}</span> / ${s.perks.noMax} NO</span></h3>
         <p class="nogauge ${noLow ? 'low' : ''}" role="img" aria-label="NO ${Math.floor(s.no)} of ${s.perks.noMax}${noLow ? ', too low to open a vessel' : ''}"><i data-nobar style="width:${Math.min(100, (s.no / s.perks.noMax) * 100)}%"></i></p>${noLow ? '<p class="hint small needs">Too low to open: it refills while all are closed.</p>' : ''}
         <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? (view.touch ? 'open · tap to close' : `open · key ${ROUTE_KEYS[i]}`) : (view.touch ? 'resting' : `key ${ROUTE_KEYS[i]}`)}</small></button>`).join('')}</div>
@@ -911,10 +906,7 @@ function frame(now: number) {
   // the tutorial stops time at the moments that can't wait, until the player acts
   if (!s.paused && !(tut && tutorialHolds(tut, s))) advance(s, dt);
   autosave();
-  if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.classList.remove('on'); }
-  waveHint(dt);
-  // the boss banner runs across the top of the map: while one is up (or on its way), messages go to the bottom
-  if (toastT > 0) toastEl.classList.toggle('low', s.phase === 'combat' && [...s.pathogens, ...s.spawns].some((p) => CONFIG.pathogens[p.type].boss));
+  notices.tick(s, dt, !!tut);
   refresh(now);
   updateInspect();
   describeMap();
@@ -932,6 +924,9 @@ refresh(performance.now());
 requestAnimationFrame(frame);
 
 // test hooks for driving the game from the console: the dev server only, never the published game
+// installable and playable offline (the published site only: the dev server changes its files all the time)
+if (import.meta.env.PROD && 'serviceWorker' in navigator) window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => { /* still plays online */ }); });
+
 if (import.meta.env.DEV) Object.assign(window, {
   __heart: () => s,
   __level: (i: number) => { unlocked = Math.max(unlocked, i + 1); playLevel(i); return levelDef(s).id; },

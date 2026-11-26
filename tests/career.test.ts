@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { CONFIG, LEVELS } from '../src/config';
 import * as M from '../src/level';
 import { newGame, placeNode, nodeAt, startWave, step, resumeGame, type State } from '../src/sim';
-import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, organBacteria, missingTargets, recordEndless, endlessOpen, type KV } from '../src/career';
+import { SAVE_KEY, BACKUP_KEY, freshCareer, loadCareer, saveCareer, snapshot, onOrganEnd, unlockedCount, goldFor, buy, perksOf, UPGRADES, NO_PERKS, organBacteria, missingTargets, recordEndless, endlessOpen, exportCareer, importCareer, type KV } from '../src/career';
 
 /** An in-memory store standing in for localStorage. */
 function memory(init: Record<string, string> = {}): KV & { data: Record<string, string> } {
@@ -284,5 +284,20 @@ describe('Career: what an organ needs', () => {
     expect(missingTargets(4, NO_PERKS)).toEqual(['ecoli']);
     expect(missingTargets(4, { ...NO_PERKS, targets: ['saureus', 'ecoli'] })).toEqual([]);
     expect(missingTargets(0, NO_PERKS)).toEqual([]);
+  });
+});
+
+describe('Backup codes', () => {
+  it('a career survives the trip through a code, game in progress and all', () => {
+    const c = freshCareer(); c.gold = 345; c.cleared[0] = c.cleared[1] = true; c.best[0] = 18; c.difficulty = 'hard';
+    c.bought['dmg-igm'] = 2; recordEndless(c, 4, 2, '2026-11-26'); c.run = snapshot(newGame(2, perksOf(c)));
+    const code = exportCareer(c);
+    expect(code.startsWith('DTH1.')).toBe(true); expect(/^[A-Za-z0-9+/=.]+$/.test(code)).toBe(true);
+    // pasted with line breaks and spaces, it still reads
+    const back = importCareer(`  ${code.slice(0, 40)}\n${code.slice(40)}  `)!;
+    expect(back).toEqual(JSON.parse(JSON.stringify(c)));
+  });
+  it('anything else is refused, never half-read', () => {
+    for (const bad of ['', 'hello', 'DTH1.', 'DTH1.!!!', 'DTH1.' + btoa('{"version":99}'), 'DTH1.' + btoa('not json'), 'DTH2.' + exportCareer(freshCareer()).slice(5)]) expect(importCareer(bad)).toBeNull();
   });
 });

@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f2e9d4" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Defend the Heart" />
     <title>Defend the Heart</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 29 C4 20 2 12 6 7 C10 3 15 5 16 9 C17 5 22 3 26 7 C30 12 28 20 16 29Z' fill='%23c8554e' stroke='%232a1e18' stroke-width='1.6'/%3E%3C/svg%3E" />
   </head>
@@ -36,11 +42,10 @@
             <div id="coach" hidden role="status" aria-live="polite"></div>
           </div>
           <button id="btnZoom" type="button" aria-pressed="false" title="Zoom the map in: swipe to move around it">Zoom</button>
-          <div id="toast" aria-live="polite"></div>
           <div id="overlay" hidden></div>
           <div id="menu" hidden role="dialog" aria-label="Menu"></div>
         </section>
-        <div id="tip" hidden role="status" aria-live="polite"></div>
+        <div id="notices"><div id="bossBar" hidden role="status"></div><div id="toast" hidden role="status" aria-live="polite"></div><div id="tip" hidden role="status" aria-live="polite"></div></div>
         <aside id="panel" aria-label="Controls"></aside>
       </main>
       <div id="info" hidden><div class="drawer" role="dialog" aria-label="Info"><button id="infoClose" class="x" type="button" aria-label="Close info">×</button><div id="infoBody"></div></div></div>

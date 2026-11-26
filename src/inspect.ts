@@ -5,12 +5,13 @@ import { type State, type Pathogen, pathogenPos, iggMultiplier, selectableTarget
 import { esc } from './text';
 
 /** The pathogen under a point (bosses are bigger targets), if any. */
-export function pathogenAt(s: State, p: { x: number; y: number }, touch: boolean): Pathogen | null {
+/** `extra`: added reach in map units (a finger on a touch screen). */
+export function pathogenAt(s: State, p: { x: number; y: number }, extra = 0): Pathogen | null {
   let best: Pathogen | null = null, bd = Infinity;
   for (const q of s.pathogens) {
     if (q.hp <= 0 || q.s <= 0) continue;
     // small enough that the rest of a busy vessel still opens it when clicked
-    const st = CONFIG.pathogens[q.type], d = dist(p, pathogenPos(q)), reach = (st.boss ? 44 : q.type === 'infected' ? 20 : 16) + (touch ? 8 : 0);
+    const st = CONFIG.pathogens[q.type], d = dist(p, pathogenPos(q)), reach = (st.boss ? 44 : q.type === 'infected' ? 20 : 16) + extra;
     if (d <= reach && d < bd) { bd = d; best = q; }
   }
   return best;

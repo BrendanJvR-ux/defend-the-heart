@@ -140,7 +140,7 @@ export const CONFIG = {
    *  stages each vessel gets another build site, pathogens have `hpGrowth` more health and come `countGrowth` more
    *  in every group, and bosses turn up at random: `bosses` of them in the first stage, one more every `bossEvery`.
    *  A stage cleared pays `goldPerStage`; each difficulty keeps your best `boardSize` runs. */
-  endless: { windGrowth: 0.08, maxWind: 1.9, sitesEvery: 2, hpGrowth: 0.06, countGrowth: 0.04, bosses: 1, bossEvery: 2, goldPerStage: 20, boardSize: 10 },
+  endless: { energyGrowth: 0.03, windGrowth: 0.08, maxWind: 1.9, sitesEvery: 2, hpGrowth: 0.06, countGrowth: 0.04, bosses: 1, bossEvery: 2, goldPerStage: 20, boardSize: 10 },
   /** The last wave sends its boss up every vessel, a few seconds apart; each has this share of the boss's health. */
   bossEveryVessel: { gap: 3, hpShare: 0.55 },
   /** Difficulty modes: pathogen health, group sizes, starting energy and income, and gold earned. Normal is the game

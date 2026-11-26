@@ -6,9 +6,12 @@ import { drawBacterium } from './bacteria';
 import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, noGauge, KEY_W, type MapLabel } from './labels';
-import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, activeBosses, openNeed, gallbladderAt } from './sim';
+import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, openNeed, gallbladderAt } from './sim';
 import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode, drawSkin, drawEye } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
+
+/** Reduced motion (a setting, or the system's): no shaking, throbbing, flashing or breathing of the organ. */
+export const motion = { reduced: false };
 
 export interface View {
   hoverVessel: VesselId | null;
@@ -354,7 +357,7 @@ function drawHealthBeads(ctx: CanvasRenderingContext2D, s: State) {
   const gb = LEVEL.gallbladder;
   if (gb && !s.bile.length) {
     const at = Math.floor(n * gb.at), { x, y } = gallbladderAt(s.level), left = s.heartHp - at;
-    const near = left <= 3, k = near ? 1 + (0.12 + 0.06 * (3 - left)) * Math.abs(Math.sin(performance.now() / (near && left <= 1 ? 90 : 160))) : 1;
+    const near = left <= 3, k = near && !motion.reduced ? 1 + (0.12 + 0.06 * (3 - left)) * Math.abs(Math.sin(performance.now() / (near && left <= 1 ? 90 : 160))) : 1;
     const a = Math.atan2(y - HEART.y, x - HEART.x);
     ctx.save(); ctx.translate(x, y); ctx.scale(k * 2.6, k * 2.6); ctx.rotate(a - Math.PI / 2);
     ctx.beginPath(); ctx.moveTo(0, -11); ctx.bezierCurveTo(8, -2, 9, 5, 0, 9); ctx.bezierCurveTo(-9, 5, -8, -2, 0, -11); ctx.closePath();
@@ -372,21 +375,21 @@ function drawHealthBeads(ctx: CanvasRenderingContext2D, s: State) {
 }
 
 function drawOrgan(ctx: CanvasRenderingContext2D, s: State, t: number) {
-  const m = LEVEL.map, kick = s.heartKick;
+  const m = LEVEL.map, kick = motion.reduced ? 0 : s.heartKick, still = motion.reduced;
   if (LEVEL.id === 'heart') {
-    const beat = Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 1.15)), 8) * 0.035;
-    drawOrganImage(ctx, 1 + beat + kick * 0.08, kick);
+    const beat = still ? 0 : Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 1.15)), 8) * 0.035;
+    drawOrganImage(ctx, 1 + beat + kick * 0.08, s.heartKick); // the red flash on a hit stays (it is not motion)
   } else if (LEVEL.id === 'lungs') {
-    const breath = surging(s) ? 1.05 : 1 + 0.012 * Math.sin(t * 1.6);
-    drawOrganImage(ctx, breath + kick * 0.03, kick);
+    const breath = still ? 1 : surging(s) ? 1.05 : 1 + 0.012 * Math.sin(t * 1.6);
+    drawOrganImage(ctx, breath + kick * 0.03, s.heartKick); // the red flash on a hit stays (it is not motion)
     if (surging(s)) {
       ctx.save(); ctx.font = '900 30px Palatino, Georgia, serif'; ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(244,234,216,0.92)'; ctx.fillRect(m.center.x - 90, m.center.y - 395, 180, 44);
       ctx.fillStyle = '#1e6a8a'; ctx.fillText('INHALE', m.center.x, m.center.y - 362); ctx.restore();
     }
   } else {
-    const swell = 1 + Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 0.5)), 6) * 0.012 + kick * 0.04;
-    drawOrganImage(ctx, swell, kick);
+    const swell = still ? 1 : 1 + Math.pow(Math.max(0, Math.sin(t * Math.PI * 2 * 0.5)), 6) * 0.012 + kick * 0.04;
+    drawOrganImage(ctx, swell, s.heartKick); // the red flash on a hit stays (it is not motion)
   }
   drawLodged(ctx, s);
   drawHealthBeads(ctx, s);
@@ -812,7 +815,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     } else if (r.kind === 'burst') {
       // the gallbladder bursts: a green flash over the whole organ, then a splash of bile with drops flying out
       const R = seeded(Math.round(r.x * 5 + r.y * 11)), e = 1 - Math.pow(1 - Math.min(1, k * 2), 3);
-      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(140,190,40,${0.28 * Math.max(0, 1 - k * 2.5)})`; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore();
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(140,190,40,${motion.reduced ? 0 : 0.28 * Math.max(0, 1 - k * 2.5)})`; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height); ctx.restore();
       ctx.globalAlpha = 1 - k * k;
       ctx.beginPath();
       for (let i = 0; i <= 20; i++) { const a = (i / 20) * Math.PI * 2, rr = r.r * e * (0.55 + R() * 0.45); i ? ctx.lineTo(r.x + Math.cos(a) * rr, r.y + Math.sin(a) * rr) : ctx.moveTo(r.x + Math.cos(a) * rr, r.y + Math.sin(a) * rr); }
@@ -845,7 +848,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   // floating words: in ink, nudged up until they clear the vessel names and each other
   ctx.font = 'italic 700 24px Palatino, Georgia, serif';
   for (const f of s.floaters) {
-    const size = f.size ?? 24;
+    const size = Math.round((f.size ?? 24) * 0.8);
     ctx.font = `italic 700 ${size}px Palatino, Georgia, serif`;
     const tw = ctx.measureText(f.text).width, x = Math.max(tw / 2 + 24, Math.min(1600 - tw / 2 - 24, f.x));
     let y = f.y - f.t * 30;
@@ -860,25 +863,5 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
     inkText(ctx, f.text, x, y, f.color, size);
     ctx.globalAlpha = 1;
   }
-  drawBossBanner(ctx, s);
 }
 
-/** While a boss is in play: its name and health across the top of the map. */
-function drawBossBanner(ctx: CanvasRenderingContext2D, s: State) {
-  const bs = activeBosses(s), b = bs[0];
-  if (!b || s.phase !== 'combat') return;
-  const st = CONFIG.pathogens[b.type];
-  // one boss comes up each vessel: the banner counts them and sums their health, with those still to come
-  const coming = s.spawns.filter((x) => CONFIG.pathogens[x.type].boss).length, n = bs.length + coming;
-  const hp = bs.reduce((a, p) => a + p.hp, 0) + coming * b.maxHp, max = n * b.maxHp;
-  const w = 460, x = W / 2 - w / 2, y = 22;
-  ctx.save();
-  inkTag(ctx, x, y, w, 64, null, 8);
-  ctx.fillStyle = INK_RED; ctx.font = '900 15px Palatino, Georgia, serif'; ctx.textAlign = 'left';
-  ctx.fillText('BOSS', x + 18, y + 25);
-  ctx.fillStyle = C.ink; ctx.font = 'italic 700 22px Palatino, Georgia, serif'; ctx.fillText(n > 1 ? `${st.name} ×${n}` : st.name, x + 70, y + 26);
-  ctx.textAlign = 'right'; ctx.font = '700 16px Palatino, Georgia, serif'; ctx.fillStyle = 'rgba(42,30,24,0.7)';
-  ctx.fillText(`${Math.ceil(hp)} / ${max}`, x + w - 18, y + 25);
-  inkBar(ctx, x + 18, y + 38, w - 36, 12, hp / max, WASH.red);
-  ctx.restore();
-}

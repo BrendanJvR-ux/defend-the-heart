@@ -176,6 +176,25 @@ function keepAside(kv: KV, raw: string) {
 
 export function saveCareer(kv: KV, c: Career): void { safeSet(kv, SAVE_KEY, JSON.stringify(c)); }
 
+// ── Backup: the whole career as one code to copy, and back again on another device or browser ──
+const CODE_PREFIX = 'DTH1.';
+/** The career as a code: a prefix and the save, base64 (letters, digits, + / =), safe to paste anywhere. */
+export function exportCareer(c: Career): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(c));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return CODE_PREFIX + btoa(bin);
+}
+/** A career from a code made by `exportCareer` (spaces and line breaks ignored); null if it is not one. */
+export function importCareer(code: string): Career | null {
+  const t = code.replace(/\s+/g, '');
+  if (!t.startsWith(CODE_PREFIX)) return null;
+  try {
+    const bin = atob(t.slice(CODE_PREFIX.length)), bytes = Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+    return parse(new TextDecoder().decode(bytes));
+  } catch { return null; }
+}
+
 /** Read a stored career, filling in anything missing; null if it is not a version-1 career. */
 function parse(raw: string): Career | null {
   let v: unknown;

@@ -99,6 +99,8 @@ export interface State {
   shots: Shot[];
   rings: Ring[];
   floaters: Floater[];
+  /** Messages for the player (shown beside the map, not on it); the page takes them as it shows them. */
+  notices: string[];
   spawns: Spawn[];
   pulsesLeft: number;
   waveTime: number;
@@ -132,9 +134,9 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 +
   loadLevel(level, stage ? stageMap(stage) : {});
   const L = LEVELS[level];
   const s: State = {
-    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: Math.round(L.startEnergy * diffOf(perks).energy), open: [], no: perks.noMax, noOuts: 0,
+    level, phase: 'prep', paused: false, speed: 1, wave: 1, heartHp: L.hp, energy: Math.round(L.startEnergy * diffOf(perks).energy * (stage > 0 ? 1 + CONFIG.endless.energyGrowth * (stage - 1) : 1)), open: [], no: perks.noMax, noOuts: 0,
     perks, endless: stage > 0, stage, extraCells: 0, lodged: {}, borrowed: [], wounds: [], bile: [], waveLog: null, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
-    width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], spawns: [],
+    width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], notices: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
   };
   for (const n of L.startingNodes ?? []) {
@@ -240,7 +242,7 @@ function breathe(s: State, wasSurging: boolean) {
   const sg = LEVELS[s.level].surge;
   if (!sg?.noRefill || wasSurging || !surging(s) || s.no >= s.perks.noMax) return;
   s.no = Math.min(s.perks.noMax, s.no + sg.noRefill);
-  s.floaters.push({ x: HEART.x, y: HEART.y + LEVELS[s.level].map.ry + 34, text: `Breath: +${sg.noRefill} NO`, t: 0, color: '#1e5a78', size: 18 });
+  s.notices.push(`Breath: +${sg.noRefill} NO.`);
 }
 /** Kidney: true when a pathogen is in the filtered last stretch of its vessel. */
 export function filtered(s: State, p: { vessel: VesselId; s: number }): boolean {
@@ -691,11 +693,7 @@ function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pa
   hp = Math.round(hp);
   const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp, maxHp: hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
-  // announce the first boss of the wave only (the others follow up the other vessels)
-  if (st.boss && s.pathogens.filter((x) => CONFIG.pathogens[x.type].boss).length === 1) {
-    const m = pointAt(VESSELS[vessel], 90);
-    s.floaters.push({ x: Math.max(160, Math.min(1440, m.x)), y: Math.max(80, m.y - 40), text: `Boss: ${st.name}!`, t: 0, color: '#8a1e24' });
-  }
+  // (a boss is announced by the boss bar beside the map)
   return p;
 }
 
@@ -705,7 +703,7 @@ function loseCell(s: State) {
   const r = LEVELS[s.level].respawn;
   if (!r) return;
   s.respawns.push(s.waveTime + r.after);
-  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `The spleen will remake it in ${r.after} s`, t: 0, color: '#1e6a8a' });
+  s.notices.push(`The spleen will remake it in ${r.after} s`);
 }
 
 /** Liver: where the gallbladder sits, just outside the bead of health at which it bursts. */
@@ -728,7 +726,7 @@ export function burstGallbladder(s: State) {
     s.rings.push({ x: site.x, y: site.y, r: 60, t: 0, dur: 1.4, kind: 'bile', from });
   }
   if (!s.bile.length) s.bile.push({ x: HEART.x, y: HEART.y }); // nothing to destroy: it has still burst
-  s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: 'The gallbladder bursts! Bile destroys lymph nodes', t: 0, color: '#3e6a1e', size: 30, life: 3.5 });
+  s.notices.push('The gallbladder bursts! Bile destroys lymph nodes.');
   s.heartKick = 1;
 }
 
@@ -952,7 +950,7 @@ export function step(s: State, dtRaw: number) {
     const cost = LEVELS[s.level].respawn!.cost;
     s.heartHp = Math.max(0, s.heartHp - cost);
     s.leaks.remade = (s.leaks.remade ?? 0) + cost;
-    s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `−${cost} to remake a white cell`, t: 0, color: '#8a1e24' });
+    s.notices.push(`−${cost} to remake a white cell`);
     const lean = aliveCells(s).reduce((a, x) => a + Math.sign(x.side), 0); // take the side the living cells use less
     const cell = newCell(s, 0); cell.side = (lean > 0 ? -1 : 1) * 11;
     s.cells.push(cell);
@@ -993,7 +991,7 @@ export function step(s: State, dtRaw: number) {
       if (st.lodges && (!st.lodges.only || st.lodges.only === L.id)) {
         s.lodged[p.type] = (s.lodged[p.type] ?? 0) + 1;
         s.rings.push({ x: HEART.x, y: HEART.y, r: Math.min(L.map.rx, L.map.ry) * 0.7, t: 0, dur: 0.9, kind: 'lodge' });
-        s.floaters.push({ x: HEART.x, y: HEART.y + L.map.ry * 0.4, text: `${st.plural} lodged: −${st.lodges.perWave} every wave`, t: 0, color: '#5a2878', size: 18 });
+        s.notices.push(`${st.plural} lodged: −${st.lodges.perWave} every wave`);
       }
       s.heartHp = Math.max(0, s.heartHp - dmg);
       const entry = entryOf(p.vessel);
@@ -1077,7 +1075,7 @@ function recall(s: State, dt: number) {
     if (lodgedCost) {
       s.heartHp = Math.max(0, s.heartHp - lodgedCost);
       for (const [t, n] of Object.entries(s.lodged) as [PathogenType, number][]) s.leaks.byType[t] = (s.leaks.byType[t] ?? 0) + n * CONFIG.pathogens[t].lodges!.perWave;
-      s.floaters.push({ x: HEART.x, y: HEART.y - LEVELS[s.level].map.ry - 50, text: `−${lodgedCost}: infection lodged in the ${LEVELS[s.level].organ.toLowerCase()}`, t: 0, color: '#8a1e24' });
+      s.notices.push(`−${lodgedCost}: infection lodged in the ${LEVELS[s.level].organ.toLowerCase()}`);
       s.heartKick = 1;
       if (s.heartHp <= 0) { s.phase = 'defeat'; return; }
     }
