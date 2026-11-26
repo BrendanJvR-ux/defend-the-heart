@@ -23,7 +23,7 @@ Played through by the scripted career player (who can't see the waves, and plays
 
 ### Each organ's feature, and its slight disadvantage
 
-At the start of every organ, a label at the bottom left of the map names its unique feature and its own slight disadvantage (click it to put it away; the panel's Level card keeps both):
+At the start of every organ, a label at the bottom left of the map names its unique feature and its own slight disadvantage (click it to put it away; the Level card under **Info** keeps both):
 
 | Organ | Feature | Disadvantage |
 |---|---|---|
@@ -179,11 +179,13 @@ The first six have 70 health and the same speed; *M. tuberculosis* is tougher (1
 **White cells** have 90 health and fight **everything** they touch at once, 7 damage a second to each, so a cell holds its own against a swarm of viruses.
 7. **Reset.** Cells return home, every route rests, you earn energy and build again. Organ damage persists until restart (the liver regrows a little).
 
+**The side panel keeps only what you act on**: before a wave, Start wave, your energy and node costs, gold buys and the last wave's report; during it, the NO gauge, the immune pulse and your white cells. Everything else (the organ's twist and handicap, the level picker, the wave's hint, how nodes, dilation and the pulse work, Place by list) is in **Info**, a drawer that slides over the right side: open it from the button at the foot of the panel, close it with ×, a tap beside it, or Escape.
+
 **After each wave** the panel shows a **Last wave** card: what came up each vessel, and how much organ health each vessel cost.
 
 **Switching away** mid-wave (another tab, a call) pauses the game. Gold spent during a wave is saved with the game, so a reload keeps what you paid for.
 
-**On a phone** the map is small: the **Zoom** button on it doubles its size inside its frame (centred on the organ), and you swipe to move around it; everything pinned to the map, like a pathogen's card, moves with it. It is remembered.
+**On a phone the game is played sideways.** Held upright, it asks you to turn the phone (on Android a **Play full screen** button goes full screen and locks it to landscape). Sideways, the whole screen is the game: a slim top bar, the map as tall as the screen allows on the left, and the controls in a column on the right; you open and close vessels by tapping them on the map, and one-time tips float over the map's corner. On the smallest phones the map is still small: the **Zoom** button on it doubles its size inside its frame (centred on the organ), and you swipe to move around it; everything pinned to the map, like a pathogen's card, moves with it. It is remembered.
 
 **The difficulty** shows in the top bar beside the level ("Level 3 of 11 · Hard"); it is kept for the whole career.
 
@@ -197,7 +199,7 @@ The first six have 70 health and the same speed; *M. tuberculosis* is tougher (1
 
 | | Mouse / touch | Keyboard |
 |---|---|---|
-| Place a lymph node | Click / tap a **+** site, then IgM / IgG / IgA / IgE | **Place by list** in the panel |
+| Place a lymph node | Click / tap a **+** site, then IgM / IgG / IgA / IgE | **Place by list** under Info |
 | Open / switch / close a route (during a wave) | Click / tap a vessel, or the route buttons | The key in the ring before its name: 1 to 9, then 0, - and = |
 | Start wave | **Start wave** | Enter |
 | Immune pulse | **Immune pulse** | Space |

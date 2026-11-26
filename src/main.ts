@@ -35,6 +35,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const canvas = $<HTMLCanvasElement>('board');
 const ctx = canvas.getContext('2d')!;
 const panel = $('panel');
+const infoEl = $('info'), infoBody = $('infoBody');
 const overlay = $('overlay');
 const toastEl = $('toast');
 const popover = $('popover');
@@ -434,11 +435,21 @@ function renderMenu() {
 let gameShown = false;
 function togglePause() { if (s.phase === 'combat' || s.phase === 'prep' || s.phase === 'recall') { s.paused = !s.paused; lastSig = ''; } }
 
-panel.addEventListener('click', (e) => {
+// ── Info: everything worth reading but not needed to play, in a drawer the player opens and closes ──
+function setInfo(open: boolean) {
+  infoEl.hidden = !open; document.body.classList.toggle('info-open', open);
+  panel.querySelector('[data-act=info]')?.setAttribute('aria-expanded', String(open));
+  if (open) (infoEl.querySelector('.x') as HTMLButtonElement | null)?.focus({ preventScroll: true });
+}
+$('infoClose').addEventListener('click', () => setInfo(false));
+infoEl.addEventListener('click', (e) => { if (e.target === infoEl) setInfo(false); });
+function onAct(e: MouseEvent) {
   if (menuPage) return; // the menu is on top of the game
   const el = (e.target as HTMLElement).closest('[data-act]') as HTMLButtonElement | null;
   if (!el || el.disabled) return;
   const a = el.dataset.act;
+  if (a === 'info') { setInfo(infoEl.hidden); return; }
+  if (infoEl.contains(el) && a !== 'borrow') setInfo(false);
   if (a === 'dilate') choose(el.dataset.v as VesselId);
   if (a === 'site') openSite(el.dataset.site!);
   if (a === 'start') { if (startWave(s)) { closeSite(); lastSig = ''; } }
@@ -450,7 +461,9 @@ panel.addEventListener('click', (e) => {
   if (a === 'buyNo') buyWithGold('no');
   if (a === 'buyCell') buyWithGold('cell');
   if (a === 'nextStage') nextStage();
-});
+}
+panel.addEventListener('click', onAct);
+infoBody.addEventListener('click', onAct);
 
 /** Spend gold during an organ: NO at once, or a white cell for the rest of the organ. */
 function buyWithGold(what: 'no' | 'cell') {
@@ -542,6 +555,14 @@ function setZoom(on: boolean) {
 btnZoom.addEventListener('click', () => setZoom(!mapScroll.classList.contains('zoomed')));
 try { if (localStorage.getItem('dth-zoom') === 'on' && matchMedia('(max-width: 760px)').matches) setZoom(true); } catch { /* no storage */ }
 $('btnSpeed').addEventListener('click', () => { s.speed = nextSpeed(s.speed); });
+// phones play in landscape: where the browser allows it (Android), a button goes full screen and locks it sideways;
+// elsewhere the page asks the player to turn the phone
+const btnLandscape = $<HTMLButtonElement>('btnLandscape');
+const orient = screen.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined;
+if ('requestFullscreen' in document.documentElement && typeof orient?.lock === 'function') btnLandscape.hidden = false;
+btnLandscape.addEventListener('click', async () => {
+  try { await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); await orient!.lock!('landscape'); } catch { /* not allowed here: turning the phone still works */ }
+});
 const toggleSound = () => { unlockAudio(); setMuted(!isMuted()); toast(isMuted() ? 'Sound off.' : 'Sound on.'); };
 $('btnSound').addEventListener('click', toggleSound);
 // browsers only allow sound after the player has touched the page
@@ -556,6 +577,7 @@ window.addEventListener('keydown', (e) => {
   if (menuPage) { if (e.key === 'Escape' && gameShown && menuPage.page !== 'switch') { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); } return; }
   if (keyed) choose(keyed);
   // Esc closes a pathogen's details first, then steps back from the IgG target list, then closes the build menu
+  else if (e.key === 'Escape' && !infoEl.hidden) setInfo(false);
   else if (e.key === 'Escape') { if (view.inspectId != null) closeInspect(); else if (view.selectedSite && view.popMode !== 'main') openSite(view.selectedSite, 'main'); else closeSite(); }
   // I steps through the pathogens on the map, the one nearest the organ first, showing each one's details
   else if ((e.key === 'i' || e.key === 'I') && s.phase === 'combat') {
@@ -646,32 +668,35 @@ function renderOrganTag() {
 
 function renderPanel() {
   const def = wave(s);
-  let h = '';
+  let h = '', info = '';
   if (s.phase === 'prep') {
     const c = canStartWave(s);
     const empties = map.SITES.filter((x) => !nodeAt(s, x.id));
     const L = levelDef(s);
     // Start wave first, where it is seen without scrolling; then the organ, what you can buy, and the build
+    // the column keeps what you act on: start the wave, what you can afford, last wave's report; the rest is in Info
     h = `<div class="start top"><button data-act="start" class="primary" ${c.ok ? '' : 'disabled'}>Start wave ${s.wave}</button><span class="hint small">${s.endless ? `Stage ${s.stage} · ` : ''}wave ${s.wave} of ${totalWaves(s)} · ${esc(def.title.replace(/^Stage \d+: /, ''))}</span></div>
       ${lodgedHtml()}
-      <section class="card organ"><h3>Level ${s.level + 1} · ${esc(L.title)}</h3><p class="hint small"><b>${esc(L.tagline)}</b> ${esc(L.twist)}</p><p class="hint small needs">${esc(L.handicap.text)}</p>
-        <div class="levels">${LEVELS.map((l, i) => `<button data-act="level" data-level="${i}" class="${i === s.level ? 'on' : ''}" ${i < unlocked ? '' : 'disabled'} title="${i < unlocked ? (i === s.level ? 'Restart this organ' : `Play ${esc(l.title)}`) : 'Locked: clear the previous organ'}">${i + 1}<small>${i < unlocked ? esc(organTitle(i)) : 'locked'}</small></button>`).join('')}</div></section>
-      ${(() => { const miss = missingTargets(s.level, s.perks).filter((b) => !s.borrowed.includes(b)); return miss.length ? `<p class="notice">Bacteria here you have no IgG target for: ${bugNames(miss)}. An IgG aimed at something else hits them at only ×0.5 to ×2. <button data-act="shop">Upgrades (${career.gold} gold)</button></p>
+      ${(() => { const miss = missingTargets(s.level, s.perks).filter((b) => !s.borrowed.includes(b)); return miss.length ? `<p class="notice">No IgG target for ${bugNames(miss)}. <button data-act="shop">Upgrades (${career.gold} gold)</button></p>
         <details class="borrow"><summary>Borrow a target for this organ · ${CONFIG.borrowTargetGold} gold each</summary><div class="flist">${miss.map((b) => `<button data-act="borrow" data-target="${b}" ${career.gold >= CONFIG.borrowTargetGold ? '' : 'disabled'}><i>${esc(CONFIG.pathogens[b].plural)}</i></button>`).join('')}</div></details>` : ''; })()}
-      ${s.borrowed.length ? `<p class="hint small">Borrowed for this organ: ${bugNames(s.borrowed)}. At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium.</p>` : `<p class="hint small">At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium on an organ.</p>`}
-      <h2><small>Prepare · ${s.endless ? `stage ${s.stage}, wave ${s.wave} of ${totalWaves(s)}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2>
-      <p class="hint">What comes, and up which vessels, you will see once the wave begins: build for anything.</p>
       ${s.message ? `<p class="notice">${esc(s.message)}</p>` : ''}
-      ${lastWaveHtml()}
-      <section class="card"><h3>Dilation <span class="count"><span data-no>${Math.floor(s.no)}</span> NO · ${cellCount(s)} white cell${cellCount(s) === 1 ? '' : 's'}</span></h3>
-        <p class="hint">During the wave, open vessels with NO, as many as you have white cells. Opening costs ${CONFIG.no.openCost}; each open vessel drains NO; all closed, it refills.</p>
-        <p class="hint small">Spend gold (you have ${career.gold}):</p><div class="flist goldBuys">${goldButtons(['no', 'cell'])}</div></section>
       <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
+        <ul class="key compact">${NODE_TYPES.map((t) => `<li title="${esc(CONFIG.nodes[t].blurb)}"><img alt="" src="${nodeIcon(t)}" width="34" height="26"><b>${CONFIG.nodes[t].short}</b> ${CONFIG.nodes[t].cost + (L.handicap.nodeCost ?? 0)}</li>`).join('')}</ul>
+        <p class="hint small">${view.touch ? 'Tap' : 'Click'} a + site to build; ${view.touch ? 'tap' : 'click'} a new node to cancel it.</p></section>
+      <section class="card"><h3>Gold <span class="count">${career.gold}</span></h3><div class="flist goldBuys">${goldButtons(['no', 'cell'])}</div></section>
+      ${lastWaveHtml()}`;
+    info = `<section class="card organ"><h3>Level ${s.level + 1} · ${esc(L.title)}</h3><p class="hint small"><b>${esc(L.tagline)}</b> ${esc(L.twist)}</p><p class="hint small needs">${esc(L.handicap.text)}</p>
+        <div class="levels">${LEVELS.map((l, i) => `<button data-act="level" data-level="${i}" class="${i === s.level ? 'on' : ''}" ${i < unlocked ? '' : 'disabled'} title="${i < unlocked ? (i === s.level ? 'Restart this organ' : `Play ${esc(l.title)}`) : 'Locked: clear the previous organ'}">${i + 1}<small>${i < unlocked ? esc(organTitle(i)) : 'locked'}</small></button>`).join('')}</div></section>
+      <h2><small>Prepare · ${s.endless ? `stage ${s.stage}, wave ${s.wave} of ${totalWaves(s)}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2>
+      <p class="hint">What comes, and up which vessels, you will see once the wave begins: build for anything. Building locks once the wave begins.</p>
+      ${s.borrowed.length ? `<p class="hint small">Borrowed for this organ: ${bugNames(s.borrowed)}. At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium.</p>` : `<p class="hint small">At most ${CONFIG.iggPerTarget} IgG nodes may aim at each bacterium on an organ.</p>`}
+      <section class="card"><h3>Lymph nodes</h3>
         <p class="hint">Click a + site beside a vessel to place a node. Each fires its immunoglobulin at pathogens on its own vessel.</p>
         <ul class="key">${NODE_TYPES.map((t) => `<li><img alt="" src="${nodeIcon(t)}" width="40" height="31"><span><b>${CONFIG.nodes[t].short}</b> · ${CONFIG.nodes[t].cost + (L.handicap.nodeCost ?? 0)}<small>${esc(CONFIG.nodes[t].blurb)}</small></span></li>`).join('')}</ul>
         <p class="hint small">A node placed since the last wave can be cancelled, for everything paid back: click it.</p>
         <details><summary>Place by list (keyboard)</summary><div class="flist">${empties.map((x) => `<button data-act="site" data-site="${x.id}">${esc(vesselName(x.vessel))} · ${map.siteLabel(x)}</button>`).join('') || '<em>Every site has a node.</em>'}</div></details></section>
-      <p class="hint small">Building locks once the wave begins.</p>`;
+      <section class="card"><h3>Dilation <span class="count">${Math.floor(s.no)} NO · ${cellCount(s)} white cell${cellCount(s) === 1 ? '' : 's'}</span></h3>
+        <p class="hint">During the wave, open vessels with NO, as many as you have white cells. Opening costs ${CONFIG.no.openCost}; each open vessel drains NO; all closed, it refills.</p></section>`;
   } else if (s.phase === 'combat') {
     const cells = aliveCells(s).length;
     const pc = pulseCheck(s);
@@ -681,20 +706,23 @@ function renderPanel() {
     const openNames = s.open.map((v) => esc(vesselName(v).toLowerCase()));
     const where = s.open.length ? (out ? `Patrolling the ${openNames.join(' and the ')}${s.open.length > 1 ? `, split ${s.open.length} ways` : ''}.` : `Heading home before setting out along the ${openNames.join(' and the ')}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
     const noLow = s.no < openNeed() && !s.open.length;
-    h = `<h2><small>Defend · ${s.endless ? `stage ${s.stage}, wave ${s.wave} of ${totalWaves(s)}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>${lodgedHtml()}
+    h = `<h2><small>${s.endless ? `Stage ${s.stage} · ` : ''}Wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>${lodgedHtml()}
       <section class="card"><h3>Dilate <span class="count"><span data-no>${Math.floor(s.no)}</span> / ${s.perks.noMax} NO</span></h3>
-        <p class="nogauge ${noLow ? 'low' : ''}" role="img" aria-label="NO ${Math.floor(s.no)} of ${s.perks.noMax}${noLow ? ', too low to open a vessel' : ''}"><i data-nobar style="width:${Math.min(100, (s.no / s.perks.noMax) * 100)}%"></i></p>${noLow ? '<p class="hint small needs">NO is too low to open a vessel: it refills while every vessel is closed.</p>' : ''}
+        <p class="nogauge ${noLow ? 'low' : ''}" role="img" aria-label="NO ${Math.floor(s.no)} of ${s.perks.noMax}${noLow ? ', too low to open a vessel' : ''}"><i data-nobar style="width:${Math.min(100, (s.no / s.perks.noMax) * 100)}%"></i></p>${noLow ? '<p class="hint small needs">Too low to open: it refills while all are closed.</p>' : ''}
+        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? (view.touch ? 'open · tap to close' : `open · key ${ROUTE_KEYS[i]}`) : (view.touch ? 'resting' : `key ${ROUTE_KEYS[i]}`)}</small></button>`).join('')}</div>
+        <p class="hint small tapHint">Tap a vessel on the map to open or close it.</p>
         <div class="flist goldBuys">${goldButtons(['no'])}</div>
-        <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? (view.touch ? 'open · tap to close' : `open · key ${ROUTE_KEYS[i]} closes`) : (view.touch ? 'resting' : `resting · key ${ROUTE_KEYS[i]}`)}</small></button>`).join('')}</div>
-        <p class="hint">Open as many vessels as you have white cells: they are split evenly among them. Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), and an open vessel drains ${CONFIG.no.drainPerSec} a second; each more vessel costs only ${CONFIG.no.extraOpenCost} to open and drains ${CONFIG.no.extraDrainPerSec} more a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out every vessel closes.</p></section>
-      <section class="card"><h3>White cells <span class="count">${cells} of ${cellCount(s)}</span></h3>
-        <p class="cells">${Array.from({ length: cellCount(s) }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 30)}</span>`).join('')}</p>
-        ${levelDef(s).cells ? `<div class="flist goldBuys">${goldButtons(['cell'])}</div>` : ''}
-        <p class="hint">${where}${s.infections ? ` <b>${s.infections} infected</b> by hijacker viruses: each goes for the nearest lymph node on its vessel, and knocks it out for the rest of the wave if it gets there.` : ' Keep them clear of hijacker viruses: an infected cell knocks out the first lymph node it reaches.'}</p></section>
+        ${lungsLine()}</section>
       <section class="card"><h3>Immune pulse <span class="count">${s.pulsesLeft} left</span></h3>
-        <button data-act="pulse" class="pulse" ${pc.ok ? '' : 'disabled'}>${s.pulsesLeft > 0 ? 'Immune pulse' : 'Pulse used'}</button>
-        ${lungsLine()}
-        <p class="hint">${s.pulsesLeft > 0 ? `Each white cell touching a pathogen destroys it (a boss loses a third of its health) and dies doing it; lost cells return next wave. <b>Right now ${would ? `${would} cell${would === 1 ? '' : 's'} would strike` : 'no cell is touching a pathogen'}.</b> Space bar works too.` : 'One pulse per wave. It returns next wave.'}</p></section>`;
+        <button data-act="pulse" class="pulse" ${pc.ok ? '' : 'disabled'}>${s.pulsesLeft > 0 ? `Immune pulse${would ? ` · ${would} strike` : ''}` : 'Pulse used'}</button></section>
+      <section class="card"><h3>White cells <span class="count">${cells} of ${cellCount(s)}</span></h3>
+        <p class="cells">${Array.from({ length: cellCount(s) }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 26)}</span>`).join('')}</p>
+        ${levelDef(s).cells ? `<div class="flist goldBuys">${goldButtons(['cell'])}</div>` : ''}
+        <p class="hint small">${where}${s.infections ? ` <b>${s.infections} infected.</b>` : ''}</p></section>`;
+    info = `<h2><small>Defend · ${s.endless ? `stage ${s.stage}, wave ${s.wave} of ${totalWaves(s)}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
+      <section class="card"><h3>Dilating</h3><p class="hint">Open as many vessels as you have white cells: they are split evenly among them. Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), and an open vessel drains ${CONFIG.no.drainPerSec} a second; each more vessel costs only ${CONFIG.no.extraOpenCost} to open and drains ${CONFIG.no.extraDrainPerSec} more a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out every vessel closes.</p></section>
+      <section class="card"><h3>White cells</h3><p class="hint">${s.infections ? `${s.infections} infected by hijacker viruses: each goes for the nearest lymph node on its vessel, and knocks it out for the rest of the wave if it gets there.` : 'Keep them clear of hijacker viruses: an infected cell knocks out the first lymph node it reaches.'}</p></section>
+      <section class="card"><h3>Immune pulse</h3><p class="hint">${s.pulsesLeft > 0 ? `Each white cell touching a pathogen destroys it (a boss loses a third of its health) and dies doing it; lost cells return next wave. <b>Right now ${would ? `${would} cell${would === 1 ? '' : 's'} would strike` : 'no cell is touching a pathogen'}.</b> Space bar works too.` : 'One pulse per wave. It returns next wave.'}</p></section>`;
   } else if (s.phase === 'recall') {
     h = `<h2><small>Wave ${s.wave} cleared</small>Recalling white cells</h2><p class="hint">Survivors return to the ${esc(levelDef(s).organ.toLowerCase())}, then the vessel contracts.</p>`;
   } else {
@@ -702,7 +730,9 @@ function renderPanel() {
     if (s.endless && s.phase === 'victory') h = `<h2><small>Stage ${s.stage} cleared</small>The ${esc(organTitle(s.level).toLowerCase())} ${s.level === 1 ? 'are' : 'is'} safe</h2><div class="start"><button data-act="nextStage" class="primary">Stage ${s.stage + 1}: ${esc(LEVELS[stageLevel(s.stage + 1)].title)}</button></div>`;
     else h = `<h2><small>${s.phase === 'victory' ? 'Level complete' : s.endless ? 'Endless run over' : `The ${L.organ.toLowerCase()} has failed`}</small>${s.phase === 'victory' ? `The ${esc(organTitle(s.level).toLowerCase())} ${s.level === 1 ? 'are' : 'is'} safe` : s.endless ? `${s.stage - 1} stage${s.stage === 2 ? '' : 's'} cleared` : 'Defeat'}</h2><div class="start">${s.phase === 'victory' && next >= 0 ? `<button data-act="level" data-level="${next}" class="primary">Next: ${esc(LEVELS[next].title)}</button> ` : ''}<button data-act="restart" ${s.phase === 'victory' && next >= 0 ? '' : 'class="primary"'}>${s.phase === 'victory' ? 'Play again' : s.endless ? 'Again' : 'Restart'}</button></div>`;
   }
-  panel.innerHTML = h;
+  panel.innerHTML = h + (info ? `<button data-act="info" class="infoBtn" aria-expanded="${!infoEl.hidden}" aria-controls="info">Info: ${s.phase === 'prep' ? 'organ, levels, how to build' : 'this wave, how it works'}</button>` : '');
+  infoBody.innerHTML = info;
+  if (!info && !infoEl.hidden) setInfo(false);
 }
 
 function renderHud() {
@@ -813,7 +843,7 @@ const tipEl = $('tip');
 let tipShown: string | null = null;
 const TIPS: { id: string; when: () => boolean; title: string; body: string }[] = [
   { id: 'hidden', when: () => s.phase === 'prep' && s.level > 0, title: 'You won\'t see what is coming',
-    body: 'A wave\'s pathogens, and the vessels they take, show only once it starts. After each wave, the panel lists what came up each vessel and what it cost: build for the next from that.' },
+    body: 'A wave\'s pathogens, and the vessels they take, show only once it starts. After each wave, the side panel lists what came up each vessel and what it cost: build for the next from that.' },
   { id: 'inspect', when: () => s.phase === 'combat' && s.pathogens.some((p) => p.s > 0), title: 'What is that?',
     body: 'Click or tap any pathogen (or press I) to see its details: its health, speed, how hard your IgG hits it, and its tricks.' },
   { id: 'borrow', when: () => s.phase === 'prep' && missingTargets(s.level, s.perks).some((b) => !s.borrowed.includes(b)), title: 'Borrow an IgG target',

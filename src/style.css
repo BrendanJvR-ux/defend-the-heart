@@ -226,3 +226,79 @@ details.borrow summary { font-size: 13px; }
 #btnZoom { display: none; position: absolute; right: 8px; top: 8px; z-index: 4; min-height: 36px; padding: 4px 10px; font-size: 14px; }
 #btnZoom[aria-pressed="true"] { background: var(--blue-wash, #a8d4e6); }
 @media (max-width: 760px) { #btnZoom { display: block; } }
+
+/* ── Info: a drawer over the right side, opened from the panel's Info button ── */
+.infoBtn { width: 100%; font-size: 14px; font-style: italic; min-height: 40px; }
+.infoBtn::before { content: 'ⓘ '; font-style: normal; }
+#info { position: fixed; inset: 0; z-index: 30; background: rgba(42, 30, 24, 0.3); }
+#info .drawer { position: absolute; top: 0; right: 0; bottom: 0; width: min(400px, 92vw); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--paper); border-left: 2px solid var(--ink); box-shadow: -4px 0 0 rgba(35, 26, 20, 0.18); padding: 14px 14px max(14px, env(safe-area-inset-bottom)) 14px;
+  padding-right: max(14px, env(safe-area-inset-right)); display: flex; flex-direction: column; gap: 10px; animation: drawerIn 0.18s ease-out; }
+@keyframes drawerIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+#info .x { position: sticky; top: 0; align-self: flex-end; margin-bottom: -38px; min-height: 36px; padding: 0 12px; font-size: 22px; z-index: 1; }
+#info h2 { margin: 0; font-size: 21px; color: var(--red-dark); font-style: italic; padding-right: 48px; }
+#info h2 small { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--soft); font-weight: 400; }
+#info .organ h3 { padding-right: 44px; }
+.key.compact { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 2px 0 4px; }
+.key.compact li { gap: 4px; font-size: 14px; }
+.tapHint { display: none; }
+
+/* ── Phones: played in landscape ── */
+#rotate { display: none; }
+@media (orientation: portrait) and (max-width: 600px) {
+  #rotate { visibility: visible; display: grid; place-items: center; position: fixed; inset: 0; z-index: 50; padding: 20px; background: var(--hatch-x), radial-gradient(ellipse at 50% 30%, #e6d9bf, #d3c2a3); }
+  #rotate h2::after { content: ''; display: block; width: 46px; height: 74px; margin: 14px auto 4px; border: 3px solid var(--ink); border-radius: 9px; animation: turn 1.8s ease-in-out infinite; }
+  #app { visibility: hidden; } html, body { overflow: hidden; }
+}
+@keyframes turn { 0%, 25% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+
+/* a phone held sideways: the whole screen is the game, top bar in one slim row, map on the left, controls on the right */
+@media (orientation: landscape) and (max-height: 540px) {
+  html, body { height: 100%; overflow: hidden; }
+  #app { height: 100dvh; max-width: none; padding: 4px max(6px, env(safe-area-inset-right)) 4px max(6px, env(safe-area-inset-left)); gap: 4px; }
+  #foot { display: none; }
+  #hud { flex-wrap: nowrap; gap: 8px; padding: 3px 10px; }
+  .brand h1 { font-size: 15px; white-space: nowrap; }
+  .brand span { display: none; }
+  .stats { flex-wrap: nowrap; gap: 10px; }
+  .stat dt { font-size: 8.5px; letter-spacing: 0.04em; white-space: nowrap; }
+  .stat dd { font-size: 13px; gap: 4px; white-space: nowrap; }
+  .bar { width: 40px; height: 8px; }
+  .hud-buttons { margin-left: auto; width: auto; flex-wrap: nowrap; gap: 5px; }
+  .hud-buttons button { flex: none; min-height: 32px; padding: 2px 8px; font-size: 13px; box-shadow: 1px 1px 0 rgba(35, 26, 20, 0.8); }
+  #layout { flex: 1; min-height: 0; grid-template-columns: auto minmax(200px, 1fr); grid-template-rows: 1fr; gap: 6px; }
+  /* the map as big as the height allows, but always leaving the controls a column of their own */
+  #layout { grid-template-columns: auto 1fr; }
+  #layout > #field { grid-column: 1; grid-row: 1; align-self: start; width: min(calc((100dvh - 50px) * 1.6), calc(100vw - 240px)); }
+  #mapScroll { width: 100%; }
+  /* one-time tips float over the map's top-left corner, so the controls keep the whole column */
+  #tip { position: fixed; z-index: 8; left: max(12px, env(safe-area-inset-left)); top: 54px; width: min(300px, 40vw); padding: 6px 9px; max-height: calc(100dvh - 70px); overflow-y: auto; box-shadow: 3px 4px 0 rgba(35, 26, 20, 0.35); }
+  #tip button { min-height: 32px; padding: 2px 12px; }
+  #tip h3 { font-size: 14px; } #tip p { font-size: 12.5px; margin-bottom: 5px; }
+  #layout > #panel { grid-column: 2; grid-row: 1; min-height: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 8px; gap: 6px; }
+  #panel h2 { font-size: 16px; }
+  #panel .card { padding: 6px 8px; }
+  #panel .card h3 { font-size: 13.5px; margin-bottom: 3px; }
+  #panel .hint { font-size: 12px; margin: 2px 0; }
+  .start button { min-height: 40px; font-size: 16px; }
+  .start.top { margin-bottom: 2px; }
+  /* on a phone the vessels are tapped on the map itself: their buttons would only push the pulse out of sight */
+  .choice { display: none; }
+  .tapHint { display: block !important; }
+  button.pulse { min-height: 44px; font-size: 16px; }
+  .flist button { min-height: 34px; font-size: 12px; padding: 2px 6px; }
+  .nogauge { margin: 2px 0 5px; }
+  .notice { font-size: 12px; padding: 5px 7px; }
+  .lastwave { font-size: 12px; }
+  #organTag { font-size: 11px; max-width: 40%; left: 6px; bottom: 6px; padding: 3px 6px; }
+  #organTag small { font-size: 10px; }
+  .popover { position: fixed; left: auto !important; right: 8px; top: 8px !important; bottom: 8px; width: min(300px, 45vw); max-height: none; }
+  .popover.inspect { bottom: auto; max-height: calc(100dvh - 16px); }
+  #menu .plate { padding: 12px 16px; }
+  .menuButtons button { min-height: 42px; }
+}
+/* the smallest phones sideways: the top bar keeps only what the side panel doesn't show */
+@media (orientation: landscape) and (max-height: 540px) and (max-width: 760px) {
+  .brand, .stats .stat:nth-child(5), .stats .stat:nth-child(6) { display: none; }
+  .hud-buttons button { padding: 2px 6px; font-size: 12px; }
+}
