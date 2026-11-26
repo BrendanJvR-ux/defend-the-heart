@@ -17,7 +17,7 @@ import { esc } from './text';
 import { ROUTE_KEYS } from './labels';
 import { draw, vesselWidth, prepareOrgan, type View } from './draw';
 import { icon, nodeIcon } from './icons';
-import { setUpLandscape } from './orientation';
+import { setUpLandscape, fitToVisibleScreen } from './orientation';
 import { loadSettings, saveSettings, applySettings, watchSystemMotion, settingsHtml, type Settings } from './settings';
 import { howToPlayHtml } from './howto';
 import { createNotices } from './notices';
@@ -220,7 +220,18 @@ popover.addEventListener('click', (e) => {
 // every build (placing, re-aiming) is saved at once, so a reload keeps it
 popover.addEventListener('click', () => { if (s.phase === 'prep' && gameShown) { career.run = snapshot(s); saveNow(); } });
 
+// A tap outside an open pop-up (the build menu or a pathogen's card) closes it. On the map, that tap does only that,
+// so closing it never also opens the next site or a vessel by accident; elsewhere, the button tapped still works.
+let swallowTap = false;
+document.addEventListener('pointerdown', (e) => {
+  const t = e.target as Node;
+  const openPop = !popover.hidden && !popover.contains(t) ? 'site' : !inspectEl.hidden && !inspectEl.contains(t) ? 'inspect' : null;
+  if (!openPop || menuPage || tut) return;
+  if (openPop === 'site') closeSite(); else closeInspect();
+  swallowTap = t === canvas;
+}, { capture: true });
 canvas.addEventListener('pointerdown', (e) => {
+  if (swallowTap) { swallowTap = false; return; }
   const p = toMap(e);
   if (s.phase === 'prep') {
     const site = siteAt(p);
@@ -532,6 +543,8 @@ overlay.addEventListener('click', (e) => {
 });
 $('btnMenu').addEventListener('click', () => (menuPage ? closeMenu() : openMenu()));
 menuEl.addEventListener('click', (e) => {
+  // a tap on the shade around the menu steps back, as Escape does (never off a question that needs an answer)
+  if (e.target === menuEl && menuPage && gameShown && !['switch', 'importConfirm', 'confirmNew', 'abandon'].includes(menuPage.page)) { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); return; }
   const el = (e.target as HTMLElement).closest('[data-menu]') as HTMLButtonElement | null;
   if (!el || el.disabled) return;
   const a = el.dataset.menu;
@@ -609,6 +622,7 @@ btnZoom.addEventListener('click', () => setZoom(!mapScroll.classList.contains('z
 try { if (localStorage.getItem('dth-zoom') === 'on' && matchMedia('(max-width: 760px)').matches) setZoom(true); } catch { /* no storage */ }
 $('btnSpeed').addEventListener('click', () => { s.speed = nextSpeed(s.speed); });
 setUpLandscape($<HTMLButtonElement>('btnLandscape'));
+fitToVisibleScreen();
 const toggleSound = () => { unlockAudio(); setMuted(!isMuted()); toast(isMuted() ? 'Sound off.' : 'Sound on.'); };
 $('btnSound').addEventListener('click', toggleSound);
 // browsers only allow sound after the player has touched the page
