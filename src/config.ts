@@ -153,6 +153,9 @@ export const CONFIG = {
   } as Record<Difficulty, { name: string; blurb: string; hp: number; count: number; energy: number; gold: number }>,
   /** Bought with gold during an organ: `no` adds NO at once (it may go past the gauge's top); `cell` adds a white cell
    *  for the rest of the organ, at most `max`. */
+  /** Gold for clearing an organ the first time: this × the organ's number, + 4 per organ health left (a quarter on a
+   *  replay), × the difficulty's gold. */
+  goldPerOrgan: 88,
   goldBuys: { no: { gold: 20, amount: 40 }, cell: { gold: 50, max: 3 } },
   /** At most this many IgG nodes may be aimed at any one bacterium on an organ . */
   iggPerTarget: 2,
@@ -213,7 +216,7 @@ export const CONFIG = {
 
 // ── Levels ──────────────────────────────────────────────────────────────────
 
-export type OrganKind = 'heart' | 'lungs' | 'brain' | 'liver' | 'kidney' | 'spleen' | 'marrow' | 'stomach' | 'lymphnode' | 'skin' | 'eye';
+export type OrganKind = 'heart' | 'lungs' | 'liver' | 'kidney' | 'spleen' | 'marrow' | 'stomach' | 'lymphnode' | 'skin' | 'eye';
 type P = { x: number; y: number };
 
 export interface BranchDef { id: VesselId; name: string; label: string; pts: P[] }
@@ -236,7 +239,7 @@ export interface LevelDef {
   id: OrganKind;
   /** Shown in the level list: "Level 2 · The Lungs". */
   title: string;
-  /** "Heart", "Lung", "Brain"… used for "Heart health", "−3 brain health". */
+  /** "Heart", "Lung", "Liver"… used for "Heart health", "−3 liver health". */
   organ: string;
   tagline: string;
   /** The one rule that makes this organ different, in a sentence for the panel. */
@@ -245,6 +248,8 @@ export interface LevelDef {
   feature: string;
   /** A slight disadvantage of this organ's own, shown with its feature. Multipliers (1 = none) and additions. */
   handicap: Handicap;
+  /** The organ's own random seed (how its waves fall out), kept when organs are added or removed. */
+  seed?: number;
   /** Pathogens that hit this organ harder: heart damage and contact damage ×. */
   damageMul?: Partial<Record<PathogenType, number>>;
   hp: number;
@@ -398,40 +403,7 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'brain', title: 'The Brain', organ: 'Brain', tagline: 'Little room to build, nothing to spare.',
-    twist: 'The blood–brain barrier: only two lymph node sites guard each route and less health, but you get three white cells. The lower-right vessel forks.',
-    feature: 'Few sites, three white cells',
-    handicap: { text: 'Tight skull: lymph nodes reach 10% less far.', range: 0.9 },
-    hp: 18, startEnergy: 260, cells: 3,
-    map: {
-      center: { x: 800, y: 360 }, rx: 230, ry: 170, siteFractions: [0.3, 0.52, 0.72],
-      vessels: [
-        { id: 'left', name: 'Left vessel', label: 'Left', pts: [{ x: -40, y: 240 }, { x: 190, y: 200 }, { x: 380, y: 270 }, { x: 574, y: 350 }] },
-        { id: 'right', name: 'Right vessel', label: 'Right', pts: [{ x: 1640, y: 240 }, { x: 1410, y: 200 }, { x: 1220, y: 270 }, { x: 1026, y: 350 }] },
-        { id: 'midLeft', name: 'Middle-left vessel', label: 'Middle left', pts: [{ x: -40, y: 640 }, { x: 180, y: 620 }, { x: 400, y: 540 }, { x: 605, y: 455 }] },
-        { id: 'lowerLeft', name: 'Lower-left vessel', label: 'Lower left', pts: [{ x: 300, y: 1040 }, { x: 360, y: 860 }, { x: 540, y: 770 }, { x: 670, y: 650 }, { x: 724, y: 520 }] },
-        { id: 'lowerRight', name: 'Lower-right vessel', label: 'Lower right', pts: [{ x: 1300, y: 1040 }, { x: 1240, y: 860 }, { x: 1120, y: 790 }],
-          fork: { branches: [
-            { id: 'lowerRightInner', name: 'Lower-right inner branch', label: 'Inner', pts: [{ x: 1000, y: 720 }, { x: 930, y: 650 }, { x: 876, y: 520 }] },
-            { id: 'lowerRightOuter', name: 'Lower-right outer branch', label: 'Outer', pts: [{ x: 1200, y: 660 }, { x: 1080, y: 560 }, { x: 975, y: 470 }] },
-          ] } },
-      ],
-    },
-    waves: [
-      { title: 'The barrier', hint: 'Few sites: pick them well. Three white cells patrol whichever vessel you dilate.',
-        groups: [g('spneumo', 'lowerLeft', 9, 1, 3.4), g('virus', 'left', 15, 4, 0.35), g('virus', 'midLeft', 12, 10, 0.35)] },
-      { title: 'Crossing over', hint: 'Viruses come up the lower-right vessel, which forks: at the fork they take the branch you have not opened. Nodes on the shared stem guard both.',
-        groups: [g('saureus', 'right', 9, 1, 3.2), g('virus', 'lowerRight', 15, 6, 0.3), g('virus', 'left', 12, 14, 0.3), g('listeria', 'midLeft', 7, 4, 3.2)] },
-      { title: 'Meningitis', hint: 'Meningococci (Gram-negative cocci) and pneumococci on two vessels, and the first hijackers. IgA cannot slow meningococci: aim IgG at them.',
-        groups: [g('nmening', 'left', 9, 1, 3), g('spneumo', 'lowerRight', 9, 3, 3), g('virus', 'right', 18, 10, 0.3), g('hijacker', 'lowerLeft', 7, 16, 1), g('virus', 'midLeft', 15, 8, 0.3)] },
-      { title: 'Fever', hint: 'Everything at once. The brain cannot take many hits.',
-        groups: [g('listeria', 'lowerLeft', 12, 1, 2.6), g('hijacker', 'left', 5, 3, 1), g('virus', 'lowerRight', 18, 6, 0.3), g('hijacker', 'right', 7, 9, 1), g('virus', 'left', 12, 20, 0.3), g('nmening', 'midLeft', 7, 12, 3)] },
-      { title: 'Boss: meningococcus', hint: 'A giant N. meningitidis that IgA cannot slow. IgG aimed at N. meningitidis hits it three times as hard.',
-        groups: [g('meningo', 'lowerLeft', 1, 2, 1), g('virus', 'right', 15, 10, 0.3), g('saureus', 'midLeft', 7, 6, 3)] },
-    ],
-  },
-  {
-    id: 'liver', title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
+    id: 'liver', seed: 4, title: 'The Liver', organ: 'Liver', tagline: 'Everything from the gut comes here first.',
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave. Fall to half health and the gallbladder bursts: bile destroys two of your lymph nodes.',
     feature: 'Regrows; the gallbladder can burst',
     handicap: { text: 'Fatty liver: every lymph node costs 5 more energy.', nodeCost: 5 },
@@ -468,7 +440,7 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'kidney', title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
+    id: 'kidney', seed: 5, title: 'The Kidney', organ: 'Kidney', tagline: 'The filter, and the last stand.',
     twist: 'Filtration: pathogens crawl through the last stretch of every vessel, so nodes near the kidney get extra time. Each wave, the pathogens come 20% tougher.',
     feature: 'Filtration; tougher every wave',
     handicap: { text: 'Poor blood supply: 10% less energy.', income: 0.9 },
@@ -510,7 +482,7 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'spleen', title: 'The Spleen', organ: 'Spleen', tagline: 'The body\'s own immune organ.',
+    id: 'spleen', seed: 6, title: 'The Spleen', organ: 'Spleen', tagline: 'The body\'s own immune organ.',
     twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
     feature: 'Remakes lost white cells',
     handicap: { text: 'Enlarged: white cells move 15% slower.', cellSpeed: 0.85 },
@@ -553,7 +525,7 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'marrow', title: 'The Bone Marrow', organ: 'Marrow', tagline: 'Where white cells are born.',
+    id: 'marrow', seed: 7, title: 'The Bone Marrow', organ: 'Marrow', tagline: 'Where white cells are born.',
     twist: 'It makes white cells: you start with 2, and every cleared wave adds one more, up to 5.',
     feature: 'A white cell more every wave',
     handicap: { text: 'Brittle bone: IgE burns out a wave sooner.', igeLife: -1 },
@@ -600,7 +572,7 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'stomach', title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
+    id: 'stomach', seed: 8, title: 'The Stomach', organ: 'Stomach', tagline: 'A bath of acid at the end of every vessel.',
     damageMul: { hpylori: 2 },
     twist: 'Acid: on the last third of every vessel, pathogens lose 2 health a second. H. pylori feeds on it and gains health there instead.',
     feature: 'Acid; H. pylori feeds on it',
@@ -649,7 +621,7 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'lymphnode', title: 'The Lymph Node', organ: 'Node', tagline: 'The finale: your own defences are the target.',
+    id: 'lymphnode', seed: 9, title: 'The Lymph Node', organ: 'Node', tagline: 'The finale: your own defences are the target.',
     twist: 'Every pathogen that reaches the node weakens the lymph nodes guarding its vessel by 10% until the wave ends. The boss, HIV, switches off every lymph node it passes.',
     feature: 'Leaks weaken your nodes; HIV',
     handicap: { text: 'Fever: white cells have 20% less health.', cellHp: 0.8 },
@@ -701,11 +673,11 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'skin', title: 'The Skin', organ: 'Skin', tagline: 'The body\'s first wall, broken open.',
+    id: 'skin', seed: 10, title: 'The Skin', organ: 'Skin', tagline: 'The body\'s first wall, broken open.',
     twist: 'Open wounds: pathogens enter through cuts, partway along their vessels, not from the edge of the map.',
     feature: 'Pathogens enter through wounds',
     handicap: { text: 'Inflamed: pathogens have 10% more health.', hp: 1.1 },
-    hp: 24, startEnergy: 560, cells: 3, income: 0.25,
+    hp: 24, startEnergy: 610, cells: 3, income: 0.25,
     wounds: { from: 0.2, to: 0.5 },
     map: {
       center: { x: 800, y: 430 }, rx: 280, ry: 110, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: 136,
@@ -748,7 +720,7 @@ export const LEVELS: LevelDef[] = [
     ],
   },
   {
-    id: 'eye', title: 'The Eye', organ: 'Eye', tagline: 'Immune-privileged: you defend it alone.',
+    id: 'eye', seed: 11, title: 'The Eye', organ: 'Eye', tagline: 'Immune-privileged: you defend it alone.',
     twist: 'Immune privilege: no white cells come to the eye, so there is no pulse. Only your lymph nodes defend it.',
     feature: 'No white cells: nodes alone',
     handicap: { text: 'Blurred: lymph nodes fire 10% slower.', cooldown: 1.1 },

@@ -73,7 +73,7 @@ export const missingTargets = (level: number, perks: Perks): BacteriumType[] => 
 /** Gold for winning organ `level` (0-based) with `healthLeft`: full on the first clear, a quarter on a replay, scaled
  *  by the difficulty. */
 export function goldFor(level: number, healthLeft: number, firstClear: boolean, mode: Difficulty = 'normal'): number {
-  const full = Math.round((70 * (level + 1) + 4 * healthLeft) * CONFIG.difficulty[mode].gold);
+  const full = Math.round((CONFIG.goldPerOrgan * (level + 1) + 4 * healthLeft) * CONFIG.difficulty[mode].gold);
   return firstClear ? full : Math.floor(full / 4);
 }
 
@@ -112,6 +112,8 @@ export interface RunSave {
 export interface Career {
   version: 1;
   gold: number;
+  /** The organs, in order, as this save numbers them (`cleared`, `best` and `run.level` count in this order). */
+  organs?: string[];
   /** Per organ: cleared at least once. */
   cleared: boolean[];
   /** Per organ: the most organ health left on a win. */
@@ -143,7 +145,7 @@ export const BACKUP_KEY = 'dth-career-unreadable';
 
 export function freshCareer(): Career {
   const n = LEVELS.length;
-  return { version: 1, gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null, tutorialSeen: false, tips: [], difficulty: 'normal', endless: {} };
+  return { version: 1, organs: LEVELS.map((L) => L.id), gold: 0, cleared: Array(n).fill(false), best: Array(n).fill(0), bought: {}, run: null, tutorialSeen: false, tips: [], difficulty: 'normal', endless: {} };
 }
 
 const safeGet = (kv: KV, k: string) => { try { return kv.get(k); } catch { return null; } };
@@ -202,8 +204,12 @@ function parse(raw: string): Career | null {
   if (!v || typeof v !== 'object' || (v as { version?: unknown }).version !== 1) return null;
   const o = v as Partial<Career>, c = freshCareer();
   if (typeof o.gold === 'number' && o.gold >= 0) c.gold = Math.floor(o.gold);
-  if (Array.isArray(o.cleared)) o.cleared.forEach((x, i) => { if (i < c.cleared.length) c.cleared[i] = x === true; });
-  if (Array.isArray(o.best)) o.best.forEach((x, i) => { if (i < c.best.length && typeof x === 'number') c.best[i] = x; });
+  // the save's organs may be in another order, or include one the game no longer has (the brain, removed): each
+  // organ's record goes to that organ, wherever it is now; records of organs that are gone are dropped
+  const from = savedOrgans(o), to = (i: number) => LEVELS.findIndex((L) => L.id === from[i]);
+  if (Array.isArray(o.cleared)) o.cleared.forEach((x, i) => { const j = to(i); if (j >= 0) c.cleared[j] = x === true; });
+  if (Array.isArray(o.best)) o.best.forEach((x, i) => { const j = to(i); if (j >= 0 && typeof x === 'number') c.best[j] = x; });
+  const moved = from.length !== LEVELS.length || from.some((id, i) => LEVELS[i].id !== id);
   // only known upgrades, at whole-number levels, capped at the top level
   // dual-target IgG became broad IgG: a career that bought the one has the other
   if (o.bought && typeof o.bought === 'object' && (o.bought as Record<string, unknown>).dual) c.bought.broad = 1;
@@ -211,7 +217,13 @@ function parse(raw: string): Career | null {
     if (!Object.prototype.hasOwnProperty.call(UPGRADES, k) || !Number.isInteger(n) || (n as number) < 1) continue;
     c.bought[k as UpgradeId] = Math.min(n as number, UPGRADES[k as UpgradeId].prices.length);
   }
-  c.run = validRun(o.run) ? o.run : null;
+  c.run = null;
+  if (o.run && typeof o.run === 'object' && Number.isInteger((o.run as RunSave).level)) {
+    const r = { ...(o.run as RunSave) }, j = to(r.level);
+    // an organ's game carries on at that organ (none if the organ is gone); an endless run is numbered by stage over
+    // the whole round of organs, so it can't carry on across a change to them
+    if (j >= 0 && !(moved && r.stage)) { r.level = j; c.run = validRun(r) ? r : null; }
+  }
   // a run from the old one-organ endless (it had no stages) can't be continued in the endless of organ after organ
   if (c.run && (c.run as { endless?: unknown }).endless === true && !c.run.stage) c.run = null;
   // older saves had no flag: a player who has cleared an organ has no need of the tutorial
@@ -227,6 +239,15 @@ function parse(raw: string): Career | null {
     c.endless[d] = runs.filter(ok).map((r) => ({ stages: r.stages, waves: r.waves, date: r.date.slice(0, 10) })).sort(byDistance).slice(0, CONFIG.endless.boardSize);
   }
   return c;
+}
+
+/** The organs of the old eleven, in order, for saves made before the order was recorded (the brain was third). */
+const ELEVEN = ['heart', 'lungs', 'brain', 'liver', 'kidney', 'spleen', 'marrow', 'stomach', 'lymphnode', 'skin', 'eye'];
+function savedOrgans(o: Partial<Career>): string[] {
+  if (Array.isArray(o.organs) && o.organs.every((x) => typeof x === 'string')) return o.organs;
+  // saves made before the order was recorded grew one organ at a time, always in the old order (the brain third)
+  if (!Array.isArray(o.cleared)) return LEVELS.map((L) => L.id);   // nothing to go by: today's order
+  return ELEVEN.slice(0, Math.min(o.cleared.length, ELEVEN.length));
 }
 
 function validRun(r: unknown): r is RunSave {

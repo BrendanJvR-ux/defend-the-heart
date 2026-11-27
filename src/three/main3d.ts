@@ -13,7 +13,7 @@ import { esc } from '../text';
 
 const $ = (id: string) => document.getElementById(id)!;
 const PERKS: Perks = { ...NO_PERKS, targets: [...BACTERIA] };
-const levelFromHash = () => { const h = location.hash.slice(1), n = h === '' ? NaN : Number(h); return Number.isInteger(n) && n >= 0 && n < LEVELS.length ? n : 3; };
+const levelFromHash = () => { const h = location.hash.slice(1), n = h === '' ? NaN : Number(h); return Number.isInteger(n) && n >= 0 && n < LEVELS.length ? n : LEVELS.findIndex((L) => L.id === 'liver'); };
 let s: State = newGame(levelFromHash(), PERKS);
 const board = new Board3D($('stage'));
 let hoverSite: string | null = null, buildFor: string | null = null;

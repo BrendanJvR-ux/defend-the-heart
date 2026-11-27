@@ -7,7 +7,7 @@ import { hidden, wallLeft } from './sim';
 import { organCacheKey, organImageScale, ORGAN_SPAN } from './organCache';
 import { layoutLabels, noGauge, KEY_W, type MapLabel } from './labels';
 import { type State, cellPos, pathogenPos, pulseTargets, nodeAt, surging, openNeed, gallbladderAt } from './sim';
-import { drawLungs, drawBrain, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode, drawSkin, drawEye } from './organs';
+import { drawLungs, drawLiver, drawKidney, drawSpleen, drawGut, drawMarrow, drawStomach, drawLymphNode, drawSkin, drawEye } from './organs';
 import { inkify, inkSprite, paper, hatchPattern, seeded } from './ink';
 
 /** Reduced motion (a setting, or the system's): no shaking, throbbing, flashing or breathing of the organ. */
@@ -295,7 +295,6 @@ function organImages(px: number, L: LevelDef = LEVEL) {
   const c = { x: ORGAN_HALF, y: ORGAN_HALF };
   if (L.id === 'heart') { x.translate(c.x, c.y); drawHeartBody(x); }
   else if (L.id === 'lungs') drawLungs(x, c, 1, 0);
-  else if (L.id === 'brain') drawBrain(x, c, m.rx, m.ry, 1, 0);
   else if (L.id === 'liver') drawLiver(x, c, m.rx, m.ry, 1, 0);
   else if (L.id === 'spleen') drawSpleen(x, c, m.rx, m.ry, 1, 0);
   else if (L.id === 'marrow') drawMarrow(x, c, m.rx, m.ry, 1, 0);

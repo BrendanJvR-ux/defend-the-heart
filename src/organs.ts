@@ -1,4 +1,4 @@
-// The organs other than the heart, drawn as anatomy-plate figures: lungs, brain, liver, kidney.
+// The organs other than the heart, drawn as anatomy-plate figures: lungs, liver, kidney and the rest.
 // Each takes the organ's centre and size from the level map; `swell` is a small breathing/pulse factor.
 import type { Vec } from './level';
 
@@ -75,76 +75,6 @@ export function drawLungs(ctx: CanvasRenderingContext2D, c: Vec, swell: number, 
     branch(sg * 40, -110, sg > 0 ? 0.9 : Math.PI - 0.9, 46, 7, 3);
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.beginPath(); ctx.ellipse(sg * 120, -110, 18, 34, sg * 0.4, 0, Math.PI * 2); ctx.fill();
   }
-  ctx.restore();
-}
-
-// ── Brain ───────────────────────────────────────────────────────────────────
-export function drawBrain(ctx: CanvasRenderingContext2D, c: Vec, rx: number, ry: number, swell: number, kick: number) {
-  ctx.save(); ctx.translate(c.x, c.y);
-  // brainstem
-  ctx.fillStyle = '#d8a8a0'; ctx.strokeStyle = INK; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(-26, ry - 40); ctx.bezierCurveTo(-30, ry + 60, -20, ry + 150, -12, ry + 230); ctx.lineTo(12, ry + 230); ctx.bezierCurveTo(20, ry + 150, 30, ry + 60, 26, ry - 40); ctx.closePath(); ctx.fill(); ctx.stroke();
-  // the cerebellum, tucked under the back of the cerebrum: two lobes with fine parallel folia
-  for (const sg of [-1, 1]) {
-    const cx = sg * rx * 0.28, cy = ry * 0.86, w = rx * 0.32, h = ry * 0.3;
-    const cg = ctx.createRadialGradient(cx - 10, cy - 10, 4, cx, cy, w);
-    cg.addColorStop(0, '#eebcb6'); cg.addColorStop(1, '#b4706e');
-    ctx.fillStyle = cg; ctx.beginPath(); ctx.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.save(); ctx.beginPath(); ctx.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2); ctx.clip();
-    ctx.strokeStyle = 'rgba(122,46,56,0.55)'; ctx.lineWidth = 1.4;
-    for (let k = -6; k <= 6; k++) { ctx.beginPath(); ctx.ellipse(cx, cy + k * 7, w * 1.05, h * 0.45, 0, Math.PI * 0.05, Math.PI * 0.95); ctx.stroke(); }
-    ctx.restore();
-    ctx.strokeStyle = INK; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2); ctx.stroke();
-  }
-  ctx.scale(swell, swell);
-  const shape = () => {
-    ctx.beginPath();
-    for (let i = 0; i <= 120; i++) {
-      const a = (i / 120) * Math.PI * 2;
-      // domed top, flatter base, the temporal lobes bulging a little low on each side
-      const bump = 1 + 0.012 * Math.sin(a * 9) + (Math.sin(a) > 0 ? -0.1 * Math.pow(Math.sin(a), 3) : 0.02) + 0.05 * Math.pow(Math.max(0, Math.sin(a) * Math.abs(Math.cos(a))), 1) ;
-      const x = Math.cos(a) * rx * bump, y = Math.sin(a) * ry * bump;
-      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.closePath();
-  };
-  const g = ctx.createRadialGradient(-60, -60, 20, 0, 0, rx * 1.1);
-  g.addColorStop(0, '#f6d4d0'); g.addColorStop(0.65, '#e4a8a8'); g.addColorStop(1, '#b4706e');
-  shape(); ctx.fillStyle = g; ctx.fill();
-  if (kick > 0) { shape(); ctx.fillStyle = `rgba(255,60,50,${kick * 0.4})`; ctx.fill(); }
-  ctx.save(); shape(); ctx.clip();
-  // gyri: long meandering folds, each a dark groove with a pale ridge beside it
-  const R = seeded(29);
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  const folds: Vec[][] = [];
-  for (let i = 0; i < 70; i++) {
-    let x = (R() * 2 - 1) * rx, y = (R() * 2 - 1) * ry, a = R() * Math.PI * 2;
-    const pts: Vec[] = [{ x, y }];
-    for (let k = 0; k < 9; k++) { a += (R() - 0.5) * 2.2; x += Math.cos(a) * 20; y += Math.sin(a) * 20; pts.push({ x, y }); }
-    folds.push(pts);
-  }
-  const trace = (pts: Vec[], dx: number, dy: number) => {
-    ctx.beginPath(); ctx.moveTo(pts[0].x + dx, pts[0].y + dy);
-    for (let k = 1; k < pts.length - 1; k++) ctx.quadraticCurveTo(pts[k].x + dx, pts[k].y + dy, (pts[k].x + pts[k + 1].x) / 2 + dx, (pts[k].y + pts[k + 1].y) / 2 + dy);
-    ctx.stroke();
-  };
-  ctx.strokeStyle = 'rgba(255,236,232,0.55)'; ctx.lineWidth = 5; for (const f of folds) trace(f, -3, -3);
-  ctx.strokeStyle = 'rgba(122,46,56,0.62)'; ctx.lineWidth = 2.8; for (const f of folds) trace(f, 0, 0);
-  // the middle cerebral arteries, running out of each lateral sulcus over the cortex
-  const A = seeded(17);
-  ctx.globalAlpha = 0.7;
-  for (const sg of [-1, 1]) vesselTree(ctx, sg * rx * 0.3, ry * 0.45, sg > 0 ? -0.5 : Math.PI + 0.5, rx * 0.22, 4, 4, '#a8283a', A);
-  ctx.globalAlpha = 1;
-  // a soft shadow where the frontal and temporal lobes curve away
-  const sh = ctx.createRadialGradient(0, -ry * 0.2, rx * 0.4, 0, 0, rx * 1.05);
-  sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(90,30,40,0.25)');
-  ctx.fillStyle = sh; ctx.fillRect(-rx * 1.2, -ry * 1.2, rx * 2.4, ry * 2.4);
-  ctx.restore();
-  shape(); ctx.strokeStyle = INK; ctx.lineWidth = 3.2; ctx.stroke();
-  // the longitudinal fissure and the lateral sulcus
-  ctx.strokeStyle = '#6a2830'; ctx.lineWidth = 3.4;
-  ctx.beginPath(); ctx.moveTo(0, -ry * 0.98); ctx.bezierCurveTo(-8, -ry * 0.4, 8, ry * 0.2, 0, ry * 0.62); ctx.stroke();
-  for (const sg of [-1, 1]) { ctx.beginPath(); ctx.moveTo(sg * rx * 0.25, ry * 0.55); ctx.bezierCurveTo(sg * rx * 0.45, ry * 0.2, sg * rx * 0.7, ry * 0.1, sg * rx * 0.88, -ry * 0.05); ctx.stroke(); }
   ctx.restore();
 }
 

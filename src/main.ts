@@ -440,7 +440,7 @@ function renderMenu() {
     h = `<h2>Upgrades</h2><p class="sub">You have <b>${career.gold}</b> gold. Clear organs to earn more (a quarter on a replay). Upgrades apply at once; an extra starting node from the next organ you start.</p>
       <div class="shop">
         <h3>Node damage</h3><ul>${(['igm', 'igg', 'iga', 'ige'] as NodeType[]).map((n) => row(`dmg-${n}` as UpgradeId, nodeImg(n))).join('')}</ul>
-        <h3>IgG targets</h3><p class="sub"><i>S. aureus</i> is always unlocked.</p><ul>${BACTERIA.filter((b) => b !== 'saureus').map((b) => row(`target-${b}` as UpgradeId, icon(b, 34), `Comes in: ${where(b)}.`)).join('')}</ul>
+        <h3>IgG targets</h3><p class="sub"><i>S. aureus</i> is always unlocked.</p><ul>${BACTERIA.filter((b) => b !== 'saureus' && (where(b) || career.bought[`target-${b}` as UpgradeId])).map((b) => row(`target-${b}` as UpgradeId, icon(b, 34), `Comes in: ${where(b)}.`)).join('')}</ul>
         <h3>Special</h3><ul>${(['broad', 'no', 'extraNode', 'cheapFirst'] as UpgradeId[]).map((id) => row(id)).join('')}</ul>
       </div>
       <p><button data-menu="back">Back</button></p>`;

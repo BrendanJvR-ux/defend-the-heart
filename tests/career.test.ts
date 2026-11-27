@@ -17,7 +17,7 @@ describe('Career: the save', () => {
   it('a fresh career has no gold, nothing cleared, no run', () => {
     const c = freshCareer();
     expect([c.version, c.gold, c.run]).toEqual([1, 0, null]);
-    expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false, false, false]);
+    expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false, false]);
     expect(unlockedCount(c)).toBe(1);
   });
 
@@ -30,7 +30,7 @@ describe('Career: the save', () => {
 
   it('migrates old progress: dth-unlocked 3 means the heart and lungs cleared, no gold', () => {
     const c = loadCareer(memory({ 'dth-unlocked': '3', 'dth-level': '2' }));
-    expect(c.cleared).toEqual([true, true, false, false, false, false, false, false, false, false, false]);
+    expect(c.cleared).toEqual([true, true, false, false, false, false, false, false, false, false]);
     expect([c.gold, c.run]).toEqual([0, null]);
     expect(unlockedCount(c)).toBe(3);
   });
@@ -53,7 +53,7 @@ describe('Career: the save', () => {
   it('missing fields in a version-1 save are filled in', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 50 }) });
     const c = loadCareer(kv);
-    expect(c.gold).toBe(50); expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false, false, false]); expect(c.run).toBeNull();
+    expect(c.gold).toBe(50); expect(c.cleared).toEqual([false, false, false, false, false, false, false, false, false, false]); expect(c.run).toBeNull();
   });
 
   it('with no storage at all, the game still gets a fresh career and saving does nothing', () => {
@@ -124,23 +124,23 @@ describe('Career: continuing a game', () => {
     expect(c.run).toBeNull(); expect(c.cleared[2]).toBe(false);
   });
 
-  it('every organ can be cleared and unlocks the next, up to eleven', () => {
+  it('every organ can be cleared and unlocks the next, up to ten', () => {
     const c = freshCareer();
     for (let i = 0; i < LEVELS.length; i++) { const s = newGame(i); s.phase = 'victory'; onOrganEnd(c, s); }
-    expect(unlockedCount(c)).toBe(11);
+    expect(unlockedCount(c)).toBe(10);
   });
 });
 
 describe('Career: gold and the shop', () => {
-  it('gold: 70 × level + 4 × health left on a first clear, a quarter on a replay, scaled by the difficulty', () => {
-    expect(goldFor(0, 12, true)).toBe(118); expect(goldFor(4, 10, true)).toBe(390); expect(goldFor(4, 10, false)).toBe(97);
-    expect(goldFor(4, 10, true, 'easy')).toBe(448); expect(goldFor(4, 10, true, 'brutal')).toBe(273);
+  it('gold: 88 × the organ\'s number + 4 × health left on a first clear, a quarter on a replay, scaled by the difficulty', () => {
+    expect(goldFor(0, 12, true)).toBe(136); expect(goldFor(4, 10, true)).toBe(480); expect(goldFor(4, 10, false)).toBe(120);
+    expect(goldFor(4, 10, true, 'easy')).toBe(Math.round(480 * 1.15)); expect(goldFor(4, 10, true, "brutal")).toBe(Math.round(480 * 0.7));
   });
 
   it('winning pays gold: full on the first clear, a quarter on a replay', () => {
     const c = freshCareer(); const s = newGame(0); s.phase = 'victory'; s.heartHp = 12;
-    expect(onOrganEnd(c, s)).toBe(118); expect(c.gold).toBe(118);
-    expect(onOrganEnd(c, s)).toBe(29); expect(c.gold).toBe(147);
+    expect(onOrganEnd(c, s)).toBe(136); expect(c.gold).toBe(136);
+    expect(onOrganEnd(c, s)).toBe(34); expect(c.gold).toBe(170);
     const l = newGame(1); l.phase = 'defeat'; expect(onOrganEnd(c, l)).toBe(0);
   });
 
@@ -216,21 +216,29 @@ describe('Career: more hostile saves', () => {
   });
 });
 
-describe('Career: a sixth organ', () => {
-  it('a five-organ save gets a sixth, locked organ: the spleen opens once the kidney is cleared', () => {
+describe('Career: saves from before the brain was removed', () => {
+  it('an old save (organs in the old order, the brain third) keeps each organ\'s record; the brain\'s is dropped', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 5, cleared: [true, true, true, true, false], best: [1, 2, 3, 4, 0] }) });
     const c = loadCareer(kv);
-    expect(c.cleared).toEqual([true, true, true, true, false, false, false, false, false, false, false]); expect(c.best).toEqual([1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0]);
-    expect(unlockedCount(c)).toBe(5);
-    c.cleared[4] = true; expect(unlockedCount(c)).toBe(6);
+    expect(c.cleared).toEqual([true, true, true, false, false, false, false, false, false, false]); expect(c.best).toEqual([1, 2, 4, 0, 0, 0, 0, 0, 0, 0]);
+    expect(c.organs).toEqual(LEVELS.map((L) => L.id));
+    expect(unlockedCount(c)).toBe(4);
+    c.cleared[3] = true; expect(unlockedCount(c)).toBe(5);
   });
-  it('the spleen pays 420 + 4 per health left on a first clear', () => { expect(goldFor(5, 10, true)).toBe(460); });
-  it('a six-organ save gets a seventh, locked organ: the bone marrow opens once the spleen is cleared', () => {
-    const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, gold: 5, cleared: [true, true, true, true, true, false], best: [1, 2, 3, 4, 5, 0] }) });
-    const c = loadCareer(kv);
-    expect(c.cleared).toEqual([true, true, true, true, true, false, false, false, false, false, false]); expect(unlockedCount(c)).toBe(6);
-    c.cleared[5] = true; expect(unlockedCount(c)).toBe(7);
+  it('an eleven-organ save: a game on the liver carries on on the liver; a game on the brain is dropped, the rest kept', () => {
+    const run = (level: number) => ({ level, wave: 2, heartHp: 15, energy: 300, no: 80, nodes: [] });
+    const eleven = (level: number) => JSON.stringify({ version: 1, gold: 77, cleared: [true, true, true, true, ...Array(7).fill(false)], best: Array(11).fill(0), run: run(level) });
+    const onLiver = loadCareer(memory({ [SAVE_KEY]: eleven(3) }));
+    expect(LEVELS[onLiver.run!.level].id).toBe('liver'); expect(onLiver.gold).toBe(77);
+    const onBrain = loadCareer(memory({ [SAVE_KEY]: eleven(2) }));
+    expect(onBrain.run).toBeNull(); expect(onBrain.gold).toBe(77); expect(onBrain.cleared.slice(0, 3)).toEqual([true, true, true]);
   });
+  it('a save made now records its organs, and reads back as it was', () => {
+    const c = freshCareer(); c.cleared[2] = true; c.best[2] = 20;
+    const kv = memory({}); saveCareer(kv, c);
+    const back = loadCareer(kv); expect(back.cleared[2]).toBe(true); expect(back.best[2]).toBe(20);
+  });
+  it('the spleen (the fifth organ) pays 440 + 4 per health left on a first clear', () => { expect(goldFor(LEVELS.findIndex((L) => L.id === 'spleen'), 10, true)).toBe(480); });
 });
 
 describe('Career: endless leaderboard', () => {
@@ -264,8 +272,8 @@ describe('Career: endless leaderboard', () => {
   });
   it('endless opens once the eye is cleared', () => {
     const c = freshCareer(); expect(endlessOpen(c)).toBe(false);
-    c.cleared = c.cleared.map(() => true); c.cleared[10] = false; expect(endlessOpen(c)).toBe(false);
-    c.cleared[10] = true; expect(endlessOpen(c)).toBe(true);
+    c.cleared = c.cleared.map(() => true); c.cleared[9] = false; expect(endlessOpen(c)).toBe(false);
+    c.cleared[9] = true; expect(endlessOpen(c)).toBe(true);
   });
   it('a saved board is read back, junk and old one-organ boards dropped', () => {
     const kv = memory({ [SAVE_KEY]: JSON.stringify({ version: 1, endless: { normal: [{ stages: 4, waves: 1, date: '2026-11-01' }, { stages: -2, waves: 0, date: 'x' }, { stages: 1.5, waves: 0, date: 'y' }, 'junk'], lungs: [{ waves: 3, date: 'z' }] } }) });
@@ -277,12 +285,12 @@ describe('Career: endless leaderboard', () => {
 describe('Career: what an organ needs', () => {
   it('lists the bacteria each organ brings, bosses counted as their species', () => {
     expect(organBacteria(0)).toEqual(['saureus']);
-    expect(organBacteria(4).sort()).toEqual(['ecoli', 'saureus']);
-    expect(organBacteria(2)).toContain('nmening'); // the meningococcus boss and its waves
+    expect(organBacteria(3).sort()).toEqual(['ecoli', 'saureus']);
+    expect(organBacteria(4)).toContain('nmening'); // the spleen's meningococci
   });
   it('names the IgG targets for an organ that are not unlocked yet', () => {
-    expect(missingTargets(4, NO_PERKS)).toEqual(['ecoli']);
-    expect(missingTargets(4, { ...NO_PERKS, targets: ['saureus', 'ecoli'] })).toEqual([]);
+    expect(missingTargets(3, NO_PERKS)).toEqual(['ecoli']);
+    expect(missingTargets(3, { ...NO_PERKS, targets: ['saureus', 'ecoli'] })).toEqual([]);
     expect(missingTargets(0, NO_PERKS)).toEqual([]);
   });
 });

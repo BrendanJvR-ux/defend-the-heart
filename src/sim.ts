@@ -130,7 +130,7 @@ export const stageMap = (stage: number) => ({
 
 /** A fresh game on the given organ (default: the one already loaded). Loads that organ's map. `stage`: an endless
  *  stage (its map winds longer and has more sites), or 0. */
-export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = 1 + level, stage = 0): State {
+export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = LEVELS[level]?.seed ?? 1 + level, stage = 0): State {
   loadLevel(level, stage ? stageMap(stage) : {});
   const L = LEVELS[level];
   const s: State = {
