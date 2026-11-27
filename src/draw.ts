@@ -27,6 +27,8 @@ export interface View {
   /** The pathogen whose details card is open (ringed on the map). */
   inspectId?: number | null;
   touch: boolean;
+  /** Choosing a vessel: for the reserve cell, or for the local antibiotic (every vessel is highlighted). */
+  target?: 'reserve' | 'abx' | null;
 }
 
 export const NODE_COLORS: Record<NodeType, { base: string; dark: string; light: string }> = {
@@ -72,6 +74,32 @@ function background(L: LevelDef = LEVEL): HTMLCanvasElement {
     ctx.drawImage(gut, 0, 880, 320, 120);
   }
   return bg;
+}
+
+/** The local antibiotic in its vessel: a green, stippled wash along it and a countdown where it enters. And while the
+ *  player is choosing a vessel (reserve or antibiotic), every vessel glows, dashed, in that choice's colour. */
+function drawTreatment(ctx: CanvasRenderingContext2D, s: State, view: View, t: number) {
+  if (view.target) {
+    const col = view.target === 'abx' ? 'rgba(90,150,40,0.55)' : 'rgba(232,160,40,0.6)';
+    ctx.save(); ctx.setLineDash([14, 10]); ctx.lineDashOffset = -t * 30; ctx.lineCap = 'round';
+    for (const v of VESSEL_IDS) { ctx.strokeStyle = col; ctx.lineWidth = vesselWidth(s, v) + 26; course(ctx, VESSELS[v]); ctx.stroke(); }
+    ctx.restore();
+  }
+  const a = s.abx;
+  if (!a || !VESSELS[a.route]) return;
+  const ves = VESSELS[a.route], k = Math.max(0, a.t / a.dur), pulse = 0.75 + 0.25 * Math.sin(t * 6);
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.strokeStyle = `rgba(110,170,50,${0.38 * pulse})`; ctx.lineWidth = vesselWidth(s, a.route) + 22; course(ctx, ves); ctx.stroke();
+  ctx.setLineDash([3, 9]); ctx.strokeStyle = 'rgba(40,90,20,0.75)'; ctx.lineWidth = 3; course(ctx, ves); ctx.stroke();
+  ctx.restore();
+  // the countdown, by where the vessel comes in, a ring that empties as the dose runs out
+  const at = pointAt(ves, ves.length * 0.3);
+  ctx.save(); ctx.translate(at.x, at.y - 46);
+  ctx.fillStyle = 'rgba(244,234,216,0.95)'; ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#3e6a1e'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, 0, 20, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); ctx.stroke();
+  ctx.strokeStyle = INKC; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#2a4a14'; ctx.font = '700 20px Palatino, Georgia, serif'; ctx.textAlign = 'center'; ctx.fillText(`${Math.ceil(a.t)}`, 0, 7);
+  ctx.restore();
 }
 
 /** A vessel's winding course, as a path. It carries on past its end, into the organ (which is drawn over it),
@@ -659,6 +687,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: State, view: View, t: num
   const order = [...VESSEL_IDS].sort((a, b) => (s.open.includes(a) ? 1 : 0) - (s.open.includes(b) ? 1 : 0));
   for (const v of order) drawVessel(ctx, s, v, view, t, flowT);
   for (const v of VESSEL_IDS) if (isFinite(forkAt(v)) && routesOf(entryOf(v))[0] === v) drawJunction(ctx, s, v);
+  drawTreatment(ctx, s, view, t);
   // vessel names, laid out once per organ to clear the sites, the organ, the next-wave tags and each other
   ctx.font = '700 24px Palatino, Georgia, serif'; ctx.textAlign = 'center';
   // the key rings only where there is a keyboard

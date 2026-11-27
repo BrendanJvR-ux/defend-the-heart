@@ -7,8 +7,12 @@ import {
   aliveCells, wave, resumeGame, leakSummary, nodeCost, buildCheck, placeNode, retargetNode, retargetCheck, nodeAt, levelDef, totalWaves, surging,
   hasTarget, borrowTarget, selectableTargets, aimedAt, openCost, pathogenPos, cancelCheck, cancelNode, igeLife, buyNo, buyNoCheck, buyCell, buyCellCheck,
   cellCount, lodgeCost, stageLevel,
+  setReserve, reserveCell, cellStatus, deployReserve, deployReserveCheck, labAvailable, labCheck, buyLab, abxAvailable, abxCheck, deployAntibiotic,
 } from './sim';
-import { exportCareer, importCareer, loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, recordEndless, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, endlessOpen, type Career, type KV, type UpgradeId } from './career';
+import { loadProgress, saveProgress, grant, recordSeen, recordKill, exportBackup, importBackup, type Progress } from './progress';
+import { sealsEarned, SEALS, STEWARDSHIP, stewardshipOpen } from './mastery';
+import { atlasHtml, atlasOrganHtml, masteryCardHtml, guideHtml, guideEntryHtml } from './rewards';
+import { loadCareer, saveCareer, snapshot, onOrganEnd, lastPlace, recordEndless, unlockedCount, freshCareer, perksOf, buy, buyCheck, UPGRADES, organBacteria, missingTargets, endlessOpen, type Career, type KV, type UpgradeId } from './career';
 import { startTutorial, tutorialTick, tutorialNext, tutorialHolds, tutorialTarget, tutorialText, manualStep, type Tutorial } from './tutorial';
 import { unlockAudio, isMuted, setMuted, sfx } from './sound';
 import { playSounds } from './soundEvents';
@@ -30,6 +34,10 @@ const store: KV = {
 let career: Career = loadCareer(store);
 let unlocked = unlockedCount(career);
 const saveNow = () => saveCareer(store, career);
+// permanent progress (seals, Field Guide, Stewardship), kept apart from the career; old careers get their first-clear seals
+let progress: Progress = loadProgress(store, career);
+const saveProgressNow = () => saveProgress(store, progress);
+saveProgressNow();
 const vesselName = (v: VesselId) => map.VESSELS[v]?.name ?? v;
 const organTitle = (i: number) => LEVELS[i].title.replace(/^The /, '');
 
@@ -238,6 +246,9 @@ canvas.addEventListener('pointerdown', (e) => {
     if (site) { openSite(site); return; }
     closeSite();
     if (vesselAt(p)) toast('Dilate during the wave: start it, then open a vessel with NO.');
+  } else if (s.phase === 'combat' && view.target) {
+    const v = vesselAt(p);
+    if (v) commitTarget(v);
   } else if (s.phase === 'combat') {
     const bug = pathogenAt(s, p, view.touch ? Math.max(8, px(14) - 16) : 0);
     if (bug) { view.inspectId = bug.id; inspectSig = ''; inspectEl.hidden = false; updateInspect(); return; }
@@ -355,19 +366,26 @@ function playLevel(i: number, confirmed = false) {
 // ── Saving: at the start of every build phase, and when an organ is won or lost ──
 let lastPhase = '';
 /** Gold paid for the organ just won (shown on the victory screen). */
-let lastPaid = 0, lastFirstClear = false;
+let lastPaid = 0, lastFirstClear = false, lastSeals: string[] = [];
 function autosave() {
   const key = `${s.level}:${s.wave}:${s.phase}`;
   if (!gameShown || key === lastPhase) return;
   lastPhase = key;
   if (s.phase === 'prep') { career.run = snapshot(s); saveNow(); }
-  else if (s.phase === 'victory' || s.phase === 'defeat') { lastFirstClear = s.phase === 'victory' && !s.endless && !career.cleared[s.level]; lastPaid = onOrganEnd(career, s); unlocked = unlockedCount(career); saveNow(); lastSig = ''; }
+  else if (s.phase === 'victory' || s.phase === 'defeat') {
+    lastFirstClear = s.phase === 'victory' && !s.endless && !career.cleared[s.level]; lastPaid = onOrganEnd(career, s); unlocked = unlockedCount(career); saveNow(); lastSig = '';
+    // mastery: every seal this won run met (a loss earns none; seals already held are not given twice)
+    lastSeals = s.phase === 'victory' ? grant(progress, levelDef(s).id, sealsEarned(s)) : [];
+    if (s.phase === 'victory' && stewardshipOpen(s) && STEWARDSHIP.met(s) && !progress.stewardship) { progress.stewardship = true; lastSeals.push('stewardship'); }
+    saveProgressNow();
+  }
 }
 
 // ── The menu ────────────────────────────────────────────────────────────────
-type MenuPage = { page: 'main' } | { page: 'howto' } | { page: 'settings' } | { page: 'backup' } | { page: 'importConfirm' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'abandon' } | { page: 'switch'; level: number; endless?: boolean };
+type MenuPage = { page: 'main' } | { page: 'guide' } | { page: 'guideEntry'; type: PathogenType } | { page: 'atlas' } | { page: 'atlasOrgan'; level: number } | { page: 'howto' } | { page: 'settings' } | { page: 'backup' } | { page: 'importConfirm' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'abandon' } | { page: 'switch'; level: number; endless?: boolean };
 let menuPage: MenuPage | null = null;
 let pendingImport: Career | null = null;
+let pendingProgress: Progress | null = null;
 let settings: Settings = loadSettings();
 applySettings(settings); watchSystemMotion(() => settings);
 let pausedBeforeMenu = false;
@@ -398,18 +416,28 @@ function renderMenu() {
         <button data-menu="endless" ${open ? '' : 'disabled'} ${lead === 'endless' ? 'class="primary"' : ''}>Endless<small>${open ? 'organ after organ, ever bigger · your leaderboard' : 'clear the eye, the last organ, first'}</small></button>
         <button data-menu="tutorial">Tutorial<small>a guided first wave on the heart</small></button>
         <button data-menu="shop">Upgrades<small>${career.gold} gold</small></button>
+        <button data-menu="atlas">Anatomy Atlas<small>organ mastery: seals, goals and replays</small></button>
+        <button data-menu="guide">Pathogen Field Guide<small>${progress.seen.length} of ${Object.keys(CONFIG.pathogens).length} kinds met</small></button>
         <button data-menu="howto">How to play<small>the whole game on one page</small></button>
         <button data-menu="settings">Settings<small>text size, motion, back up your career</small></button>
         ${gameShown ? '<button data-menu="close">Back to the game</button>' : ''}
       </div>`;
+  } else if (menuPage.page === 'guide') {
+    h = guideHtml(progress);
+  } else if (menuPage.page === 'guideEntry') {
+    h = guideEntryHtml(progress, menuPage.type);
+  } else if (menuPage.page === 'atlas') {
+    h = atlasHtml(progress, unlocked);
+  } else if (menuPage.page === 'atlasOrgan') {
+    h = atlasOrganHtml(progress, career, menuPage.level, unlocked);
   } else if (menuPage.page === 'howto') {
     h = howToPlayHtml();
   } else if (menuPage.page === 'settings') {
     h = settingsHtml(settings);
   } else if (menuPage.page === 'backup') {
     h = `<h2>Back up or restore</h2>
-      <p class="sub">Your career (organs cleared, gold, upgrades, endless runs, the game in progress) is kept in this browser only. Copy this code somewhere safe, or to another device, to bring it back there.</p>
-      <textarea id="exportCode" class="code" readonly rows="4" aria-label="Your career as a code">${esc(exportCareer(career))}</textarea>
+      <p class="sub">Your career (organs cleared, gold, upgrades, endless runs, the game in progress) and your permanent progress (organ seals, the Field Guide, Stewardship) are kept in this browser only. Copy this code somewhere safe, or to another device, to bring it back there.</p>
+      <textarea id="exportCode" class="code" readonly rows="4" aria-label="Your career as a code">${esc(exportBackup(career, progress))}</textarea>
       <div class="menuButtons"><button data-menu="copyCode" class="primary">Copy the code</button></div>
       <h3>Restore</h3><p class="sub">Paste a code here to replace this career with it.</p>
       <textarea id="importCode" class="code" rows="4" placeholder="DTH1.…" aria-label="A career code to restore"></textarea>
@@ -502,8 +530,86 @@ function onAct(e: MouseEvent) {
   if (a === 'buyNo') buyWithEnergy('no');
   if (a === 'buyCell') buyWithEnergy('cell');
   if (a === 'nextStage') nextStage();
+  if (a === 'reserve') { setReserve(s, !s.reserve); if (s.phase === 'prep') { career.run = snapshot(s); saveNow(); } lastSig = ''; }
+  if (a === 'deployReserve') startTarget('reserve');
+  if (a === 'abx') startTarget('abx');
+  if (a === 'targetV') commitTarget(el.dataset.v as VesselId);
+  if (a === 'cancelTarget') cancelTarget();
+  if (a === 'lab') { if (buyLab(s, el.dataset.kind as 'gram' | 'scan')) { sfx.coin(); career.run = snapshot(s); saveNow(); toast(s.lab!.text); } else toast(labCheck(s).reason); lastSig = ''; }
+  if (a === 'abxProfile') { progress.abxProfile = el.dataset.p === 'burst' && progress.stewardship ? 'burst' : 'standard'; saveProgressNow(); lastSig = ''; }
 }
 panel.addEventListener('click', onAct);
+
+// ── Choosing a vessel: for the reserve cell, or for the local antibiotic. Map taps, the panel's vessel buttons and the
+// route keys pick one; Cancel or Escape leaves without spending anything. ──
+function startTarget(kind: 'reserve' | 'abx') {
+  const why = kind === 'abx' ? abxCheck(s).reason : !reserveCell(s) ? 'No white cell is held in reserve.' : reserveCell(s)!.mode !== 'home' ? 'The reserve cell is still on its way back to the organ.' : '';
+  if (why) { toast(why); return; }
+  view.target = kind; closeInspect(); lastSig = '';
+}
+function cancelTarget() { view.target = null; lastSig = ''; }
+function commitTarget(v: VesselId) {
+  const kind = view.target;
+  if (!kind) return;
+  if (kind === 'reserve') {
+    const chk = deployReserveCheck(s, v);
+    if (!chk.ok) { toast(`${chk.reason} The cell stays in reserve.`); return; }
+    deployReserve(s, v); toast(`The reserve cell sets out along the ${vesselName(v).toLowerCase()}.`);
+  } else {
+    const chk = abxCheck(s, v);
+    if (!chk.ok) { toast(chk.reason); view.target = null; lastSig = ''; return; }
+    const profile = progress.stewardship ? progress.abxProfile : 'standard';
+    deployAntibiotic(s, v, profile); sfx.cancel();
+    toast(`Local antibiotic in the ${vesselName(v).toLowerCase()}: ${CONFIG.antibiotic[profile].duration} s (−${CONFIG.antibiotic.cost} energy).`);
+  }
+  view.target = null; lastSig = '';
+}
+/** The vessel list shown while choosing a vessel, with what each would cost. */
+function targetHtml(): string {
+  if (s.phase !== 'combat' || !view.target) return '';
+  const A = CONFIG.antibiotic, P = A[progress.stewardship ? progress.abxProfile : 'standard'];
+  const head = view.target === 'reserve' ? 'Deploy the reserve: choose a vessel' : 'Local antibiotic: choose a vessel';
+  const info = view.target === 'reserve'
+    ? 'An open vessel takes the cell at once. A closed one opens as usual, for its NO, if the usual limits allow.'
+    : `${A.cost} energy, ${P.now ? `${P.now} at once and then ` : ''}${P.dps} a second for ${P.duration} s to every bacterium in that vessel, including any that enter while it lasts. Viruses and your own cells are untouched; a bacterial boss takes ${Math.round(A.bossFactor * 100)}%.`;
+  const rows = map.VESSEL_IDS.map((v, i) => {
+    const note = view.target === 'reserve'
+      ? (s.open.includes(v) ? 'open: goes at once' : deployReserveCheck(s, v).ok ? `opens: ${openCost(s)} NO` : 'can\'t open now')
+      : `${A.cost} energy`;
+    return `<button data-act="targetV" data-v="${v}">${esc(vesselName(v))}<small>${esc(note)}${view.touch ? '' : ` · key ${ROUTE_KEYS[i]}`}</small></button>`;
+  }).join('');
+  return `<section class="card targeting"><h3>${esc(head)}</h3><p class="hint small">${esc(info)} Or tap the vessel on the map.</p><div class="choice targets">${rows}</div><button data-act="cancelTarget">Cancel (free)</button></section>`;
+}
+/** The reserve toggle, and during a wave how the cells stand, beside the white-cell count. */
+function reserveHtml(): string {
+  if (!levelDef(s).cells) return '';
+  const st = cellStatus(s), r = reserveCell(s);
+  const status = s.phase === 'combat' ? `<p class="hint small">${st.out} deployed · ${st.returning} returning · ${st.reserve === 'home' ? '1 in reserve' : st.reserve === 'returning' ? '<b>Returning to reserve</b>' : '0 in reserve'}</p>` : '';
+  return `${status}<div class="flist reserve"><button data-act="reserve" aria-pressed="${s.reserve}" class="${s.reserve ? 'on' : ''}">Hold 1 in reserve<small>${s.reserve ? 'on' : 'off'}</small></button>${s.phase === 'combat' ? `<button data-act="deployReserve" ${r && r.mode === 'home' ? '' : 'disabled'} title="${r ? (r.mode === 'home' ? '' : 'Still on its way back') : 'Nothing held in reserve'}">Deploy reserve<small>choose a vessel</small></button>` : ''}</div>`;
+}
+/** Lab tests between waves (one a wave), and the report, kept through the wave. */
+function labHtml(): string {
+  if (!labAvailable(s)) return '';
+  const price = CONFIG.labTests.price, rep = s.lab && s.lab.wave === s.wave ? s.lab : null;
+  if (s.phase === 'combat') return rep ? `<p class="notice lab"><b>Lab report (${rep.kind === 'gram' ? 'Gram stain' : 'vessel scan'}):</b> ${esc(rep.text)}</p>` : '';
+  if (s.phase !== 'prep') return '';
+  if (rep) return `<section class="card lab"><h3>Lab tests <span class="count">bought</span></h3><p class="hint small"><b>${rep.kind === 'gram' ? 'Gram stain' : 'Vessel scan'}:</b> ${esc(rep.text)}</p></section>`;
+  const why = labCheck(s).reason;
+  return `<section class="card lab"><h3>Lab tests <span class="count">${price} energy, one a wave</span></h3>
+    <div class="flist"><button data-act="lab" data-kind="gram" ${why ? 'disabled' : ''} title="${esc(why)}">Gram stain<small>the main Gram group of its bacteria</small></button><button data-act="lab" data-kind="scan" ${why ? 'disabled' : ''} title="${esc(why)}">Vessel scan<small>the busiest vessel</small></button></div></section>`;
+}
+/** The local antibiotic: the button and what it does during a wave; the treatment choice between waves (Stewardship). */
+function abxHtml(): string {
+  if (!abxAvailable(s)) return '';
+  const A = CONFIG.antibiotic, prof = progress.stewardship ? progress.abxProfile : 'standard', P = A[prof];
+  if (s.phase === 'prep') return progress.stewardship ? `<section class="card abx"><h3>Antibiotic treatment</h3><div class="choice3 two"><button data-act="abxProfile" data-p="standard" aria-pressed="${prof === 'standard'}" class="${prof === 'standard' ? 'on' : ''}">Standard<small>${A.standard.dps}/s for ${A.standard.duration} s: a stream of arrivals</small></button><button data-act="abxProfile" data-p="burst" aria-pressed="${prof === 'burst'}" class="${prof === 'burst' ? 'on' : ''}">Burst<small>${A.burst.now} at once, then ${A.burst.dps}/s for ${A.burst.duration} s: a group in place</small></button></div></section>` : '';
+  if (s.phase !== 'combat') return '';
+  const chk = abxCheck(s);
+  return `<section class="card abx"><h3>Local antibiotic <span class="count">${A.cost} energy · ${s.abxUsed >= A.perWave ? 'used' : '1 dose'}</span></h3>
+    ${s.abx ? `<p class="notice abxOn">Treating the ${esc(vesselName(s.abx.route).toLowerCase())}: ${Math.ceil(s.abx.t)} s left.</p>` : ''}
+    <button data-act="abx" class="abxBtn" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason)}">Local antibiotic<small>${P.now ? `${P.now} at once, then ` : ''}${P.dps}/s for ${P.duration} s on one vessel's bacteria</small></button>
+    <p class="hint small">${A.cost} energy is also two IgM nodes that keep firing in later waves.</p></section>`;
+}
 infoBody.addEventListener('click', onAct);
 
 /** Spend the organ's energy during it: NO at once, or a white cell for the rest of the organ. */
@@ -535,6 +641,8 @@ overlay.addEventListener('click', (e) => {
   if (a?.dataset.act === 'endlessBoard') openMenu({ page: 'endless' });
   if (a?.dataset.act === 'nextStage') nextStage();
   if (a?.dataset.act === 'endlessStart') playEndless(true);
+  if (a?.dataset.act === 'atlasPage') openMenu({ page: 'atlasOrgan', level: s.level });
+  if (a?.dataset.act === 'guide') openMenu({ page: 'guide' });
 });
 $('btnMenu').addEventListener('click', () => (menuPage ? closeMenu() : openMenu()));
 menuEl.addEventListener('click', (e) => {
@@ -566,6 +674,10 @@ menuEl.addEventListener('click', (e) => {
   }
   else if (a === 'back') openMenu({ page: 'main' });
   else if (a === 'howto') openMenu({ page: 'howto' });
+  else if (a === 'guide') openMenu({ page: 'guide' });
+  else if (a === 'guideEntry') openMenu({ page: 'guideEntry', type: el.dataset.type as PathogenType });
+  else if (a === 'atlas') openMenu({ page: 'atlas' });
+  else if (a === 'atlasOrgan') openMenu({ page: 'atlasOrgan', level: Number(el.dataset.level) });
   else if (a === 'settings') openMenu({ page: 'settings' });
   else if (a === 'set') {
     const k = el.dataset.key as keyof Settings, v = el.dataset.value!;
@@ -578,12 +690,14 @@ menuEl.addEventListener('click', (e) => {
     navigator.clipboard?.writeText(t.value).then(() => toast('Career code copied.'), () => toast('Select the code and copy it.')) ?? toast('Select the code and copy it.');
   }
   else if (a === 'importCode') {
-    const c = importCareer(menuEl.querySelector<HTMLTextAreaElement>('#importCode')!.value);
-    if (!c) toast('That is not a career code (it starts DTH1.).');
-    else { pendingImport = c; openMenu({ page: 'importConfirm' }); }
+    const got = importBackup(menuEl.querySelector<HTMLTextAreaElement>('#importCode')!.value);
+    if (!got) toast('That is not a backup code (it starts DTH2. or DTH1.).');
+    else { pendingImport = got.career; pendingProgress = got.progress; openMenu({ page: 'importConfirm' }); }
   }
   else if (a === 'importYes' && pendingImport) {
     career = pendingImport; pendingImport = null; unlocked = unlockedCount(career); saveNow();
+    // the code's permanent progress replaces this browser's (an older career-only code leaves it as it is)
+    if (pendingProgress) { progress = pendingProgress; pendingProgress = null; } progress = loadProgress({ get: () => JSON.stringify(progress), set: () => {} }, career); saveProgressNow();
     const sp = s.speed; s = career.run ? resumeGame(career.run, perksOf(career)) : newGame(0, perksOf(career)); s.speed = sp;
     lastPhase = ''; spentToasted = 0; organTagFor = ''; prepareOrgan(s.level); lastSig = '';
     openMenu({ page: 'main' }); toast('Career restored.');
@@ -630,7 +744,8 @@ window.addEventListener('keydown', (e) => {
   const keyed = e.key.length === 1 && ROUTE_KEYS.includes(e.key) ? map.VESSEL_IDS[ROUTE_KEYS.indexOf(e.key)] : undefined;
   if ((e.key === 'm' || e.key === 'M') && tag !== 'INPUT' && tag !== 'TEXTAREA') { toggleSound(); return; }
   if (menuPage) { if (e.key === 'Escape' && gameShown && menuPage.page !== 'switch') { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); } return; }
-  if (keyed) choose(keyed);
+  if (keyed) { if (view.target && s.phase === 'combat') commitTarget(keyed); else choose(keyed); }
+  else if (e.key === 'Escape' && view.target) cancelTarget();
   // Esc closes a pathogen's details first, then steps back from the IgG target list, then closes the build menu
   else if (e.key === 'Escape' && !infoEl.hidden) setInfo(false);
   else if (e.key === 'Escape') { if (view.inspectId != null) closeInspect(); else if (view.selectedSite && view.popMode !== 'main') openSite(view.selectedSite, 'main'); else closeSite(); }
@@ -649,7 +764,7 @@ window.addEventListener('keydown', (e) => {
 // ── Panel, HUD and overlays ─────────────────────────────────────────────────
 let lastSig = '';
 function signature() {
-  return JSON.stringify([career.gold, s.extraCells, lodgeCost(s), s.stage, s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.open.join(), s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
+  return JSON.stringify([view.target, s.reserve, reserveCell(s)?.mode, cellStatus(s).out, cellStatus(s).returning, s.lab?.wave, s.abxUsed, s.abx ? Math.ceil(s.abx.t) : 0, progress.abxProfile, s.stats.reserveHits.length, career.gold, s.extraCells, lodgeCost(s), s.stage, s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.open.join(), s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
 }
 
 
@@ -716,7 +831,10 @@ function renderPanel() {
       <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
         <ul class="key compact">${NODE_TYPES.map((t) => `<li title="${esc(CONFIG.nodes[t].blurb)}"><img alt="" src="${nodeIcon(t)}" width="34" height="26"><b>${CONFIG.nodes[t].short}</b> ${CONFIG.nodes[t].cost + (L.handicap.nodeCost ?? 0)}</li>`).join('')}</ul>
         <p class="hint small">${view.touch ? 'Tap' : 'Click'} a + site to build; ${view.touch ? 'tap' : 'click'} a new node to cancel it.</p></section>
-      <section class="card"><h3>Extras <span class="count">${s.energy} energy</span></h3><div class="flist goldBuys">${buyButtons(['no', 'cell'])}</div></section>
+      ${labHtml()}
+      <section class="card"><h3>Extras <span class="count">${s.energy} energy</span></h3><div class="flist goldBuys">${buyButtons(['no', 'cell'])}</div>${levelDef(s).cells ? `<p class="hint small">White cells: ${cellCount(s)} this wave</p>` : ''}${reserveHtml()}</section>
+      ${abxHtml()}
+      ${masteryCardHtml(s, progress)}
       ${lastWaveHtml()}`;
     info = `<section class="card organ"><h3>Level ${s.level + 1} · ${esc(L.title)}</h3><p class="hint small"><b>${esc(L.tagline)}</b> ${esc(L.twist)}</p><p class="hint small needs">${esc(L.handicap.text)}</p>
         <div class="levels">${LEVELS.map((l, i) => `<button data-act="level" data-level="${i}" class="${i === s.level ? 'on' : ''}" ${i < unlocked ? '' : 'disabled'} title="${i < unlocked ? (i === s.level ? 'Restart this organ' : `Play ${esc(l.title)}`) : 'Locked: clear the previous organ'}">${i + 1}<small>${i < unlocked ? esc(organTitle(i)) : 'locked'}</small></button>`).join('')}</div></section>
@@ -739,7 +857,7 @@ function renderPanel() {
     const openNames = s.open.map((v) => esc(vesselName(v).toLowerCase()));
     const where = s.open.length ? (out ? `Patrolling the ${openNames.join(' and the ')}${s.open.length > 1 ? `, split ${s.open.length} ways` : ''}.` : `Heading home before setting out along the ${openNames.join(' and the ')}.`) : returning ? `Returning to the ${organ}.` : `Waiting at the ${organ}: open a vessel to send them out.`;
     const noLow = s.no < openNeed() && !s.open.length;
-    h = `<h2 class="waveTitle"><small>${s.endless ? `Stage ${s.stage} · ` : ''}Wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>${lodgedHtml()}
+    h = `${targetHtml()}<h2 class="waveTitle"><small>${s.endless ? `Stage ${s.stage} · ` : ''}Wave ${s.wave} of ${totalWaves(s)}</small>${esc(def.title)}</h2>${lodgedHtml()}
       <section class="card"><h3>Dilate <span class="count"><span data-no>${Math.floor(s.no)}</span> / ${s.perks.noMax} NO</span></h3>
         <p class="nogauge ${noLow ? 'low' : ''}" role="img" aria-label="NO ${Math.floor(s.no)} of ${s.perks.noMax}${noLow ? ', too low to open a vessel' : ''}"><i data-nobar style="width:${Math.min(100, (s.no / s.perks.noMax) * 100)}%"></i></p>${noLow ? '<p class="hint small needs">Too low to open: it refills while all are closed.</p>' : ''}
         <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? (view.touch ? 'open · tap to close' : `open · key ${ROUTE_KEYS[i]}`) : (view.touch ? 'resting' : `key ${ROUTE_KEYS[i]}`)}</small></button>`).join('')}</div>
@@ -751,7 +869,8 @@ function renderPanel() {
       <section class="card"><h3>White cells <span class="count">${cells} of ${cellCount(s)}</span></h3>
         <p class="cells">${Array.from({ length: cellCount(s) }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 26)}</span>`).join('')}</p>
         ${levelDef(s).cells ? `<div class="flist goldBuys">${buyButtons(['cell'])}</div>` : ''}
-        <p class="hint small">${where}${s.infections ? ` <b>${s.infections} infected.</b>` : ''}</p></section>`;
+        <p class="hint small">${where}${s.infections ? ` <b>${s.infections} infected.</b>` : ''}</p>${reserveHtml()}</section>
+      ${abxHtml()}${labHtml()}`;
     info = `<h2><small>Defend · ${s.endless ? `stage ${s.stage}, wave ${s.wave} of ${totalWaves(s)}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
       <section class="card"><h3>Dilating</h3><p class="hint">Open as many vessels as you have white cells: they are split evenly among them. Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), and an open vessel drains ${CONFIG.no.drainPerSec} a second; each more vessel costs only ${CONFIG.no.extraOpenCost} to open and drains ${CONFIG.no.extraDrainPerSec} more a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out every vessel closes.</p></section>
       <section class="card"><h3>White cells</h3><p class="hint">${s.infections ? `${s.infections} infected by hijacker viruses: each goes for the nearest lymph node on its vessel, and knocks it out for the rest of the wave if it gets there.` : 'Keep them clear of hijacker viruses: an infected cell knocks out the first lymph node it reaches.'}</p></section>
@@ -818,7 +937,8 @@ function renderOverlay() {
     lastSig = '';
     const next = s.level + 1 < LEVELS.length ? s.level + 1 : -1;
     overlay.hidden = false; overlay.className = 'victory';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>${lastFirstClear ? 'Unlocked' : 'Next'}: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : `<p><b>Every organ is safe.</b> The whole body has been defended.${lastFirstClear ? ' <b>Endless is open</b>: organ after organ, each bigger than the last.' : ''}</p><button data-act="endlessStart" class="primary">Start endless</button> <button data-act="restart">Play again</button>`}</div>`;
+    const sealNames = lastSeals.map((id) => (id === 'stewardship' ? STEWARDSHIP.title : SEALS[L.id].find((x) => x.id === id)?.title ?? id));
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Level ${s.level + 1} complete</p><h2>The ${esc(org)} ${plural} safe</h2><p>${esc(L.organ)} health ${s.heartHp}/${L.hp} · ${s.killed} pathogens destroyed</p>${sealNames.length ? `<p class="sealsWon"><b>Seal${sealNames.length === 1 ? '' : 's'} earned:</b> ${sealNames.map(esc).join(', ')}${lastSeals.includes('stewardship') ? ' (the Burst treatment is unlocked)' : ''}</p>` : ''}<p><button data-act="atlasPage">Atlas page</button></p>${lastPaid ? `<p class="gold">+${lastPaid} gold · ${career.gold} in all <button data-act="shop">Upgrades</button></p>` : ''}${next >= 0 ? `<p>${lastFirstClear ? 'Unlocked' : 'Next'}: <b>${esc(LEVELS[next].title)}</b>. ${esc(LEVELS[next].tagline)}</p><button data-act="level" data-level="${next}" class="primary">Next organ</button> <button data-act="restart">Play again</button>` : `<p><b>Every organ is safe.</b> The whole body has been defended.${lastFirstClear ? ' <b>Endless is open</b>: organ after organ, each bigger than the last.' : ''}</p><button data-act="endlessStart" class="primary">Start endless</button> <button data-act="restart">Play again</button>`}</div>`;
   } else if (s.phase === 'defeat' && s.endless) {
     // an endless run ends here: how far it got, and where that puts it on the board
     const stages = s.stage - 1, board = career.endless[career.difficulty] ?? [], best = board[0]?.stages ?? stages;
@@ -836,14 +956,15 @@ function renderOverlay() {
       <button data-act="nextStage" class="primary">Stage ${k}</button></div>`;
   } else if (s.phase === 'defeat') {
     overlay.hidden = false; overlay.className = 'defeat';
-    overlay.innerHTML = `<div class="plate"><p class="kicker">Wave ${s.wave}</p><h2>The ${esc(L.organ.toLowerCase())} has failed</h2>${defeatAdvice()}<button data-act="restart" class="primary">Restart</button></div>`;
+    overlay.innerHTML = `<div class="plate"><p class="kicker">Wave ${s.wave}</p><h2>The ${esc(L.organ.toLowerCase())} has failed</h2>${defeatAdvice()}<button data-act="restart" class="primary">Restart</button> <button data-act="atlasPage">Atlas page</button></div>`;
   } else if (s.paused) {
     overlay.hidden = false; overlay.className = 'paused';
-    overlay.innerHTML = `<div class="plate"><h2>Paused</h2><button data-act="resume" class="primary">Resume</button> <button data-act="restart">Restart</button></div>`;
+    overlay.innerHTML = `<div class="plate"><h2>Paused</h2><button data-act="resume" class="primary">Resume</button> <button data-act="restart">Restart</button> <button data-act="guide">Field Guide</button></div>`;
   } else { overlay.hidden = true; overlay.innerHTML = ''; }
 }
 
 function refresh(now: number) {
+  if (view.target && (s.phase !== 'combat' || menuPage)) view.target = null;
   const sig = signature();
   if (sig !== lastSig) { lastSig = sig; renderPanel(); }
   renderHud();
@@ -875,6 +996,10 @@ function describeMap() {
 const tipEl = $('tip');
 let tipShown: string | null = null;
 const TIPS: { id: string; when: () => boolean; title: string; body: string }[] = [
+  { id: 'antibiotic', when: () => abxAvailable(s) && (s.phase === 'prep' || s.phase === 'combat'), title: 'Local antibiotic',
+    body: `Unlocked. Once a wave, for ${CONFIG.antibiotic.cost} energy, treat one vessel for ${CONFIG.antibiotic.standard.duration} s: every bacterium in it takes damage, including any that enter while it lasts; viruses and your cells are untouched. During a wave, choose Local antibiotic, then a vessel.` },
+  { id: 'lab', when: () => labAvailable(s) && s.phase === 'prep', title: 'Lab tests',
+    body: `Before a wave you can buy one lab test for ${CONFIG.labTests.price} energy: a Gram stain (the main Gram group of its bacteria) or a vessel scan (the busiest vessel). The report stays through the wave.` },
   { id: 'hidden', when: () => s.phase === 'prep' && s.level > 0, title: 'You won\'t see what is coming',
     body: 'A wave\'s pathogens, and the vessels they take, show only once it starts. After each wave, the side panel lists what came up each vessel and what it cost: build for the next from that.' },
   { id: 'inspect', when: () => s.phase === 'combat' && s.pathogens.some((p) => p.s > 0), title: 'What is that?',
@@ -908,6 +1033,20 @@ tipEl.addEventListener('click', (e) => {
   career.tips.push(tipShown); saveNow(); tipShown = null; tipEl.hidden = true;
 });
 
+/** What the game reports seeing and defeating goes into the permanent Field Guide. */
+function recordDiscoveries() {
+  if (!s.seen.length && !s.kills.length) return;
+  let changed = false;
+  for (const t of s.seen) if (recordSeen(progress, t)) { changed = true; toast(`Field Guide: a new entry, ${CONFIG.pathogens[t].name}.`); }
+  for (const k of s.kills) {
+    const r = recordKill(progress, k.type, k.method);
+    if (r) changed = true;
+    if (r === 'second') toast(`Field Guide: second discovery for ${CONFIG.pathogens[k.type].name}, defeated two ways.`);
+  }
+  s.seen = []; s.kills = [];
+  if (changed) saveProgressNow();
+}
+
 function frame(now: number) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
@@ -915,6 +1054,7 @@ function frame(now: number) {
   // the tutorial stops time at the moments that can't wait, until the player acts
   if (!s.paused && !(tut && tutorialHolds(tut, s))) advance(s, dt);
   autosave();
+  recordDiscoveries();
   notices.tick(s, dt, !!tut);
   refresh(now);
   updateInspect();

@@ -204,6 +204,39 @@ The first six have 70 health and the same speed; *M. tuberculosis* is tougher (1
 
 **Pathogens:** the twelve bacteria above (slow, tough), viruses (small, fast, in groups), jumping viruses, and **hijacker viruses**: if one reaches a white cell it gets inside, the cell is lost, and it becomes an **infected white cell** that goes for the **nearest lymph node on its vessel** (back the way it came if need be) and knocks it out for the rest of the wave if it gets there; with no node to go for, it heads for the organ. The heart's five waves introduce these one at a time; later organs mix them.
 
+### The reserve cell, lab tests and the local antibiotic
+
+**Hold 1 in reserve** (beside the white-cell count, between waves and during them; off by default) keeps one living white cell at the organ while the others follow the usual sharing of open vessels. During a wave the panel shows how many cells are deployed, returning and in reserve. Turned on while every cell is out, it recalls the cell nearest the organ at normal speed, shown as **Returning to reserve** until it arrives; that works for the last living cell too. A held cell at the organ touches nothing, so the immune pulse can't spend it. **Deploy reserve** then asks for a vessel (tap it on the map, pick it from the panel's list, or press its key): an open vessel takes the cell at once; a closed one opens as usual, for its NO and within the usual limits. Deploying turns the reserve off; cancelling (Cancel or Escape), or a vessel that can't be opened, keeps the cell held and spends nothing.
+
+**Lab tests** (from the second organ on, between waves, one a wave, **20 energy**): a **Gram stain** reports the main Gram group among the wave's scheduled bacteria ("Mixed Gram result" on a tie, "No bacteria detected" for a wave without them; viruses are outside its scope), and a **vessel scan** names the vessel (or tied vessels) bringing the most pathogens, without saying what or when. The report is read from the wave's actual plan, which is fixed when the test is bought and used when the wave starts; it stays on screen through the wave, is kept in the save (a reload can't reroll it or charge twice), and opening, closing or rereading the panel is free.
+
+**Local antibiotic** (unlocked once the fifth organ is cleared, used from the sixth organ on, and in endless; existing careers that have cleared the fifth get it): once a wave, **120 energy**, into one vessel for **6 s**. Every bacterium in that vessel takes **16 a second** (a bacterial boss 30% of that), including any that enter while it lasts; viruses, parasites and your own cells are untouched, and it stays in its vessel if dilation changes. Choosing **Local antibiotic** highlights every vessel and shows the cost, duration and effect; picking a vessel commits the dose (energy is spent only then); cancelling is free. The treated vessel glows green with a countdown ring. 120 energy is also two IgM nodes that keep firing for the rest of the organ, which is the trade-off. A one-time tip introduces it.
+
+### Mastery, the Field Guide and the Anatomy Atlas
+
+These are permanent: kept in this browser apart from the career (a new career keeps them), carried in the backup code (now `DTH2.`, career and progress together; older `DTH1.` codes still restore the career), and never given twice (a reload replays from the last wave's start, and a seal or method already held is not added again).
+
+**Organ mastery**: three seals per organ. The first is for clearing it; the other two reward a tactic suited to it. Goals and progress show in the panel's Mastery card while preparing ("1 of 2 vessels intercepted from the reserve"). Every seal a won run meets is awarded when the organ is cleared, several at once if so; a loss awards none; endless stages award none. Older careers get the first-clear seal for every organ they have cleared.
+
+| Organ | Tactical seals |
+|---|---|
+| Heart | **Rapid Response**: in one run, send a held reserve cell down two different vessels and have it meet a pathogen in each. **Lean Defence**: clear without buying an extra white cell. |
+| Lungs | **Second Wind**: clear without buying NO. **Clear Airways**: lose no health in the last wave. |
+| Liver | **Gallbladder Intact**: clear without the gallbladder bursting. **Full Recovery**: finish at full health. |
+| Kidney | **Clean Filter**: no white cell infected. **Strong Finish**: lose no health in the last two waves. |
+| Spleen | **No Replacements**: the spleen remakes no white cell. **Capsule Breaker**: IgG nodes deal the final blow to 12 bacteria. |
+| Bone marrow | **No Lodging**: no *M. tuberculosis* lodged. **Full Muster**: five white cells out at once. |
+| Stomach | **No Ulcers**: no *H. pylori* lodged. **Acid Test**: the acid deals the final blow to 10 pathogens. |
+| Lymph node | **Full Strength**: no lymph node weakened below 80%. **Pulse Discipline**: clear without the immune pulse. |
+| Skin | **Close Quarters**: white cells (contact or pulse) deal the final blow to 25 pathogens. **Field Rations**: buy no NO or white cells. |
+| Eye | **Read the Signs**: buy a lab test before every wave. **Sharp-Eyed**: lose at most 3 health. |
+
+**Stewardship** (on the lymph node, once the local antibiotic is unlocked): *Clear the organ. During the marked wave (wave 1, streptococci with viruses), use exactly one antibiotic dose and defeat at least three bacteria with that dose.* Kills are credited to the dose by final blow. It permanently unlocks a choice, made between waves, between **Standard** (16 a second for 6 s: suits a stream of arrivals) and **Burst** (60 at once, then 18 a second for 2 s: suits a group already in place). Both cost the same, treat one vessel, once a wave, the same bacteria and bosses; against a bacterium there throughout they deal the same 96. Measured on the simulation: against a clustered group the two deal the same total (483 against 480 over five bacteria), against a staggered stream Standard deals far more (414 against 149).
+
+**The Pathogen Field Guide** (main menu, and the pause screen; opening it mid-wave pauses and returns to the same moment): an entry opens the first time a kind appears in battle, with the game's own drawing of it, its kind, how to tell it, its traits, where it comes and a tactical note. Its **second discovery**, an annotated note, comes from defeating that kind by two different methods across any runs: lymph node attack, white-cell contact, immune pulse or local antibiotic, credited by the final blow, each counted once; only methods that can defeat it are listed (no cells or pulse for what ignores cells, no antibiotic for viruses), and the entry shows which are recorded.
+
+**The Anatomy Atlas** (main menu, and an **Atlas page** button on an organ's result screen) shows the organs in campaign order: a faint silhouette until reached, inked once cleared, in full colour with all three seals, each with its seal count and its seals' own marks (◆ ● ▲, filled when earned, hollow when not), readable without colour. An organ's page gives its mechanic, its seals with the exact goals still open, Stewardship where it applies, and **Replay** (the usual organ change, with its confirmation; a replay pays a quarter of the gold, and seals can be earned on any clear).
+
 ### Controls
 
 | | Mouse / touch | Keyboard |
@@ -218,7 +251,7 @@ The first six have 70 health and the same speed; *M. tuberculosis* is tougher (1
 
 ### Tuning
 
-Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy per wave, node types (cost, damage, rate, reach, slow, burn-out), the IgG match multipliers (`iggMatch`), broad IgG's cost and re-aim cost, white cells, the pulse, the NO gauge (`no`: capacity, opening cost, drain, refill, top-up), what energy buys in an organ (`energyBuys`), the difficulties (`difficulty`), endless (`endless`), pathogens (health, speed, Gram stain / shape / species for bacteria, organ damage, contact damage, infection, `jumps`, `lodges`). Then `LEVELS`, one entry per organ: health, starting energy, white cell count, its `feature` and `handicap`, any `damageMul`, its twist (`surge`, `regenPerWave`, `filtration`, `respawn`), its map (organ centre and size, vessel paths with any `fork` and its two branches, where along each route the build sites go, and `gaugeDrop` where the NO gauge would cover a vessel name) and its waves. [`src/level.ts`](src/level.ts) turns the loaded organ's vessels into routes (a forked vessel becomes two routes sharing a stem), winds them (`BASE_WIND` 1.5: how many times longer than the corner points) and places the sites.
+Everything is in [`src/config.ts`](src/config.ts). Shared rules first: energy per wave, node types (cost, damage, rate, reach, slow, burn-out), the IgG match multipliers (`iggMatch`), broad IgG's cost and re-aim cost, white cells, the pulse, the NO gauge (`no`: capacity, opening cost, drain, refill, top-up), what energy buys in an organ (`energyBuys`), lab tests (`labTests`: price, first organ), the local antibiotic (`antibiotic`: unlock and first organ, cost, doses a wave, boss factor, the Standard and Burst profiles, and Stewardship's organ, wave and kills), the difficulties (`difficulty`), endless (`endless`), pathogens (health, speed, Gram stain / shape / species for bacteria, organ damage, contact damage, infection, `jumps`, `lodges`). Then `LEVELS`, one entry per organ: health, starting energy, white cell count, its `feature` and `handicap`, any `damageMul`, its twist (`surge`, `regenPerWave`, `filtration`, `respawn`), its map (organ centre and size, vessel paths with any `fork` and its two branches, where along each route the build sites go, and `gaugeDrop` where the NO gauge would cover a vessel name) and its waves. [`src/level.ts`](src/level.ts) turns the loaded organ's vessels into routes (a forked vessel becomes two routes sharing a stem), winds them (`BASE_WIND` 1.5: how many times longer than the corner points) and places the sites.
 
 ### Balance assumptions
 
@@ -275,6 +308,7 @@ Tap a + site to build (between waves), Start wave, tap a vessel to open or close
 | `src/orientation.ts` | The full-screen, landscape button for phones that allow it. |
 | `public/` | The web app's manifest, icons (`icon.svg`, PNGs, the Apple touch icon) and `sw.js`, the service worker that lets it play offline. |
 | `src/three/scene3d.ts`, `src/three/main3d.ts`, `play3d.html` | The 3D prototype: the scene built from the game state (paper, organ relief, vessel tubes, cut-outs, nodes), and its page (taps, build menu, controls). |
+| `src/progress.ts`, `src/mastery.ts`, `src/guide.ts`, `src/rewards.ts` | Permanent progress (its store, migration and backup), the organ seals and Stewardship (each seal's words and its check together), the Field Guide's entries, and the Atlas, Guide and mastery pages. |
 | `src/main.ts` | HUD, panel, the menu, the tutorial's callout, autosave, build popover and IgG target picker, mouse / touch / keyboard input, overlays. |
 | `tests/tutorial.test.ts` | The tutorial played through on the real simulation: every step in order, the holds, skipping the pulse if the wave ends, the saved seen flag. |
 | `tests/career.test.ts` | The save (fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing), gold, the shop and upgrade effects. |

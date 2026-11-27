@@ -1,7 +1,7 @@
 // The career: gold, purchases, organs cleared and the game in progress, saved in one versioned
 // localStorage entry. No DOM here, so it is tested directly; the store is passed in.
 import { CONFIG, LEVELS, BACTERIA, DIFFICULTIES, type BacteriumType, type Difficulty, type NodeType, type PathogenType } from './config';
-import type { State } from './sim';
+import type { State, LabReport, RunStats } from './sim';
 
 /** Things gold can buy (Stage 3 prices them). */
 export type UpgradeId =
@@ -44,8 +44,10 @@ export interface Perks {
   noMax: number;
   extraNode: boolean;
   cheapFirst: boolean;
+  /** The local antibiotic is unlocked (the fifth campaign organ has been cleared). */
+  antibiotic?: boolean;
 }
-export const NO_PERKS: Perks = { dmg: { igm: 1, igg: 1, iga: 1, ige: 1 }, targets: ['saureus'], broad: false, mode: 'normal', noMax: CONFIG.no.max, extraNode: false, cheapFirst: false };
+export const NO_PERKS: Perks = { dmg: { igm: 1, igg: 1, iga: 1, ige: 1 }, targets: ['saureus'], broad: false, mode: 'normal', noMax: CONFIG.no.max, extraNode: false, cheapFirst: false, antibiotic: false };
 
 export function perksOf(c: Career): Perks {
   const lvl = (id: UpgradeId) => c.bought[id] ?? 0;
@@ -54,6 +56,7 @@ export function perksOf(c: Career): Perks {
     dmg: { igm: dmg('igm'), igg: dmg('igg'), iga: dmg('iga'), ige: dmg('ige') },
     targets: BACTERIA.filter((b) => b === 'saureus' || lvl(`target-${b}` as UpgradeId) > 0),
     broad: lvl('broad') > 0, mode: c.difficulty, noMax: CONFIG.no.max + 20 * lvl('no'), extraNode: lvl('extraNode') > 0, cheapFirst: lvl('cheapFirst') > 0,
+    antibiotic: !!c.cleared[CONFIG.antibiotic.unlockAfter - 1],
   };
 }
 
@@ -107,6 +110,12 @@ export interface RunSave {
   lodged?: Partial<Record<PathogenType, number>>;
   /** Saved since every vessel started with a free IgM (older saves get theirs when they are continued). */
   freeNodes?: boolean;
+  /** Hold one white cell in reserve. */
+  reserve?: boolean;
+  /** This wave's lab test, bought (its report stays: a reload can't reroll it). */
+  lab?: LabReport;
+  /** What happened in this organ so far, for its mastery seals. */
+  stats?: RunStats;
 }
 
 export interface Career {
@@ -285,6 +294,9 @@ export function snapshot(s: State): RunSave {
     ...(s.stage ? { stage: s.stage } : {}),
     ...(s.extraCells ? { extraCells: s.extraCells } : {}),
     ...(Object.keys(s.lodged).length ? { lodged: { ...s.lodged } } : {}),
+    ...(s.reserve ? { reserve: true } : {}),
+    ...(s.lab && s.lab.wave === s.wave ? { lab: { ...s.lab } } : {}),
+    stats: JSON.parse(JSON.stringify(s.stats)) as RunStats,
   };
 }
 

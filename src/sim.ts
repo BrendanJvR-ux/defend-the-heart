@@ -1,7 +1,7 @@
 // Defend the Heart: state, rules and simulation. Pure logic, no DOM, so it runs in tests too.
 import { CONFIG, LEVELS, NODE_TYPES, type BacteriumType, type BossType, type Handicap, type LevelDef, type NodeType, type PathogenType, type VesselId, type WaveDef, type WaveGroup } from './config';
 import { NO_PERKS, type Perks, type RunSave } from './career';
-import { VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, siteById, HEART, LEVEL_INDEX, BASE_WIND, loadLevel, pointAt, dist, entryOf, forkAt, routesOf, type Vec } from './level';
+import { VESSELS, VESSEL_IDS, ENTRY_IDS, SITES, siteById, HEART, LEVEL_INDEX, BASE_WIND, loadLevel, pointAt, dist, entryOf, entryDef, forkAt, routesOf, type Vec } from './level';
 
 export type Phase = 'prep' | 'combat' | 'recall' | 'victory' | 'defeat';
 
@@ -26,7 +26,33 @@ export interface Pathogen {
 }
 /** home: waiting at the organ; out: travelling and fighting along the open vessel; returning: heading home, not fighting. */
 export type CellMode = 'home' | 'out' | 'returning';
-export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; targetId: number | null; mode: CellMode; infected: boolean }
+export interface WhiteCell { id: number; vessel: VesselId; s: number; hp: number; maxHp: number; hit: number; side: number; targetId: number | null; mode: CellMode; infected: boolean;
+  /** Sent out from the reserve (it counts for Rapid Response when it meets a pathogen). */
+  fromReserve?: boolean }
+/** What dealt a pathogen its final blow. */
+export type KillMethod = 'node' | 'cell' | 'pulse' | 'antibiotic' | 'organ';
+/** A lab test bought for a wave, and its report. */
+export interface LabReport { wave: number; kind: 'gram' | 'scan'; text: string }
+/** The local antibiotic, working in one vessel. */
+export interface Treatment { route: VesselId; t: number; dur: number; dps: number; profile: 'standard' | 'burst' }
+/** What happened in this organ so far, for its mastery seals (kept in the save between waves). */
+export interface RunStats {
+  /** Vessels (as they enter the map) where a cell sent from the reserve met a pathogen. */
+  reserveHits: VesselId[];
+  /** Vessels where any white cell met a pathogen. */
+  cellHits: VesselId[];
+  cellsBought: number; noBought: number; pulses: number; infections: number; doses: number; remade: number;
+  /** Waves with a lab test bought. */
+  labWaves: number[];
+  /** Organ health lost in each wave (index = wave number). */
+  waveLoss: number[];
+  /** The most white cells out on vessels at once; the weakest any lymph node got (lymph node organ). */
+  maxOut: number; minPower: number;
+  kills: Partial<Record<KillMethod, number>>; iggKills: number;
+  /** Stewardship: doses used in the marked wave, and bacteria they defeated. */
+  stewardDoses: number; stewardKills: number;
+}
+export const freshStats = (): RunStats => ({ reserveHits: [], cellHits: [], cellsBought: 0, noBought: 0, pulses: 0, infections: 0, doses: 0, remade: 0, labWaves: [], waveLoss: [], maxOut: 0, minPower: 1, kills: {}, iggKills: 0, stewardDoses: 0, stewardKills: 0 });
 /** `targets`: what an IgG node is aimed at (one); empty for other types.
  *  `wavesFought`: cleared waves since it was placed (IgE burns out). */
 export interface LymphNode {
@@ -113,6 +139,20 @@ export interface State {
   recallTime: number;
   lastPulseHits: number;
   message: string;
+  /** Hold one white cell in reserve at the organ (`reserveId`: which; null when none is held yet). */
+  reserve: boolean;
+  reserveId: number | null;
+  /** This wave's lab report (shown while `wave` matches), and the wave plan it was read from (used when it starts). */
+  lab: LabReport | null;
+  plan: Spawn[] | null;
+  /** The local antibiotic working now, and doses used this wave. */
+  abx: Treatment | null;
+  abxUsed: number;
+  stats: RunStats;
+  /** Pathogens defeated, and kinds seen for the first time in this game, for the page to record (it empties them). */
+  kills: { type: PathogenType; method: KillMethod }[];
+  seen: PathogenType[];
+  seenTypes: PathogenType[];
 }
 
 const zeroWidths = () => Object.fromEntries(VESSEL_IDS.map((v) => [v, 0])) as Record<VesselId, number>;
@@ -138,6 +178,7 @@ export function newGame(level = LEVEL_INDEX, perks: Perks = NO_PERKS, seed = LEV
     perks, endless: stage > 0, stage, extraCells: 0, lodged: {}, borrowed: [], wounds: [], bile: [], waveLog: null, discountUsed: false, rng: seed >>> 0, respawns: [], leaks: { byVessel: {}, byType: {} },
     width: zeroWidths(), forkFlip: {}, spent: [], nodes: [], pathogens: [], cells: [], shots: [], rings: [], floaters: [], notices: [], spawns: [],
     pulsesLeft: 0, waveTime: 0, time: 0, heartKick: 0, nextId: 1, leaked: 0, killed: 0, infections: 0, recallTime: 0, lastPulseHits: 0, message: '',
+    reserve: false, reserveId: null, lab: null, plan: null, abx: null, abxUsed: 0, stats: freshStats(), kills: [], seen: [], seenTypes: [],
   };
   for (const n of L.startingNodes ?? []) {
     const site = SITES.find((x) => x.vessel === n.vessel && x.index === n.site);
@@ -182,6 +223,10 @@ export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
   s.no = Math.max(0, Math.min(perks.noMax + CONFIG.energyBuys.no.amount, run.no));
   s.borrowed = (run.borrowed ?? []).filter((b, i, a) => CONFIG.pathogens[b]?.taxon && a.indexOf(b) === i);
   s.bile = (run.bile ?? []).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y)).slice(0, 8);
+  s.reserve = run.reserve === true;
+  if (run.stats && typeof run.stats === 'object') s.stats = { ...freshStats(), ...run.stats, kills: { ...(run.stats.kills ?? {}) } };
+  // a lab test bought for this wave stays bought: the same report, read from the same (fixed) wave plan
+  if (run.lab && run.lab.wave === s.wave && (run.lab.kind === 'gram' || run.lab.kind === 'scan') && typeof run.lab.text === 'string') { s.lab = { ...run.lab }; s.plan = waveSpawns(s.wave, s.level, s.stage, perks.mode); }
   // a save of an organ not yet begun (the next endless stage) keeps the fresh organ's own starting nodes
   if (!run.nodes.length && s.wave === 1) return s;
   s.nodes = [];
@@ -427,6 +472,7 @@ export function buyNoCheck(s: State): { ok: boolean; reason: string } {
 export function buyNo(s: State): boolean {
   if (!buyNoCheck(s).ok) return false;
   s.energy -= CONFIG.energyBuys.no.energy;
+  s.stats.noBought++;
   s.no = Math.min(s.perks.noMax + CONFIG.energyBuys.no.amount, s.no + CONFIG.energyBuys.no.amount);
   return true;
 }
@@ -442,6 +488,7 @@ export function buyCellCheck(s: State): { ok: boolean; reason: string } {
 export function buyCell(s: State): boolean {
   if (!buyCellCheck(s).ok) return false;
   s.energy -= CONFIG.energyBuys.cell.energy;
+  s.stats.cellsBought++;
   s.extraCells++;
   if (s.phase === 'combat') { s.cells.push(newCell(s, aliveCells(s).length)); deployHome(s); }
   return true;
@@ -477,7 +524,7 @@ export function dilateCheck(s: State, r: VesselId): { ok: boolean; reason: strin
   if (s.no < openNeed()) return { ok: false, reason: `Not enough NO to open the ${VESSELS[r].name.toLowerCase()}.` };
   const sibling = s.open.find((x) => x !== r && entryOf(x) === entryOf(r)); // the other branch of a fork: switching
   // one vessel may always be open (even with no cells left, it still turns pathogens at a fork); more need a cell each
-  if (!sibling && s.open.length >= Math.max(1, aliveCells(s).length)) return { ok: false, reason: 'Every white cell already has a vessel: close one first.' };
+  if (!sibling && s.open.length >= Math.max(1, deployable(s).length)) return { ok: false, reason: s.reserveId != null && deployable(s).length <= s.open.length ? 'Every white cell not held in reserve already has a vessel: close one, or deploy the reserve.' : 'Every white cell already has a vessel: close one first.' };
   return { ok: true, reason: '' };
 }
 
@@ -504,9 +551,14 @@ export function closeRoute(s: State, r?: VesselId) {
   shareCells(s);
 }
 
+/** The living white cells that go out on vessels: all but the one held in reserve. */
+export const deployable = (s: State) => aliveCells(s).filter((c) => c.id !== s.reserveId);
+/** The cell held in reserve, if any (at the organ, or on its way back to be held). */
+export const reserveCell = (s: State) => (s.reserveId == null ? null : aliveCells(s).find((c) => c.id === s.reserveId) ?? null);
+
 /** How many cells each open vessel should have: as even as can be, the first-opened vessels getting any extra. */
 function shares(s: State): Map<VesselId, number> {
-  const n = aliveCells(s).length, k = s.open.length, out = new Map<VesselId, number>();
+  const n = deployable(s).length, k = s.open.length, out = new Map<VesselId, number>();
   s.open.forEach((v, i) => out.set(v, Math.floor(n / k) + (i < n % k ? 1 : 0)));
   return out;
 }
@@ -527,13 +579,143 @@ function shareCells(s: State) {
 function deployHome(s: State) {
   if (!s.open.length) return;
   const want = shares(s);
-  for (const c of aliveCells(s)) {
+  for (const c of deployable(s)) {
     if (c.mode !== 'home') continue;
     const v = s.open.find((x) => outCells(s).filter((o) => o.vessel === x).length < (want.get(x) ?? 0));
     if (!v) break;
     const i = outCells(s).filter((o) => o.vessel === v).length, L = VESSELS[v].length;
     c.vessel = v; c.s = L - 8 - i * 30; c.mode = 'out'; c.targetId = null;
   }
+}
+
+// ── The reserve: one white cell held back at the organ ──────────────────────
+
+/** Choose the cell to hold: one waiting at the organ, else the one nearest home on its way back, else the one out
+ *  nearest the organ, which turns for home (normal travel time). */
+function pickReserve(s: State) {
+  if (reserveCell(s) || !aliveCells(s).length) return;
+  const home = aliveCells(s).find((c) => c.mode === 'home');
+  const back = aliveCells(s).filter((c) => c.mode === 'returning').sort((a, b) => b.s - a.s)[0];
+  const out = outCells(s).sort((a, b) => b.s - a.s)[0];
+  const c = home ?? back ?? out;
+  if (!c) return;
+  s.reserveId = c.id;
+  if (c.mode === 'out') { c.mode = 'returning'; c.targetId = null; }
+  shareCells(s); // the others share the open vessels without it
+}
+/** Hold one cell in reserve, or stop holding it (it rejoins the others). Between waves it only sets the choice. */
+export function setReserve(s: State, on: boolean) {
+  s.reserve = on;
+  if (s.phase !== 'combat') { if (!on) s.reserveId = null; return; }
+  if (on) pickReserve(s);
+  else { s.reserveId = null; deployHome(s); }
+}
+/** The reserve right now: cells out, heading home, and the held one ('home': at the organ, 'returning': on its way). */
+export function cellStatus(s: State) {
+  const r = reserveCell(s);
+  return {
+    out: outCells(s).length,
+    returning: aliveCells(s).filter((c) => c.mode === 'returning' && c !== r).length,
+    reserve: r ? (r.mode === 'home' ? 'home' as const : 'returning' as const) : null,
+  };
+}
+/** Whether the held cell can be sent down route r now: it must be at the organ; a closed vessel opens as usual (its
+ *  NO cost, and the usual limits, counting the released cell). */
+export function deployReserveCheck(s: State, r: VesselId): { ok: boolean; reason: string } {
+  if (s.phase !== 'combat') return { ok: false, reason: 'The reserve is deployed during a wave.' };
+  const c = reserveCell(s);
+  if (!c) return { ok: false, reason: 'No white cell is held in reserve.' };
+  if (c.mode !== 'home') return { ok: false, reason: 'The reserve cell is still on its way back to the organ.' };
+  if (!VESSELS[r]) return { ok: false, reason: 'Not a vessel of this organ.' };
+  if (s.open.includes(r)) return { ok: true, reason: '' };
+  const keep = s.reserveId; s.reserveId = null;
+  const chk = dilateCheck(s, r);
+  s.reserveId = keep;
+  return chk;
+}
+/** Send the held cell down route r (opening it if need be, paying its NO). The reserve choice turns off. */
+export function deployReserve(s: State, r: VesselId): boolean {
+  if (!deployReserveCheck(s, r).ok) return false;
+  const c = reserveCell(s)!;
+  s.reserveId = null; s.reserve = false;
+  if (!s.open.includes(r)) toggleRoute(s, r);
+  if (c.mode !== 'out' || c.vessel !== r) {
+    const i = outCells(s).filter((o) => o.vessel === r).length;
+    c.vessel = r; c.s = VESSELS[r].length - 8 - i * 30; c.mode = 'out'; c.targetId = null;
+  }
+  c.fromReserve = true;
+  return true;
+}
+
+// ── Lab tests: one report a wave, read from the wave that is coming ────────
+
+export function labAvailable(s: State) { return s.endless ? s.stage >= CONFIG.labTests.fromOrgan : s.level >= CONFIG.labTests.fromOrgan - 1; }
+export function labCheck(s: State): { ok: boolean; reason: string } {
+  if (!labAvailable(s)) return { ok: false, reason: `Lab tests begin with the ${ordinal(CONFIG.labTests.fromOrgan)} organ.` };
+  if (s.phase !== 'prep') return { ok: false, reason: 'Lab tests are run between waves.' };
+  if (s.lab && s.lab.wave === s.wave) return { ok: false, reason: 'One lab test a wave: this wave\'s report is in.' };
+  if (s.energy < CONFIG.labTests.price) return { ok: false, reason: `Needs ${CONFIG.labTests.price} energy (you have ${s.energy}).` };
+  return { ok: true, reason: '' };
+}
+const ordinal = (n: number) => ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'][n - 1] ?? `${n}th`;
+/** A Gram stain of a wave plan: which Gram group most of its bacteria belong to. */
+export function gramReport(plan: Spawn[]): string {
+  const bac = plan.filter((x) => CONFIG.pathogens[x.type].taxon);
+  const note = ' (Viruses are outside the scope of a Gram stain.)';
+  if (!bac.length) return 'No bacteria detected.' + note;
+  const pos = bac.filter((x) => CONFIG.pathogens[x.type].taxon!.gram === '+').length, neg = bac.length - pos;
+  if (pos === neg) return 'Mixed Gram result.' + note;
+  return (pos > neg ? 'Mostly Gram-positive bacteria.' : 'Mostly Gram-negative bacteria.') + note;
+}
+/** A vessel scan of a wave plan: the vessel (or vessels, if tied) bringing the most pathogens. */
+export function scanReport(plan: Spawn[]): string {
+  const n = new Map<VesselId, number>();
+  for (const x of plan) { const e = entryOf(x.vessel); n.set(e, (n.get(e) ?? 0) + 1); }
+  const most = Math.max(0, ...n.values()), top = [...n].filter(([, k]) => k === most).map(([e]) => entryDef(e)?.name.toLowerCase() ?? e);
+  if (!top.length) return 'Nothing scheduled on any vessel.';
+  const list = top.length === 1 ? `the ${top[0]}` : `${top.slice(0, -1).map((x) => `the ${x}`).join(', ')} and the ${top[top.length - 1]} (tied)`;
+  return `Most pathogens: ${list}. (What they are, and when they come, stay hidden.)`;
+}
+/** Buy this wave's lab test: the plan is fixed now and used when the wave starts, so the report holds. */
+export function buyLab(s: State, kind: 'gram' | 'scan'): boolean {
+  if (!labCheck(s).ok) return false;
+  const plan = s.plan ?? waveSpawns(s.wave, s.level, s.stage, s.perks.mode);
+  s.plan = plan;
+  s.energy -= CONFIG.labTests.price;
+  s.lab = { wave: s.wave, kind, text: kind === 'gram' ? gramReport(plan) : scanReport(plan) };
+  if (!s.stats.labWaves.includes(s.wave)) s.stats.labWaves.push(s.wave);
+  return true;
+}
+
+// ── The local antibiotic: one dose a wave into one vessel ──────────────────
+
+export function abxAvailable(s: State) { return !!s.perks.antibiotic && (s.endless || s.level >= CONFIG.antibiotic.fromOrgan - 1); }
+export const isBacterium = (t: PathogenType) => !!CONFIG.pathogens[t].taxon;
+/** The Stewardship wave: the marked wave of the organ that sets the challenge. */
+export const stewardWave = (s: State) => !s.endless && LEVELS[s.level].id === CONFIG.antibiotic.stewardship.organ && s.wave === CONFIG.antibiotic.stewardship.wave;
+export function abxCheck(s: State, r?: VesselId): { ok: boolean; reason: string } {
+  const A = CONFIG.antibiotic;
+  if (!s.perks.antibiotic) return { ok: false, reason: `The local antibiotic unlocks once the ${ordinal(A.unlockAfter)} organ is cleared.` };
+  if (!abxAvailable(s)) return { ok: false, reason: `The local antibiotic is used from the ${ordinal(A.fromOrgan)} organ on.` };
+  if (s.phase !== 'combat') return { ok: false, reason: 'The local antibiotic is used during a wave.' };
+  if (s.paused) return { ok: false, reason: 'Paused.' };
+  if (s.abxUsed >= A.perWave) return { ok: false, reason: 'One dose a wave: it is used.' };
+  if (s.energy < A.cost) return { ok: false, reason: `Needs ${A.cost} energy (you have ${s.energy}).` };
+  if (r && !VESSELS[r]) return { ok: false, reason: 'Not a vessel of this organ.' };
+  return { ok: true, reason: '' };
+}
+/** Bacteria the antibiotic works on in route r now. */
+const treated = (s: State, r: VesselId) => s.pathogens.filter((p) => p.hp > 0 && p.s > 0 && isBacterium(p.type) && !hidden(s, p) && covers(r, p));
+/** Commit a dose into route r: energy is spent only now. */
+export function deployAntibiotic(s: State, r: VesselId, profile: 'standard' | 'burst' = 'standard'): boolean {
+  if (!abxCheck(s, r).ok) return false;
+  const A = CONFIG.antibiotic, P = A[profile];
+  s.energy -= A.cost; s.abxUsed++;
+  s.abx = { route: r, t: P.duration, dur: P.duration, dps: P.dps, profile };
+  s.stats.doses++;
+  if (stewardWave(s)) s.stats.stewardDoses++;
+  if (P.now) for (const p of treated(s, r)) hurt(s, p, P.now * (CONFIG.pathogens[p.type].boss ? A.bossFactor : 1), false, 'antibiotic');
+  return true;
 }
 
 export function waveSpawns(n: number, level = LEVEL_INDEX, stage = 0, mode: Perks['mode'] = 'normal'): Spawn[] {
@@ -565,7 +747,10 @@ export function startWave(s: State): boolean {
   s.phase = 'combat';
   s.open = [];
   s.waveTime = 0;
-  s.spawns = waveSpawns(s.wave, s.level, s.stage, s.perks.mode);
+  // the wave plan: the one a lab test read, if one was bought (the same plan either way: waves are fixed)
+  s.spawns = s.plan ?? waveSpawns(s.wave, s.level, s.stage, s.perks.mode);
+  s.plan = null;
+  s.abx = null; s.abxUsed = 0;
   // what this wave brings, by vessel and kind: shown once it is over
   const came: { entry: VesselId; type: PathogenType; n: number }[] = [];
   for (const sp of s.spawns) {
@@ -581,6 +766,8 @@ export function startWave(s: State): boolean {
   for (const n of s.nodes) { n.cd = 0.3; n.power = 1; n.off = false; delete n.paid; delete n.discounted; }
   s.cells = [];
   for (let i = 0; i < cellCount(s); i++) s.cells.push(newCell(s, i));
+  s.reserveId = null;
+  if (s.reserve) pickReserve(s);
   s.message = '';
   return true;
 }
@@ -629,12 +816,13 @@ export function firePulse(s: State): number {
     s.rings.push({ x: tq.x, y: tq.y, r: boss ? 46 : 24, t: 0, dur: 0.9, kind: 'struck' });
     const wall = CONFIG.pathogens[target.type].walled;
     if (wall && (target.wallHits ?? 0) < wall.hits) { target.wallHits = wall.hits; wallBroken(s, target); } // the pulse breaks a wall at once
-    hurt(s, target, boss ? target.maxHp * CONFIG.immunePulse.bossShare : target.hp);
+    hurt(s, target, boss ? target.maxHp * CONFIG.immunePulse.bossShare : target.hp, false, 'pulse');
     cell.hp = 0;
     s.floaters.push({ x: q.x, y: q.y - 34, text: 'Gave its life', t: 0, color: '#1e5a78' });
     loseCell(s);
   }
   s.lastPulseHits = pairs.length;
+  s.stats.pulses++;
   return pairs.length;
 }
 
@@ -652,8 +840,9 @@ function wallBroken(s: State, p: Pathogen) {
   s.floaters.push({ x: q.x, y: q.y - 70, text: 'The wall is broken!', t: 0, color: '#6e2622' });
 }
 
-/** Damage a pathogen. `struck`: an antibody hit (it chips a walled boss's wall); white cells' steady fighting is not. */
-export function hurt(s: State, p: Pathogen, dmg: number, struck = false) {
+/** Damage a pathogen. `struck`: an antibody hit (it chips a walled boss's wall); white cells' steady fighting is not.
+ *  `by`: what is dealing it; the blow that finishes a pathogen is credited to it (`nodeType` for a node's). */
+export function hurt(s: State, p: Pathogen, dmg: number, struck = false, by: KillMethod = 'organ', nodeType?: NodeType) {
   if (p.hp <= 0) return;
   const wall = CONFIG.pathogens[p.type].walled;
   if (wall && (p.wallHits ?? 0) < wall.hits) {
@@ -673,6 +862,10 @@ export function hurt(s: State, p: Pathogen, dmg: number, struck = false) {
   if (p.hp <= 0) {
     const st = CONFIG.pathogens[p.type];
     s.killed++;
+    s.kills.push({ type: p.type, method: by });
+    s.stats.kills[by] = (s.stats.kills[by] ?? 0) + 1;
+    if (nodeType === 'igg') s.stats.iggKills++;
+    if (by === 'antibiotic' && stewardWave(s)) s.stats.stewardKills++;
     s.energy += Math.round(st.bounty * income(s));
     const q = pathogenPos(p);
     s.rings.push({ x: q.x, y: q.y, r: st.boss ? 70 : 18, t: 0, dur: st.boss ? 0.9 : 0.35, kind: 'pop' });
@@ -697,6 +890,7 @@ function newPathogen(s: State, type: PathogenType, vessel: VesselId, at = 0): Pa
   hp *= diffOf(s.perks).hp * (hc(s).hp ?? 1); // the difficulty, and the organ's own handicap
   if (s.endless) hp *= 1 + CONFIG.endless.hpGrowth * (s.stage - 1); // endless stages grow tougher
   hp = Math.round(hp);
+  if (!s.seenTypes.includes(type)) { s.seenTypes.push(type); s.seen.push(type); }
   const p: Pathogen = { id: s.nextId++, type, vessel, committed: at >= forkAt(vessel), s: at, hp, maxHp: hp, hit: 0, side: st.boss ? 0 : (rand(s) * 2 - 1) * 7, wob: rand(s) * 6, slow: 1, slowT: 0, shedT: st.sheds?.every };
   s.pathogens.push(p);
   // (a boss is announced by the boss bar beside the map)
@@ -749,6 +943,7 @@ export function infect(s: State, c: WhiteCell, virus: Pathogen) {
   c.hp = 0;
   c.infected = true;
   s.infections++;
+  s.stats.infections++;
   loseCell(s);
   const q = cellPos(c);
   const enemy = newPathogen(s, 'infected', c.vessel, c.s);
@@ -882,7 +1077,7 @@ export function step(s: State, dtRaw: number) {
     const acid = LEVELS[s.level].acid;
     if (acid && p.hp > 0 && p.s > 0 && inAcid(s, p)) {
       if (st.acidProof) p.hp = Math.min(p.maxHp, p.hp + acid.dps * dt); // H. pylori feeds on the acid
-      else hurt(s, p, acid.dps * dt);
+      else hurt(s, p, acid.dps * dt, false, 'organ');
     }
     if (st.sheds && p.hp > 0 && p.s > 0) {
       p.shedT = (p.shedT ?? st.sheds.every) - dt;
@@ -935,7 +1130,7 @@ export function step(s: State, dtRaw: number) {
         if (m >= 2.5) s.floaters.push({ x: q.x, y: q.y - 26, text: `${Math.round(dmg)}`, t: 0, color: '#1e5fa8', size: 22 });
         else if (m <= 0.5) s.floaters.push({ x: q.x, y: q.y - 22, text: `${dmg}`, t: 0, color: 'rgba(90,80,75,0.8)', size: 14 });
       }
-      hurt(s, p, dmg, true);
+      hurt(s, p, dmg, true, 'node', sh.type);
       if (st.slow && !CONFIG.pathogens[p.type].slowImmune) { p.slow = Math.min(p.slow, st.slow); p.slowT = st.slowSeconds ?? 2; }
     }
   }
@@ -955,13 +1150,23 @@ export function step(s: State, dtRaw: number) {
     s.respawns.shift();
     const cost = LEVELS[s.level].respawn!.cost;
     s.heartHp = Math.max(0, s.heartHp - cost);
+    s.stats.waveLoss[s.wave] = (s.stats.waveLoss[s.wave] ?? 0) + cost;
     s.leaks.remade = (s.leaks.remade ?? 0) + cost;
+    s.stats.remade++;
     s.notices.push(`−${cost} to remake a white cell`);
     const lean = aliveCells(s).reduce((a, x) => a + Math.sign(x.side), 0); // take the side the living cells use less
     const cell = newCell(s, 0); cell.side = (lean > 0 ? -1 : 1) * 11;
     s.cells.push(cell);
   }
   deployHome(s);
+  s.stats.maxOut = Math.max(s.stats.maxOut, outCells(s).length);
+  // the local antibiotic: every bacterium in the treated vessel, including any that enter it while it lasts
+  if (s.abx) {
+    const A = CONFIG.antibiotic;
+    for (const p of treated(s, s.abx.route)) hurt(s, p, s.abx.dps * dt * (CONFIG.pathogens[p.type].boss ? A.bossFactor : 1), false, 'antibiotic');
+    s.abx.t -= dt;
+    if (s.abx.t <= 0) s.abx = null;
+  }
   for (const c of outCells(s)) {
     c.hit = Math.max(0, c.hit - dt);
     const L = VESSELS[c.vessel].length;
@@ -979,7 +1184,10 @@ export function step(s: State, dtRaw: number) {
     if (hijacker) { infect(s, c, hijacker); continue; }
     if (near.length) {
       // a white cell fights everything it touches at once
-      for (const p of near) hurt(s, p, WC.dps * dt);
+      for (const p of near) hurt(s, p, WC.dps * dt, false, 'cell');
+      const e = entryOf(c.vessel);
+      if (!s.stats.cellHits.includes(e)) s.stats.cellHits.push(e);
+      if (c.fromReserve && !s.stats.reserveHits.includes(e)) s.stats.reserveHits.push(e);
       for (const p of near) { c.hp -= CONFIG.pathogens[p.type].contactDps * (LEVELS[s.level].damageMul?.[p.type] ?? 1) * dt; c.hit = 0.12; }
       if (c.hp <= 0) { const q = cellPos(c); s.rings.push({ x: q.x, y: q.y, r: 30, t: 0, dur: 0.6, kind: 'cellDown' }); s.floaters.push({ x: q.x, y: q.y - 24, text: 'White cell lost', t: 0, color: '#c8402a' }); loseCell(s); }
     }
@@ -1000,12 +1208,13 @@ export function step(s: State, dtRaw: number) {
         s.notices.push(`${st.plural} lodged: −${st.lodges.perWave} every wave`);
       }
       s.heartHp = Math.max(0, s.heartHp - dmg);
+      s.stats.waveLoss[s.wave] = (s.stats.waveLoss[s.wave] ?? 0) + dmg;
       const entry = entryOf(p.vessel);
       s.leaks.byVessel[entry] = (s.leaks.byVessel[entry] ?? 0) + dmg;
       s.leaks.byType[p.type] = (s.leaks.byType[p.type] ?? 0) + dmg;
       if (s.waveLog) s.waveLog.cost[entry] = (s.waveLog.cost[entry] ?? 0) + dmg;
       const wk = LEVELS[s.level].weakens;
-      if (wk) for (const n of s.nodes) if (covers(n.vessel, p, siteById(n.site).stem)) n.power = Math.max(wk.min, (n.power ?? 1) - wk.per);
+      if (wk) for (const n of s.nodes) if (covers(n.vessel, p, siteById(n.site).stem)) { n.power = Math.max(wk.min, (n.power ?? 1) - wk.per); s.stats.minPower = Math.min(s.stats.minPower, n.power); }
       s.leaked++;
       s.heartKick = 1;
       s.rings.push({ x: HEART.x, y: HEART.y, r: Math.max(LEVELS[s.level].map.rx, LEVELS[s.level].map.ry) + 30, t: 0, dur: 0.6, kind: 'heart' });
@@ -1059,6 +1268,7 @@ function returnHome(s: State, dt: number) {
 /** End of wave: surviving white cells return to the heart, then the vessel contracts. */
 function recall(s: State, dt: number) {
   s.recallTime += dt;
+  s.abx = null;
   returnHome(s, dt);
   if (s.recallTime > 6) for (const c of aliveCells(s)) c.mode = 'home';
   const allHome = aliveCells(s).every((c) => c.mode === 'home');
@@ -1080,6 +1290,7 @@ function recall(s: State, dt: number) {
     const lodgedCost = lodgeCost(s);
     if (lodgedCost) {
       s.heartHp = Math.max(0, s.heartHp - lodgedCost);
+      s.stats.waveLoss[s.wave] = (s.stats.waveLoss[s.wave] ?? 0) + lodgedCost;
       for (const [t, n] of Object.entries(s.lodged) as [PathogenType, number][]) s.leaks.byType[t] = (s.leaks.byType[t] ?? 0) + n * CONFIG.pathogens[t].lodges!.perWave;
       s.notices.push(`−${lodgedCost}: infection lodged in the ${LEVELS[s.level].organ.toLowerCase()}`);
       s.heartKick = 1;

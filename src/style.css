@@ -363,3 +363,55 @@ textarea.code { width: 100%; font: 12px/1.3 ui-monospace, Menlo, monospace; colo
   /* the top bar's column is too narrow to grow: larger text applies to the rest */
   body.text-large #hud, body.text-larger #hud { zoom: 1; }
 }
+
+/* ── Reserve, lab tests, antibiotic, targeting ── */
+.flist.reserve button { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.flist.reserve button small, .card.lab button small, .abxBtn small { display: block; font-size: 11px; color: var(--soft); font-weight: 400; }
+.flist.reserve button.on { background: var(--hatch), var(--wash-blue); border-width: 2px; }
+.card.lab .flist button { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; flex: 1 1 45%; }
+.notice.lab { background: var(--wash-gold); }
+.card.abx { border-left: 4px solid #5a8a2e; }
+.abxBtn { width: 100%; display: flex; flex-direction: column; align-items: center; font-weight: 700; min-height: 48px; background: var(--hatch), #dcecc8; }
+.notice.abxOn { background: #dcecc8; border-color: #3e6a1e; }
+.card.targeting { border: 2px solid #c88a20; background: var(--wash-gold); }
+.card.targeting .choice.targets { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; }
+.card.targeting .choice.targets button { min-height: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; }
+.card.targeting .choice.targets small { font-weight: 400; font-size: 11px; color: var(--soft); }
+
+/* ── Mastery seals: each seal its own shape, filled when earned (readable without colour) ── */
+.seal { display: inline-block; width: 1.1em; text-align: center; color: var(--soft); font-size: 15px; }
+.seal.on { color: var(--red-dark); }
+.sealList { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.sealList li { display: flex; gap: 8px; align-items: flex-start; }
+.sealList li > span:last-child { flex: 1; }
+.sealList small { display: block; font-size: 12.5px; color: var(--soft); line-height: 1.3; }
+.sealList small.prog { color: var(--blue); font-style: italic; }
+.sealList.small li { font-size: 13.5px; }
+.sealsWon { background: var(--wash-gold); border: 1px solid rgba(35, 26, 20, 0.4); border-radius: var(--sketch-sm); padding: 5px 9px; }
+
+/* ── The Anatomy Atlas: silhouettes, ink, then colour ── */
+.atlas { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 10px 0; }
+.atlasCard { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px; min-height: 0; }
+.atlasCard img, .atlasPic { width: 100%; max-width: 160px; aspect-ratio: 1; object-fit: contain; }
+.atlasCard.unknown img, .atlasPic.unknown { filter: brightness(0); opacity: 0.12; }
+.atlasCard.faint img, .atlasPic.faint { filter: grayscale(1) contrast(1.1); opacity: 0.35; }
+.atlasCard.ink img, .atlasPic.ink { filter: grayscale(1) contrast(1.25); }
+.atlasCard.colour { background: var(--hatch), var(--wash-red); }
+.atlasCard .marks { letter-spacing: 3px; }
+.atlasCard small { font-size: 11.5px; color: var(--soft); }
+.atlasPage { text-align: left; }
+.atlasPage .atlasPic { display: block; margin: 0 auto 6px; max-width: 200px; }
+
+/* ── The Pathogen Field Guide ── */
+.guide { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin: 10px 0; }
+.guideCard { display: flex; gap: 8px; align-items: center; text-align: left; padding: 6px 8px; min-height: 56px; border: 1px solid rgba(35, 26, 20, 0.45); border-radius: var(--sketch-sm); background: var(--paper); }
+.guideCard small { display: block; font-size: 11.5px; color: var(--soft); }
+.guideCard.unknown { border-style: dashed; color: var(--soft); }
+.guideCard .q { width: 44px; text-align: center; font-size: 26px; font-weight: 700; opacity: 0.4; }
+.guideEntry { text-align: left; }
+.guideEntry > img { display: block; margin: 0 auto; }
+.guideEntry .traits, .guideEntry .methods { margin: 4px 0 8px 18px; padding: 0; font-size: 14px; }
+.guideEntry .methods { list-style: none; margin-left: 0; }
+.guideEntry .methods li.done { font-weight: 700; }
+.guideEntry .tip.second { background: var(--wash-blue); }
+#menu .plate:has(.atlas), #menu .plate:has(.guide), #menu .plate:has(.guideEntry), #menu .plate:has(.atlasPage) { max-width: min(760px, 96%); }

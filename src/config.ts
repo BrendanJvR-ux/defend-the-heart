@@ -159,6 +159,21 @@ export const CONFIG = {
   /** Bought with the organ's energy, during it: NO at once (`amount`, may go one purchase past the gauge's top), and a
    *  white cell for the rest of the organ (at most `max`). */
   energyBuys: { no: { energy: 30, amount: 40 }, cell: { energy: 90, max: 3 } },
+  /** Lab tests, bought between waves (one a wave) from the `fromOrgan`th campaign organ on: a Gram stain or a vessel
+   *  scan of the coming wave, for `price` energy. */
+  labTests: { price: 20, fromOrgan: 2 },
+  /** The local antibiotic: unlocked once the `unlockAfter`th campaign organ is cleared, used from the `fromOrgan`th on
+   *  (and in endless). One dose a wave, for `cost` energy, into one vessel: every bacterium on it takes damage (a
+   *  bacterial boss ×`bossFactor`); viruses and your own cells are untouched.
+   *  Standard: `dps` for `duration` s. Burst (earned by Stewardship): `now` at once, then `dps` for `duration` s, about
+   *  the same total to a bacterium on the vessel throughout. */
+  antibiotic: {
+    unlockAfter: 5, fromOrgan: 6, cost: 120, perWave: 1, bossFactor: 0.3,
+    standard: { now: 0, dps: 16, duration: 6 },
+    burst: { now: 60, dps: 18, duration: 2 },
+    /** The Stewardship challenge: in this organ's marked wave, exactly one dose that defeats at least `kills` bacteria. */
+    stewardship: { organ: 'lymphnode', wave: 1, kills: 3 },
+  },
   /** At most this many IgG nodes may be aimed at any one bacterium on an organ . */
   iggPerTarget: 2,
   /** Gold to borrow an IgG target for the rest of one organ (gone when it ends; a permanent target costs 120). */
