@@ -3,19 +3,17 @@ import { motion } from './draw';
 
 export type TextSize = 'normal' | 'large' | 'larger';
 export type Motion = 'system' | 'reduced' | 'full';
-export type ViewMode = '3d' | '2d';
-export interface Settings { text: TextSize; motion: Motion; view: ViewMode }
+export interface Settings { text: TextSize; motion: Motion }
 
 const KEY = 'dth-settings';
-const TEXT: TextSize[] = ['normal', 'large', 'larger'], MOTION: Motion[] = ['system', 'reduced', 'full'], VIEW: ViewMode[] = ['3d', '2d'];
+const TEXT: TextSize[] = ['normal', 'large', 'larger'], MOTION: Motion[] = ['system', 'reduced', 'full'];
 
 export function loadSettings(): Settings {
-  const out: Settings = { text: 'normal', motion: 'system', view: '3d' };
+  const out: Settings = { text: 'normal', motion: 'system' };
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     if (TEXT.includes(raw?.text)) out.text = raw.text;
     if (MOTION.includes(raw?.motion)) out.motion = raw.motion;
-    if (VIEW.includes(raw?.view)) out.view = raw.view;
   } catch { /* no storage, or unreadable: the defaults */ }
   return out;
 }
@@ -40,7 +38,6 @@ const choice = (key: string, value: string, now: string, label: string, sub = ''
 export function settingsHtml(x: Settings): string {
   return `<h2>Settings</h2>
     <div class="settings">
-      <h3>View</h3><div class="choice3 two">${choice('view', '3d', x.view, '3D', 'turn and zoom the board')}${choice('view', '2d', x.view, 'Flat map', 'the 2D drawing')}</div>
       <h3>Text size</h3><div class="choice3">${choice('text', 'normal', x.text, 'Normal')}${choice('text', 'large', x.text, 'Large')}${choice('text', 'larger', x.text, 'Larger')}</div>
       <h3>Motion</h3><div class="choice3">${choice('motion', 'system', x.motion, 'As my device', systemReduced.matches ? 'reduced now' : 'full now')}${choice('motion', 'reduced', x.motion, 'Reduced', 'no shaking or flashing')}${choice('motion', 'full', x.motion, 'Full')}</div>
       <h3>Colour</h3><p class="sub">Every lymph node carries its letter (M, G, A, E) as well as its colour, and each pathogen has its own shape, so the game can be played without telling colours apart.</p>

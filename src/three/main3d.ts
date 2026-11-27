@@ -133,10 +133,10 @@ function frame(now: number) {
   if (s.phase === 'combat' || s.phase === 'recall') advance(s, dt);
   if (s.notices.length) { toast(s.notices.join(' ')); s.notices = []; }
   toastT -= dt;
-  board.update(s, dt, { hoverSite });
+  board.update(s, dt, hoverSite);
   hud();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 // (a hidden tab gets no animation frames, so the game simply waits while you are away)
-if (import.meta.env.DEV) Object.assign(window, { __s3d: () => s, __board: board, __advance3d: (sec: number) => { for (let t = 0; t < sec; t += 1 / 30) advance(s, 1 / 30); board.update(s, 1 / 30); hud(); } });
+if (import.meta.env.DEV) Object.assign(window, { __s3d: () => s, __board: board, __advance3d: (sec: number) => { for (let t = 0; t < sec; t += 1 / 30) advance(s, 1 / 30); board.update(s, 1 / 30, null); hud(); } });
