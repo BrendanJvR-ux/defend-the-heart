@@ -237,6 +237,18 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 - **The kidney stays hard on purpose.** The scripted player ends it on about 9 of 20 health averaged over seeds, the lowest of any organ. Easing it was tried (430 to 480 starting energy, or pathogens toughening 13% or 16% a wave instead of 20%), but every version let a player who holds one vessel open do as well as or better than one who dilates with care, which the kidney's filtration rewards. So it keeps 420 energy and 20%.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
+### 3D prototype
+
+**`play3d.html`** ([live](https://brendanjvr-ux.github.io/defend-the-heart/play3d.html)) plays one organ in 3D, on the real rules: the same `sim.ts` drives it, and only the drawing is new (`src/three/`). It keeps the game's pen-and-ink look by reusing the game's own art:
+
+- **The paper** is the level's inked background from the 2D map, lying on a desk.
+- **The organ** is its 2D drawing raised into relief: the height comes from the drawing's own outline, so every organ works and keeps its ink and hatching. It beats (the heart) or breathes, and flushes red when hit.
+- **Vessels** are tubes along each route's winding course, a little flattened on the paper, with blood scrolling towards the organ. They widen when dilated and turn the pale blue of the 2D map.
+- **Pathogens and white cells** are the game's own drawings standing up as paper cut-outs.
+- **Lymph nodes and health beads** are small cel-shaded solids with black ink outlines, in the nodes' colours, with their letters.
+
+Tap a + site to build (between waves), Start wave, tap a vessel to open or close it, the pulse button or Space to pulse, ×1 to change speed. Drag to turn the view, pinch or scroll to zoom. Pick another organ from the list (or `#0` to `#10` in the address; the liver by default). It is a sandbox: every IgG target is unlocked, and nothing is saved. Three.js (`three`, pinned) loads only on this page.
+
 ### Files
 
 | File | What it is |
@@ -261,6 +273,7 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 | `src/icons.ts` | Pathogen, white cell and lymph node pictures for the page, drawn once in the map's style. |
 | `src/orientation.ts` | The full-screen, landscape button for phones that allow it. |
 | `public/` | The web app's manifest, icons (`icon.svg`, PNGs, the Apple touch icon) and `sw.js`, the service worker that lets it play offline. |
+| `src/three/scene3d.ts`, `src/three/main3d.ts`, `play3d.html` | The 3D prototype: the scene built from the game state (paper, organ relief, vessel tubes, cut-outs, nodes), and its page (taps, build menu, controls). |
 | `src/main.ts` | HUD, panel, the menu, the tutorial's callout, autosave, build popover and IgG target picker, mouse / touch / keyboard input, overlays. |
 | `tests/tutorial.test.ts` | The tutorial played through on the real simulation: every step in order, the holds, skipping the pulse if the wave ends, the saved seen flag. |
 | `tests/career.test.ts` | The save (fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing), gold, the shop and upgrade effects. |

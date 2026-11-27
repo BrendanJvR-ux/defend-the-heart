@@ -1,0 +1,40 @@
+/* The 3D prototype's page: the board fills the screen; the game's paper plates float over its corners. */
+body.p3d { height: 100%; overflow: hidden; }
+html:has(body.p3d) { height: 100%; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#stage .plate { position: absolute; padding: 8px 12px; text-align: left; max-width: none; }
+.hud3d { top: max(10px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); }
+.hud3d h1 { margin: 0 0 2px; font-size: 20px; font-style: italic; color: var(--red-dark); }
+.hud3d dl { display: flex; gap: 14px; margin: 0; }
+.hud3d dt { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--soft); }
+.hud3d dd { margin: 0; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.no3d { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.no3d .nogauge { display: block; flex: 1; margin: 0; min-width: 120px; }
+.no3d small { font-size: 12px; color: var(--blue); font-weight: 700; white-space: nowrap; }
+.tools3d { right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tools3d button { min-height: 42px; }
+.tools3d .primary, .tools3d .pulse { min-width: 150px; font-size: 17px; }
+.organ3d { font-size: 14px; color: var(--soft); display: flex; align-items: center; gap: 6px; }
+.organ3d select { font: inherit; color: var(--ink); background: var(--paper); border: 1.5px solid var(--ink); border-radius: 4px; padding: 6px; min-height: 38px; }
+.back3d { color: var(--red-dark); font-size: 14px; }
+.hint3d { left: max(10px, env(safe-area-inset-left)); bottom: max(10px, env(safe-area-inset-bottom)); margin: 0; font-size: 13.5px; font-style: italic; max-width: min(360px, 40vw) !important; }
+.hint3d:empty { display: none; }
+.toast3d { top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); font-size: 14px; font-style: italic; max-width: min(340px, 50vw) !important; border-left: 5px solid var(--blue) !important; }
+.build3d { width: 250px; z-index: 5; font-size: 14px; }
+.build3d h3 { margin: 0 0 2px; font-size: 16px; color: var(--red-dark); }
+.build3d p { margin: 0 0 6px; color: var(--soft); }
+.build3d button { display: block; width: 100%; text-align: left; margin-top: 5px; min-height: 0; padding: 5px 9px; }
+.build3d button small { display: block; font-size: 11.5px; color: var(--soft); line-height: 1.25; }
+.end3d { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(42, 30, 24, 0.3); z-index: 6; }
+.end3d .plate { position: static !important; text-align: center !important; padding: 18px 26px !important; }
+.end3d h2 { margin: 4px 0 12px; color: var(--red-dark); font-style: italic; }
+.badge3d { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); margin: 0; font-size: 12px; font-style: italic; color: var(--soft); pointer-events: none; white-space: nowrap; }
+@media (max-width: 900px) { .badge3d { display: none; } }
+@media (max-height: 540px) {
+  .hud3d { padding: 4px 8px; } .hud3d h1 { font-size: 15px; } .hud3d dd { font-size: 13px; } .hud3d dl { gap: 9px; }
+  .tools3d { padding: 5px; gap: 5px; } .tools3d button { min-height: 34px; font-size: 13px; } .tools3d .primary, .tools3d .pulse { min-width: 110px; font-size: 14px; }
+  .organ3d { font-size: 0; gap: 0; } .organ3d select { min-height: 30px; padding: 2px; font-size: 12px; }
+  .back3d { display: none; }
+  .hint3d { display: none; }
+}

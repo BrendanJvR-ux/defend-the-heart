@@ -314,6 +314,11 @@ function organImages(px: number, L: LevelDef = LEVEL) {
   return made;
 }
 
+/** For the 3D view: the organ's inked drawing (transparent around it, covering `half` map units each side of
+ *  the organ's centre) and the level's paper background (the whole map, at twice its size). */
+export const organArt = (L: LevelDef, px = 2) => ({ img: organImages(px, L).img, half: ORGAN_HALF });
+export const paperArt = (L: LevelDef) => background(L);
+
 let lastPx = 1;
 /** Make an organ's background and inked image ahead of time (when the browser is idle), so opening it later doesn't
  *  pause while it is inked. */
