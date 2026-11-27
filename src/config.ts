@@ -424,7 +424,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'The portal vein brings a long column of gut bacteria, but the liver regrows: it regains health after every wave. Fall to half health and the gallbladder bursts: bile destroys two of your lymph nodes.',
     feature: 'Regrows; the gallbladder can burst',
     handicap: { text: 'Fatty liver: every lymph node costs 5 more energy.', nodeCost: 5 },
-    hp: 24, startEnergy: 260, cells: 2, regenPerWave: 2, income: 0.65, gallbladder: { at: 0.5, nodes: 2 },
+    hp: 24, startEnergy: 250, cells: 2, regenPerWave: 2, income: 0.65, gallbladder: { at: 0.5, nodes: 2 },
     map: {
       center: { x: 900, y: 360 }, rx: 300, ry: 150, siteFractions: [0.18, 0.32, 0.46, 0.6, 0.74, 0.88],
       vessels: [
@@ -503,7 +503,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'It remakes white cells: a lost white cell returns 8 seconds later, but each one costs the spleen 1 health.',
     feature: 'Remakes lost white cells',
     handicap: { text: 'Enlarged: white cells move 15% slower.', cellSpeed: 0.85 },
-    hp: 22, startEnergy: 230, cells: 2, income: 0.55,
+    hp: 22, startEnergy: 210, cells: 2, income: 0.55,
     respawn: { after: 8, cost: 1 },
     map: {
       center: { x: 800, y: 480 }, rx: 150, ry: 210, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -546,7 +546,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'It makes white cells: you start with 2, and every cleared wave adds one more, up to 5.',
     feature: 'A white cell more every wave',
     handicap: { text: 'Brittle bone: IgE burns out a wave sooner.', igeLife: -1 },
-    hp: 24, startEnergy: 180, cells: 2, income: 0.8,
+    hp: 24, startEnergy: 150, cells: 2, income: 0.8,
     cellGrowth: { perWave: 1, max: 5 },
     map: {
       center: { x: 800, y: 480 }, rx: 260, ry: 120, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -594,7 +594,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Acid: on the last third of every vessel, pathogens lose 2 health a second. H. pylori feeds on it and gains health there instead.',
     feature: 'Acid; H. pylori feeds on it',
     handicap: { text: 'Churning: NO drains 15% faster.', noDrain: 1.15 },
-    hp: 24, startEnergy: 380, cells: 2, income: 0.45,
+    hp: 28, startEnergy: 430, cells: 2, income: 0.45,
     acid: { fraction: 0.33, dps: 2 },
     map: {
       center: { x: 800, y: 500 }, rx: 200, ry: 150, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8],
@@ -694,7 +694,7 @@ export const LEVELS: LevelDef[] = [
     twist: 'Open wounds: pathogens enter through cuts, partway along their vessels, not from the edge of the map.',
     feature: 'Pathogens enter through wounds',
     handicap: { text: 'Inflamed: pathogens have 10% more health.', hp: 1.1 },
-    hp: 24, startEnergy: 610, cells: 3, income: 0.25,
+    hp: 20, startEnergy: 610, cells: 3, income: 0.25,
     wounds: { from: 0.2, to: 0.5 },
     map: {
       center: { x: 800, y: 430 }, rx: 280, ry: 110, siteFractions: [0.2, 0.35, 0.5, 0.65, 0.8], gaugeDrop: 136,

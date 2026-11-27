@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy.sh",
+    "balance": "BALANCE_LAB=1 BALANCE_OUT=balance-out vitest run tests/balance && vite-node tests/balance/report.ts balance-out"
   },
   "devDependencies": {
     "@types/three": "0.170.0",
