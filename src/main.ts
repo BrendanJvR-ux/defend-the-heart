@@ -58,12 +58,21 @@ function resize() {
 }
 new ResizeObserver(resize).observe(canvas);
 
+// ── The 3D view (the default; Settings switches to the flat 2D map). Loaded on demand. ──
+let board3d: import('./three/scene3d').Board3D | null = null;
+const mapScrollEl = () => document.getElementById('mapScroll')!;
+/** The map frame's size on screen, and where a map point sits in it (pixels from its top left), in either view. */
+function mapFrame() { return board3d ? { w: mapScrollEl().clientWidth, h: mapScrollEl().clientHeight } : { w: canvas.clientWidth, h: canvas.clientHeight }; }
+function mapToFrame(x: number, y: number) {
+  if (board3d) { const p = board3d.screenOf(x, y), r = mapScrollEl().getBoundingClientRect(); return { x: p.x - r.left, y: p.y - r.top }; }
+  return { x: (x / W) * canvas.clientWidth, y: (y / H) * canvas.clientHeight };
+}
 function toMap(e: PointerEvent) {
   const r = canvas.getBoundingClientRect();
   return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
 }
 /** Map units in this many screen pixels: a finger's reach stays the same size however small the map is drawn. */
-const px = (n: number) => (n * W) / Math.max(1, canvas.clientWidth);
+const px = (n: number) => (n * W) / Math.max(1, mapFrame().w);
 function vesselAt(p: { x: number; y: number }): VesselId | null {
   let best: VesselId | null = null, bd = Infinity, onStem = false;
   for (const v of map.VESSEL_IDS) {
@@ -86,8 +95,7 @@ function updateInspect() {
   const html = inspectHtml(s, q);
   if (html !== inspectSig) { inspectEl.innerHTML = html; inspectSig = html; }
   // keep the card beside the pathogen, inside the map (in the map's own coordinates, so it scrolls with a zoomed map)
-  const fw = canvas.clientWidth, fh = canvas.clientHeight, pos = pathogenPos(q);
-  const x = (pos.x / W) * fw, y = (pos.y / H) * fh;
+  const { w: fw, h: fh } = mapFrame(), pos = pathogenPos(q), at = mapToFrame(pos.x, pos.y), x = at.x, y = at.y;
   const w = inspectEl.offsetWidth, h = inspectEl.offsetHeight;
   inspectEl.style.left = `${Math.max(6, Math.min(fw - w - 6, x + (x + w + 40 > fw ? -w - 30 : 30)))}px`;
   inspectEl.style.top = `${Math.max(6, Math.min(fh - h - 6, y - h / 2))}px`;
@@ -179,9 +187,9 @@ function openSite(id: string, mode: View['popMode'] = 'main') {
   }
   popover.hidden = false;
   // beside the site, on the side with more room, kept wholly inside the map (its own coordinates: a zoomed map scrolls)
-  const fw = canvas.clientWidth, fh = canvas.clientHeight;
+  const { w: fw, h: fh } = mapFrame();
   const pw = popover.offsetWidth, ph = popover.offsetHeight;
-  const cx = (site.x / W) * fw, cy = (site.y / H) * fh;
+  const sp = mapToFrame(site.x, site.y), cx = sp.x, cy = sp.y;
   const left = site.x > W * 0.6 ? cx - pw - 30 : cx + 30;
   popover.style.left = `${Math.max(6, Math.min(fw - pw - 6, left))}px`;
   popover.style.top = `${Math.max(6, Math.min(fh - ph - 6, cy - ph / 2))}px`;
@@ -228,11 +236,14 @@ document.addEventListener('pointerdown', (e) => {
   const openPop = !popover.hidden && !popover.contains(t) ? 'site' : !inspectEl.hidden && !inspectEl.contains(t) ? 'inspect' : null;
   if (!openPop || menuPage || tut) return;
   if (openPop === 'site') closeSite(); else closeInspect();
-  swallowTap = t === canvas;
+  swallowTap = t === canvas || (!!board3d && t === board3d.renderer.domElement);
 }, { capture: true });
 canvas.addEventListener('pointerdown', (e) => {
   if (swallowTap) { swallowTap = false; return; }
-  const p = toMap(e);
+  tapAt(toMap(e));
+});
+/** A tap on the map, at a map point: build between waves; open a vessel or look at a pathogen during one. */
+function tapAt(p: { x: number; y: number }) {
   if (s.phase === 'prep') {
     const site = siteAt(p);
     if (site) { openSite(site); return; }
@@ -246,7 +257,7 @@ canvas.addEventListener('pointerdown', (e) => {
     if (v) choose(v);
     else if (siteAt(p)) toast('Lymph nodes can only be placed between waves.');
   }
-});
+}
 canvas.addEventListener('pointermove', (e) => {
   const p = toMap(e);
   view.hoverSite = siteAt(p);
@@ -254,6 +265,38 @@ canvas.addEventListener('pointermove', (e) => {
   canvas.style.cursor = (s.phase === 'prep' && view.hoverSite) || view.hoverVessel ? 'pointer' : 'default';
 });
 canvas.addEventListener('pointerleave', () => { view.hoverVessel = null; view.hoverSite = null; });
+
+/** Turn the 3D view on or off. On: the 3D scene takes the map frame (the 2D canvas hides); a drag turns the view,
+ *  a tap (a press that hardly moves) acts on the map. If WebGL can't start, the game stays in 2D. */
+async function setView3D(on: boolean) {
+  if (on && !board3d) {
+    try {
+      const { Board3D } = await import('./three/scene3d');
+      const b = new Board3D(mapScrollEl());
+      board3d = b;
+      const el = b.renderer.domElement;
+      let down: { x: number; y: number; swallow: boolean } | null = null;
+      el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, swallow: swallowTap }; swallowTap = false; });
+      el.addEventListener('pointerup', (e) => {
+        const d = down; down = null;
+        if (!d || d.swallow || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) return;
+        const p = b.pick(e.clientX, e.clientY); if (p) tapAt(p);
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (e.pointerType !== 'mouse' || e.buttons) return;
+        const p = b.pick(e.clientX, e.clientY);
+        view.hoverSite = p ? siteAt(p) : null; view.hoverVessel = p && s.phase === 'combat' ? vesselAt(p) : null;
+        el.style.cursor = (s.phase === 'prep' && view.hoverSite) || view.hoverVessel ? 'pointer' : 'grab';
+      });
+      el.addEventListener('pointerleave', () => { view.hoverVessel = null; view.hoverSite = null; });
+    } catch {
+      board3d = null; toast('The 3D view could not start in this browser: showing the flat map.');
+    }
+  } else if (!on && board3d) { board3d.dispose(); board3d = null; }
+  canvas.hidden = !!board3d;
+  document.body.classList.toggle('view-3d', !!board3d);
+  closeSite(); closeInspect();
+}
 
 function pulse() {
   const c = pulseCheck(s);
@@ -303,9 +346,9 @@ function renderCoach() {
   coachEl.innerHTML = `<h3>${esc(text.title)}</h3><p>${esc(text.body)}</p><div class="coachButtons">${manualStep(tut) && text.button ? `<button data-coach="next" class="primary">${esc(text.button)}</button>` : ''}${tut.step !== 'done' ? '<button data-coach="skip">Skip tutorial</button>' : ''}</div>`;
   coachEl.hidden = false;
   // beside the map point it is about, else at the bottom of the map
-  const fw = canvas.clientWidth, fh = canvas.clientHeight, cw = coachEl.offsetWidth, ch = coachEl.offsetHeight;
+  const { w: fw, h: fh } = mapFrame(), cw = coachEl.offsetWidth, ch = coachEl.offsetHeight;
   if (target?.at) {
-    const x = (target.at.x / W) * fw, y = (target.at.y / H) * fh;
+    const tp = mapToFrame(target.at.x, target.at.y), x = tp.x, y = tp.y;
     const left = target.at.x > W * 0.5 ? x - cw - 40 : x + 40;
     coachEl.style.left = `${Math.max(6, Math.min(fw - cw - 6, left))}px`;
     coachEl.style.top = `${Math.max(6, Math.min(fh - ch - 6, y - ch / 2))}px`;
@@ -575,6 +618,7 @@ menuEl.addEventListener('click', (e) => {
   else if (a === 'set') {
     const k = el.dataset.key as keyof Settings, v = el.dataset.value!;
     settings = { ...settings, [k]: v }; saveSettings(settings); applySettings(settings); renderMenu();
+    if (k === 'view') void setView3D(v === '3d');
   }
   else if (a === 'backup') openMenu({ page: 'backup' });
   else if (a === 'copyCode') {
@@ -652,7 +696,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 // ── Panel, HUD and overlays ─────────────────────────────────────────────────
-let lastSig = '';
+let lastSig = '', lastDrawn = performance.now();
 function signature() {
   return JSON.stringify([career.gold, s.extraCells, lodgeCost(s), s.stage, s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.open.join(), s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
 }
@@ -856,6 +900,8 @@ function refresh(now: number) {
   renderCoach();
   renderOrganTag();
   if (s.phase !== 'prep' && !popover.hidden) closeSite();
+  if (board3d) { board3d.update(s, Math.min(0.1, (now - lastDrawn) / 1000), { hoverSite: view.hoverSite, selectedSite: view.selectedSite, coachAt: view.coachAt, inspectId: view.inspectId }); lastDrawn = now; return; }
+  lastDrawn = now;
   const k = canvas.width / W;
   ctx.setTransform(k, 0, 0, k, 0, 0);
   draw(ctx, s, view, now / 1000);
@@ -934,6 +980,8 @@ resize();
 openMenu();
 // the game in progress is what Continue opens: make it ready while the menu is up
 if (career.run) prepareOrgan(career.run.level);
+// the 3D view is the default (Settings → View switches to the flat map)
+if (settings.view === '3d') void setView3D(true);
 refresh(performance.now());
 requestAnimationFrame(frame);
 

@@ -237,6 +237,19 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 - **The kidney stays hard on purpose.** The scripted player ends it on about 9 of 20 health averaged over seeds, the lowest of any organ. Easing it was tried (430 to 480 starting energy, or pathogens toughening 13% or 16% a wave instead of 20%), but every version let a player who holds one vessel open do as well as or better than one who dilates with care, which the kidney's filtration rewards. So it keeps 420 energy and 20%.
 - Virus health (10) is set so IgM and IgE kill one in a single hit; a well-aimed IgG kills a 70-health bacterium in three hits, IgM needs seven.
 
+### The 3D view
+
+The game is played in **3D** by default (**Settings → View** switches to the flat 2D map, remembered in this browser). Everything else is the same game: the rules, menus, panel, saves, tutorial and tips. Only the map is drawn differently:
+
+- **Vessels** are glass-walled tubes along each route's winding course, with red cells drifting inside towards the organ. Opened, a vessel swells and turns pale blue.
+- **Pathogens travel inside the vessels** as 3D models, each made from its shape and arrangement (staph in clusters, pneumococci and meningococci in pairs, strep in chains, rods with flagella, faceted viruses with spikes, the hijacker as a phage) and coloured from the game's own drawing of it. Bosses, too big for a vessel, are their 2D drawing standing up on top of it.
+- **White cells** are soft ruffled blobs with their nucleus, patrolling inside the open vessels.
+- **Lymph nodes** are cel-shaded beans with ink outlines, on an ink stalk to the vessel they guard, with their letter on a badge. Antibodies fly as beads in the node's colour; kills burst into beads.
+- **The organ** is its inked drawing raised into relief, and beats, breathes and flushes when hit; the health beads ring it.
+- Damage numbers and notes at a place, and the vessels' names, are written over the view in ink.
+
+**Tap** a site to build, a vessel to open or close it, a pathogen for its card; **drag** to turn the board and **pinch or scroll** to zoom (a press that moves is a turn, not a tap). The camera starts far enough back for the whole board to fit, looking down more steeply on a phone held sideways. If the browser can't run WebGL, the game says so and stays on the flat map. Three.js is loaded only when the 3D view starts, so the flat map never downloads it. The code is in `src/three/` (`scene3d.ts` draws the state, `models.ts` the pathogens, cells and nodes).
+
 ### 3D prototype
 
 **`play3d.html`** ([live](https://brendanjvr-ux.github.io/defend-the-heart/play3d.html)) plays one organ in 3D, on the real rules: the same `sim.ts` drives it, and only the drawing is new (`src/three/`). It keeps the game's pen-and-ink look by reusing the game's own art:
