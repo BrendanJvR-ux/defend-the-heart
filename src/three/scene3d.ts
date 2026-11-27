@@ -103,6 +103,23 @@ class Tube {
   }
 }
 
+/** For each pixel of an N × N image, its distance (in pixels) inside the drawn shape to the shape's outline;
+ *  0 outside it. A two-pass chamfer distance transform on the alpha. */
+function reliefDistance(rgba: Uint8ClampedArray, N: number) {
+  const d = new Float32Array(N * N), BIG = 1e6, A = 1, B = Math.SQRT2;
+  for (let i = 0; i < N * N; i++) d[i] = rgba[i * 4 + 3] > 127 ? BIG : 0;
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= N || y >= N ? 0 : d[y * N + x]);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x; if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(x - 1, y) + A, at(x, y - 1) + A, at(x - 1, y - 1) + B, at(x + 1, y - 1) + B);
+  }
+  for (let y = N - 1; y >= 0; y--) for (let x = N - 1; x >= 0; x--) {
+    const i = y * N + x; if (!d[i]) continue;
+    d[i] = Math.min(d[i], at(x + 1, y) + A, at(x, y + 1) + A, at(x + 1, y + 1) + B, at(x - 1, y + 1) + B);
+  }
+  return d;
+}
+
 export class Board3D {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -191,17 +208,20 @@ export class Board3D {
 
     // the organ: its inked drawing, raised into relief. Height comes from the drawing's own shape (its alpha,
     // blurred), so the 3D form follows the outline exactly, for every organ.
-    const art = organArt(L, 1.2), img = art.img, N = 160;
+    const art = organArt(L, 1.2), img = art.img, N = 220;
     const probe = document.createElement('canvas'); probe.width = probe.height = N;
     const pc = probe.getContext('2d', { willReadFrequently: true })!;
-    pc.filter = 'blur(5px)'; pc.drawImage(img, 0, 0, N, N);
+    pc.drawImage(img, 0, 0, N, N);
     const alpha = pc.getImageData(0, 0, N, N).data;
     const span = art.half * 2 * K, geo = new THREE.PlaneGeometry(span, span, N - 1, N - 1);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.getAttribute('position') as THREE.BufferAttribute, peak = Math.min(L.map.rx, L.map.ry) * K * 0.55;
+    const d = reliefDistance(alpha, N), R = N * 0.2;
     for (let i = 0; i < pos.count; i++) {
-      const col = i % N, row = Math.floor(i / N), a = alpha[(row * N + col) * 4 + 3] / 255;
-      pos.setY(i, Math.pow(a, 0.6) * peak);
+      // a rounded profile: every edge slopes down to the paper (about 45°, so the drawing's ink never smears down a
+      // sheer wall), narrow parts become rounded ridges, broad ones a dome with a gentle top
+      const t = Math.min(1, d[i] / R);
+      pos.setY(i, Math.sin((t * Math.PI) / 2) * peak);
     }
     geo.computeVertexNormals();
     const ot = new THREE.CanvasTexture(img); ot.colorSpace = THREE.SRGBColorSpace; ot.anisotropy = 8;

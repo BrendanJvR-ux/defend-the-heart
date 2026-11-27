@@ -242,7 +242,7 @@ The figures come from the scripted players in `tests/game.test.ts`. Each game ha
 **`play3d.html`** ([live](https://brendanjvr-ux.github.io/defend-the-heart/play3d.html)) plays one organ in 3D, on the real rules: the same `sim.ts` drives it, and only the drawing is new (`src/three/`). It keeps the game's pen-and-ink look by reusing the game's own art:
 
 - **The paper** is the level's inked background from the 2D map, lying on a desk.
-- **The organ** is its 2D drawing raised into relief: the height comes from the drawing's own outline, so every organ works and keeps its ink and hatching. It beats (the heart) or breathes, and flushes red when hit.
+- **The organ** is its 2D drawing raised into relief: the height comes from how far each point lies inside the drawing's outline, rising on a rounded profile (about 45° at the edges, a gentle dome on top), so every organ works and keeps its ink and hatching, every edge slopes down to the paper, and narrow parts (the brainstem, the windpipe) become rounded ridges. It beats (the heart) or breathes, and flushes red when hit.
 - **Vessels** are tubes along each route's winding course, a little flattened on the paper, with blood scrolling towards the organ. They widen when dilated and turn the pale blue of the 2D map.
 - **Pathogens and white cells** are the game's own drawings standing up as paper cut-outs.
 - **Lymph nodes and health beads** are small cel-shaded solids with black ink outlines, in the nodes' colours, with their letters.
