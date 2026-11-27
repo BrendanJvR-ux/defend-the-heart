@@ -453,12 +453,12 @@ describe('Defend the Heart: balance', () => {
       for (let i = 1; i < kept.length; i++) expect(Math.abs(kept[i] - kept[i - 1]), `${L.id}: ${kept.join(', ')}`).toBeLessThanOrEqual(L.hp / 2);
     }
   }, 120000);
-  it('holding gold back to spend during organs (white cells, NO) does no better than buying upgrades with it', async () => {
+  it('spending energy on extras (white cells at the start, NO when low) instead of nodes does no better than building', async () => {
     const score = (r: ReturnType<typeof careerRun>) => r.filter((x) => x.phase === 'victory').reduce((a, x) => a + 100 + x.hp[x.hp.length - 1], 0);
-    const base = score(careerRun()), spenders: number[] = [];
-    for (const keep of [0.3, 0.6]) { await breathe(); spenders.push(score(careerRun(blindBuild, sensibleDilate, { keep }))); }
-    console.log('gold spent in organs:', base, 'with upgrades only;', spenders.join(', '), 'holding back 30% / 60%');
-    for (const x of spenders) expect(x).toBeLessThanOrEqual(base);
+    const base = score(careerRun()); await breathe();
+    const spender = careerRun(blindBuild, sensibleDilate, { spend: true }), spent = score(spender);
+    console.log('energy spent on extras:', base, 'building only;', spent, 'buying extras', `(${spender.map((x) => `${LEVELS[x.level].id} ${x.bought.filter((b) => b === 'cell' || b === 'NO').length}`).join(', ')})`);
+    expect(spent).toBeLessThanOrEqual(base);
   }, 120000);
 
   it('never building loses every organ, even with every upgrade', () => {
@@ -1108,18 +1108,24 @@ describe('Defend the Heart: the new rules', () => {
     const s = newGame(1, hard); startWave(s); tick(s, 4);
     const p = s.pathogens[0]; expect(p.maxHp).toBe(Math.round(CONFIG.pathogens[p.type].hp * D.hp * (LEVELS[1].handicap.hp ?? 1)));
   });
-  it('gold buys NO at once (past the top, up to one purchase over) and white cells for the rest of the organ', () => {
-    const s = newGame(1); expect(buyNo(s)).toBe(true); expect(s.no).toBe(s.perks.noMax + CONFIG.goldBuys.no.amount);
+  it('energy buys NO at once (past the top, up to one purchase over) and white cells for the rest of the organ', () => {
+    const B = CONFIG.energyBuys;
+    const s = newGame(1); s.energy = 1000;
+    expect(buyNo(s)).toBe(true); expect(s.no).toBe(s.perks.noMax + B.no.amount); expect(s.energy).toBe(1000 - B.no.energy);
     expect(buyNoCheck(s).ok).toBe(false);
-    for (let i = 0; i < CONFIG.goldBuys.cell.max; i++) expect(buyCell(s)).toBe(true);
+    for (let i = 0; i < B.cell.max; i++) expect(buyCell(s)).toBe(true);
+    expect(s.energy).toBe(1000 - B.no.energy - B.cell.max * B.cell.energy);
     expect(buyCell(s)).toBe(false);
-    startWave(s); expect(s.cells.length).toBe(LEVELS[1].cells + CONFIG.goldBuys.cell.max);
+    startWave(s); expect(s.cells.length).toBe(LEVELS[1].cells + B.cell.max);
+    // not enough energy: refused, and nothing taken
+    const poor = newGame(1); poor.energy = B.cell.energy - 1;
+    expect(buyCellCheck(poor).reason).toBe(`Needs ${B.cell.energy} energy (you have ${B.cell.energy - 1}).`); expect(buyCell(poor)).toBe(false); expect(poor.energy).toBe(B.cell.energy - 1);
     const eye = newGame(9); expect(buyCellCheck(eye).reason).toBe('No white cells come to the eye.');
     // NO above the top is not trimmed by the refill
-    const t = newGame(1); buyNo(t); startWave(t); quiet(t); tick(t, 2); expect(t.no).toBe(t.perks.noMax + CONFIG.goldBuys.no.amount);
+    const t = newGame(1); buyNo(t); startWave(t); quiet(t); tick(t, 2); expect(t.no).toBe(t.perks.noMax + CONFIG.energyBuys.no.amount);
   });
   it('a bought white cell joins a wave in progress at once', () => {
-    const s = newGame(1); startWave(s); const before = s.cells.length; buyCell(s); expect(s.cells.length).toBe(before + 1);
+    const s = newGame(1); startWave(s); s.energy = 500; const before = s.cells.length; buyCell(s); expect(s.cells.length).toBe(before + 1);
   });
   it('a jumping virus jumps once, a third of the way in, to a route of another vessel, as far along it', () => {
     const s = newGame(6); quiet(s); s.phase = 'combat';

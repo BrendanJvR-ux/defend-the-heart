@@ -205,8 +205,8 @@ details.borrow summary { font-size: 13px; }
 .start.top .hint { display: block; text-align: center; margin-top: 4px; }
 
 /* gold spent during an organ: NO, and white cells */
-.goldBuys button.gold { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; border-color: #8a6a1e; }
-.goldBuys button.gold small { color: #8a6a1e; font-size: 11px; }
+.goldBuys button.buy { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.goldBuys button.buy small { color: var(--soft); font-size: 11px; }
 .popover button small, #popover button small { display: block; font-size: 11px; opacity: 0.85; }
 
 /* the organ's label at its start: its feature and its handicap; a click puts it away */
@@ -314,7 +314,7 @@ details.borrow summary { font-size: 13px; }
   button.pulse { min-height: 32px; font-size: 13px; }
   .flist { gap: 3px; margin-top: 3px; }
   .flist button { min-height: 26px; font-size: 10px; padding: 1px 4px; }
-  .goldBuys button.gold small { font-size: 9px; }
+  .goldBuys button.buy small { font-size: 9px; }
   .nogauge { margin: 1px 0 3px; height: 8px; }
   .notice { font-size: 10px; padding: 3px 5px; }
   .notice button { min-height: 24px; font-size: 10px; padding: 1px 5px; }

@@ -175,11 +175,11 @@ export function resumeGame(run: RunSave, perks: Perks = NO_PERKS): State {
   const s = newGame(run.level, perks, undefined, Math.max(0, Math.floor(run.stage ?? 0)));
   const L = LEVELS[run.level];
   s.wave = Math.max(1, Math.min(L.waves.length, Math.floor(run.wave)));
-  s.extraCells = Math.max(0, Math.min(L.cells ? CONFIG.goldBuys.cell.max : 0, Math.floor(run.extraCells ?? 0)));
+  s.extraCells = Math.max(0, Math.min(L.cells ? CONFIG.energyBuys.cell.max : 0, Math.floor(run.extraCells ?? 0)));
   for (const [k, n] of Object.entries(run.lodged ?? {})) if (CONFIG.pathogens[k as PathogenType]?.lodges && Number.isInteger(n) && n > 0) s.lodged[k as PathogenType] = n;
   s.heartHp = Math.max(1, Math.min(L.hp, run.heartHp));
   s.energy = Math.max(0, Math.floor(run.energy));
-  s.no = Math.max(0, Math.min(perks.noMax + CONFIG.goldBuys.no.amount, run.no));
+  s.no = Math.max(0, Math.min(perks.noMax + CONFIG.energyBuys.no.amount, run.no));
   s.borrowed = (run.borrowed ?? []).filter((b, i, a) => CONFIG.pathogens[b]?.taxon && a.indexOf(b) === i);
   s.bile = (run.bile ?? []).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y)).slice(0, 8);
   // a save of an organ not yet begun (the next endless stage) keeps the fresh organ's own starting nodes
@@ -418,24 +418,30 @@ export function retargetNode(s: State, siteId: string, targets: BacteriumType[])
 
 export function buyNoCheck(s: State): { ok: boolean; reason: string } {
   if (s.phase !== 'prep' && s.phase !== 'combat') return { ok: false, reason: 'Buy NO during an organ.' };
-  if (s.no >= s.perks.noMax + CONFIG.goldBuys.no.amount) return { ok: false, reason: 'NO is as high as it can go.' };
+  if (s.no >= s.perks.noMax + CONFIG.energyBuys.no.amount) return { ok: false, reason: 'NO is as high as it can go.' };
+  const cost = CONFIG.energyBuys.no.energy;
+  if (s.energy < cost) return { ok: false, reason: `Needs ${cost} energy (you have ${s.energy}).` };
   return { ok: true, reason: '' };
 }
-/** Add NO at once (it may go past the gauge's top, up to one purchase over); the caller pays the gold. */
+/** Add NO at once (it may go past the gauge's top, up to one purchase over), paid for with energy. */
 export function buyNo(s: State): boolean {
   if (!buyNoCheck(s).ok) return false;
-  s.no = Math.min(s.perks.noMax + CONFIG.goldBuys.no.amount, s.no + CONFIG.goldBuys.no.amount);
+  s.energy -= CONFIG.energyBuys.no.energy;
+  s.no = Math.min(s.perks.noMax + CONFIG.energyBuys.no.amount, s.no + CONFIG.energyBuys.no.amount);
   return true;
 }
 export function buyCellCheck(s: State): { ok: boolean; reason: string } {
   if (s.phase !== 'prep' && s.phase !== 'combat') return { ok: false, reason: 'Buy white cells during an organ.' };
   if (!LEVELS[s.level].cells) return { ok: false, reason: `No white cells come to the ${LEVELS[s.level].organ.toLowerCase()}.` };
-  if (s.extraCells >= CONFIG.goldBuys.cell.max) return { ok: false, reason: `At most ${CONFIG.goldBuys.cell.max} extra white cells an organ.` };
+  if (s.extraCells >= CONFIG.energyBuys.cell.max) return { ok: false, reason: `At most ${CONFIG.energyBuys.cell.max} extra white cells an organ.` };
+  const cost = CONFIG.energyBuys.cell.energy;
+  if (s.energy < cost) return { ok: false, reason: `Needs ${cost} energy (you have ${s.energy}).` };
   return { ok: true, reason: '' };
 }
-/** One more white cell for the rest of this organ (gone when it ends); in a wave, it joins at once. The caller pays. */
+/** One more white cell for the rest of this organ (gone when it ends), paid for with energy; in a wave, it joins at once. */
 export function buyCell(s: State): boolean {
   if (!buyCellCheck(s).ok) return false;
+  s.energy -= CONFIG.energyBuys.cell.energy;
   s.extraCells++;
   if (s.phase === 'combat') { s.cells.push(newCell(s, aliveCells(s).length)); deployHome(s); }
   return true;

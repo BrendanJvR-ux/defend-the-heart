@@ -499,33 +499,28 @@ function onAct(e: MouseEvent) {
   if (a === 'level') playLevel(Number(el.dataset.level));
   if (a === 'shop') openMenu({ page: 'shop' });
   if (a === 'borrow') borrow(el.dataset.target as BacteriumType);
-  if (a === 'buyNo') buyWithGold('no');
-  if (a === 'buyCell') buyWithGold('cell');
+  if (a === 'buyNo') buyWithEnergy('no');
+  if (a === 'buyCell') buyWithEnergy('cell');
   if (a === 'nextStage') nextStage();
 }
 panel.addEventListener('click', onAct);
 infoBody.addEventListener('click', onAct);
 
-/** Spend gold during an organ: NO at once, or a white cell for the rest of the organ. */
-function buyWithGold(what: 'no' | 'cell') {
-  const price = CONFIG.goldBuys[what].gold, chk = what === 'no' ? buyNoCheck(s) : buyCellCheck(s);
+/** Spend the organ's energy during it: NO at once, or a white cell for the rest of the organ. */
+function buyWithEnergy(what: 'no' | 'cell') {
+  const chk = what === 'no' ? buyNoCheck(s) : buyCellCheck(s);
   if (!chk.ok) { toast(chk.reason); return; }
-  if (career.gold < price) { toast(`Needs ${price} gold (you have ${career.gold}).`); return; }
   if (!(what === 'no' ? buyNo(s) : buyCell(s))) return;
-  career.gold -= price; sfx.coin();
-  if (s.phase === 'prep') career.run = snapshot(s);
-  // mid-wave, the save is the build phase this wave began from: it gets what was paid for, so a reload loses nothing
-  else if (career.run) {
-    if (what === 'cell') career.run.extraCells = s.extraCells;
-    else career.run.no = Math.min(s.perks.noMax + CONFIG.goldBuys.no.amount, career.run.no + CONFIG.goldBuys.no.amount);
-  }
-  saveNow(); lastSig = '';
-  toast(what === 'no' ? `+${CONFIG.goldBuys.no.amount} NO (−${price} gold).` : `A white cell joins you for the rest of this organ (−${price} gold).`);
+  sfx.coin();
+  // between waves the save is updated; mid-wave a reload goes back to the wave's start, energy and all, so nothing is lost
+  if (s.phase === 'prep') { career.run = snapshot(s); saveNow(); }
+  lastSig = '';
+  const price = CONFIG.energyBuys[what].energy;
+  toast(what === 'no' ? `+${CONFIG.energyBuys.no.amount} NO (−${price} energy).` : `A white cell joins you for the rest of this organ (−${price} energy).`);
 }
-const goldButtons = (which: ('no' | 'cell')[]) => which.map((w) => {
-  const price = CONFIG.goldBuys[w].gold, chk = w === 'no' ? buyNoCheck(s) : buyCellCheck(s), ok = chk.ok && career.gold >= price;
-  const why = !chk.ok ? chk.reason : career.gold < price ? `Needs ${price} gold (you have ${career.gold}).` : '';
-  return `<button data-act="${w === 'no' ? 'buyNo' : 'buyCell'}" class="gold" ${ok ? '' : 'disabled'} title="${esc(why)}">${w === 'no' ? `+${CONFIG.goldBuys.no.amount} NO` : '+1 white cell'}<small>${price} gold${w === 'cell' ? ' · this organ' : ''}</small></button>`;
+const buyButtons = (which: ('no' | 'cell')[]) => which.map((w) => {
+  const price = CONFIG.energyBuys[w].energy, chk = w === 'no' ? buyNoCheck(s) : buyCellCheck(s);
+  return `<button data-act="${w === 'no' ? 'buyNo' : 'buyCell'}" class="buy" ${chk.ok ? '' : 'disabled'} title="${esc(chk.reason)}">${w === 'no' ? `+${CONFIG.energyBuys.no.amount} NO` : '+1 white cell'}<small>${price} energy${w === 'cell' ? ' · this organ' : ''}</small></button>`;
 }).join('');
 panel.addEventListener('pointerover', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = true; const site = (e.target as HTMLElement).closest('[data-site]') as HTMLElement | null; view.hoverSite = site?.dataset.site ?? view.hoverSite; });
 panel.addEventListener('pointerout', (e) => { if ((e.target as HTMLElement).closest('[data-act=pulse]')) view.showPulseRadius = false; });
@@ -721,7 +716,7 @@ function renderPanel() {
       <section class="card"><h3>Lymph nodes <span class="count">${s.energy} energy</span></h3>
         <ul class="key compact">${NODE_TYPES.map((t) => `<li title="${esc(CONFIG.nodes[t].blurb)}"><img alt="" src="${nodeIcon(t)}" width="34" height="26"><b>${CONFIG.nodes[t].short}</b> ${CONFIG.nodes[t].cost + (L.handicap.nodeCost ?? 0)}</li>`).join('')}</ul>
         <p class="hint small">${view.touch ? 'Tap' : 'Click'} a + site to build; ${view.touch ? 'tap' : 'click'} a new node to cancel it.</p></section>
-      <section class="card"><h3>Gold <span class="count">${career.gold}</span></h3><div class="flist goldBuys">${goldButtons(['no', 'cell'])}</div></section>
+      <section class="card"><h3>Extras <span class="count">${s.energy} energy</span></h3><div class="flist goldBuys">${buyButtons(['no', 'cell'])}</div></section>
       ${lastWaveHtml()}`;
     info = `<section class="card organ"><h3>Level ${s.level + 1} · ${esc(L.title)}</h3><p class="hint small"><b>${esc(L.tagline)}</b> ${esc(L.twist)}</p><p class="hint small needs">${esc(L.handicap.text)}</p>
         <div class="levels">${LEVELS.map((l, i) => `<button data-act="level" data-level="${i}" class="${i === s.level ? 'on' : ''}" ${i < unlocked ? '' : 'disabled'} title="${i < unlocked ? (i === s.level ? 'Restart this organ' : `Play ${esc(l.title)}`) : 'Locked: clear the previous organ'}">${i + 1}<small>${i < unlocked ? esc(organTitle(i)) : 'locked'}</small></button>`).join('')}</div></section>
@@ -749,13 +744,13 @@ function renderPanel() {
         <p class="nogauge ${noLow ? 'low' : ''}" role="img" aria-label="NO ${Math.floor(s.no)} of ${s.perks.noMax}${noLow ? ', too low to open a vessel' : ''}"><i data-nobar style="width:${Math.min(100, (s.no / s.perks.noMax) * 100)}%"></i></p>${noLow ? '<p class="hint small needs">Too low to open: it refills while all are closed.</p>' : ''}
         <div class="choice">${map.VESSEL_IDS.map((v, i) => `<button data-act="dilate" data-v="${v}" aria-pressed="${s.open.includes(v)}" class="${s.open.includes(v) ? 'on' : ''}" ${dilateCheck(s, v).ok ? '' : 'disabled'} title="${esc(dilateCheck(s, v).reason)}">${vesselName(v)}<small>${s.open.includes(v) ? (view.touch ? 'open · tap to close' : `open · key ${ROUTE_KEYS[i]}`) : (view.touch ? 'resting' : `key ${ROUTE_KEYS[i]}`)}</small></button>`).join('')}</div>
         <p class="hint small tapHint">Tap a vessel on the map to open or close it.</p>
-        <div class="flist goldBuys">${goldButtons(['no'])}</div>
+        <div class="flist goldBuys">${buyButtons(['no'])}</div>
         ${lungsLine()}</section>
       <section class="card"><h3>Immune pulse <span class="count">${s.pulsesLeft} left</span></h3>
         <button data-act="pulse" class="pulse" ${pc.ok ? '' : 'disabled'}>${s.pulsesLeft > 0 ? `Immune pulse${would ? ` · ${would} strike` : ''}` : 'Pulse used'}</button></section>
       <section class="card"><h3>White cells <span class="count">${cells} of ${cellCount(s)}</span></h3>
         <p class="cells">${Array.from({ length: cellCount(s) }, (_, i) => `<span class="${i < cells ? '' : 'lost'}">${icon('cell', 26)}</span>`).join('')}</p>
-        ${levelDef(s).cells ? `<div class="flist goldBuys">${goldButtons(['cell'])}</div>` : ''}
+        ${levelDef(s).cells ? `<div class="flist goldBuys">${buyButtons(['cell'])}</div>` : ''}
         <p class="hint small">${where}${s.infections ? ` <b>${s.infections} infected.</b>` : ''}</p></section>`;
     info = `<h2><small>Defend · ${s.endless ? `stage ${s.stage}, wave ${s.wave} of ${totalWaves(s)}` : `wave ${s.wave} of ${totalWaves(s)}`}</small>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
       <section class="card"><h3>Dilating</h3><p class="hint">Open as many vessels as you have white cells: they are split evenly among them. Opening costs ${CONFIG.no.openCost} NO (you need ${openNeed()} to open), and an open vessel drains ${CONFIG.no.drainPerSec} a second; each more vessel costs only ${CONFIG.no.extraOpenCost} to open and drains ${CONFIG.no.extraDrainPerSec} more a second, and while all are closed NO refills ${CONFIG.no.regenPerSec} a second. When NO runs out every vessel closes.</p></section>

@@ -156,7 +156,9 @@ export const CONFIG = {
   /** Gold for clearing an organ the first time: this × the organ's number, + 4 per organ health left (a quarter on a
    *  replay), × the difficulty's gold. */
   goldPerOrgan: 88,
-  goldBuys: { no: { gold: 20, amount: 40 }, cell: { gold: 50, max: 3 } },
+  /** Bought with the organ's energy, during it: NO at once (`amount`, may go one purchase past the gauge's top), and a
+   *  white cell for the rest of the organ (at most `max`). */
+  energyBuys: { no: { energy: 30, amount: 40 }, cell: { energy: 90, max: 3 } },
   /** At most this many IgG nodes may be aimed at any one bacterium on an organ . */
   iggPerTarget: 2,
   /** Gold to borrow an IgG target for the rest of one organ (gone when it ends; a permanent target costs 120). */

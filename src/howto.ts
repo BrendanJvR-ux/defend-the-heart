@@ -20,7 +20,7 @@ export function howToPlayHtml(): string {
       <section><h3>The immune pulse</h3>
         <p>Once a wave, the <b>pulse</b> makes every white cell touching a pathogen destroy it (a boss loses a third of its health), giving its life to do it. Lost cells come back next wave.</p></section>
       <section><h3>Organs, gold and upgrades</h3>
-        <p>Every organ has its own twist (the lungs breathe, the liver regrows, the stomach has acid) and a slight disadvantage, shown as it starts and under <b>Info</b>. Clearing an organ pays <b>gold</b> for upgrades that last the whole career: damage, IgG targets, more NO, an extra starting node. Gold can also buy NO or a white cell during an organ.</p></section>
+        <p>Every organ has its own twist (the lungs breathe, the liver regrows, the stomach has acid) and a slight disadvantage, shown as it starts and under <b>Info</b>. Clearing an organ pays <b>gold</b> for upgrades that last the whole career: damage, IgG targets, more NO, an extra starting node. During an organ, its <b>energy</b> can also buy NO or an extra white cell.</p></section>
       <section><h3>Endless</h3>
         <p>Clear the eye to open Endless: organ after organ, each one bigger, with bosses at random. Your best runs go on a leaderboard.</p></section>
       <section><h3>Keys</h3>

@@ -140,9 +140,9 @@ export const organSpecies = (i: number) => [...new Set(LEVELS[i].waves.flatMap((
 /** A career played by the sensible player: organs in order, gold banked, upgrades bought before each organ by a
  *  fixed policy — first the IgG targets for that organ's bacteria, then damage for the node types it built most
  *  last time, then broad IgG, NO, the extra starting node and the cheaper first node. */
-/** `mode`: the difficulty. `keep`: the share of its gold the career holds back from the shop before each organ, to
- *  spend during it: white cells at the start (as many as allowed), then NO whenever it runs low in a wave. */
-export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: State) => void = sensibleDilate, opts: { mode?: Difficulty; keep?: number } = {}) {
+/** `mode`: the difficulty. `spend`: during each organ the career also spends energy on extras: white cells at the
+ *  start (as many as allowed, before building), then NO whenever it runs low in a wave. */
+export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: State) => void = sensibleDilate, opts: { mode?: Difficulty; spend?: boolean } = {}) {
   const c = freshCareer(); const built: Record<NodeType, number> = { igm: 2, igg: 1, iga: 1, ige: 0 };
   c.difficulty = opts.mode ?? 'normal';
   const out: { level: number; phase: string; hp: number[]; goldBefore: number; bought: string[]; perks: Perks }[] = [];
@@ -153,15 +153,13 @@ export function careerRun(build: (s: State) => void = blindBuild, dilate: (s: St
       ...(Object.entries(built) as [NodeType, number][]).sort((a, b) => b[1] - a[1]).flatMap(([t]) => [`dmg-${t}`, `dmg-${t}`, `dmg-${t}`] as UpgradeId[]),
       'broad', 'no', 'no', 'extraNode', 'cheapFirst',
     ];
-    const held = Math.floor(c.gold * (opts.keep ?? 0)); c.gold -= held;
     for (const id of wish) if (buy(c, id).ok) bought.push(id);
-    c.gold += held;
     const perks = perksOf(c);
-    // a spender buys white cells as the organ starts, and NO whenever it is low in a wave, while its gold lasts
+    // a spender buys white cells as the organ starts (before building), and NO whenever it is low in a wave, with energy
     const spend = (st: State) => {
-      if (!opts.keep) return;
-      while (st.phase === 'prep' && c.gold >= CONFIG.goldBuys.cell.gold && buyCell(st)) { c.gold -= CONFIG.goldBuys.cell.gold; bought.push('cell'); }
-      if (st.phase === 'combat' && st.no < 25 && c.gold >= CONFIG.goldBuys.no.gold && buyNo(st)) { c.gold -= CONFIG.goldBuys.no.gold; bought.push('NO'); }
+      if (!opts.spend) return;
+      while (st.phase === 'prep' && st.wave === 1 && buyCell(st)) bought.push('cell');
+      if (st.phase === 'combat' && st.no < 25 && buyNo(st)) bought.push('NO');
     };
     const { s, hp } = play((st) => { spend(st); build(st); }, dilate, 3, i, perks, undefined, spend);
     for (const n of s.nodes) built[n.type]++;
