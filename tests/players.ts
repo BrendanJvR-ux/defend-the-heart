@@ -3,11 +3,13 @@
 // and is kept for comparison and for the rule tests that need a known build.
 import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type Difficulty, type NodeType, type PathogenType, type VesselId } from '../src/config';
 import * as M from '../src/level';
-import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, organBacteria, type Perks, type UpgradeId } from '../src/career';
+import { NO_PERKS, perksOf, freshCareer, buy, onOrganEnd, type Perks, type UpgradeId } from '../src/career';
 import {
-  newGame, toggleRoute, dilateCheck, covers, startWave, step, pulseTargets, firePulse, waveSpawns, placeNode, hasTarget, aimedAt, nodeAt, iggMultiplier, buyCell, buyNo,
+  newGame, toggleRoute, dilateCheck, covers, startWave, step, waveSpawns, placeNode, nodeAt, iggMultiplier, buyCell, buyNo,
   type State, type Pathogen,
 } from '../src/sim';
+import { guarding, pulseAtCluster, danger, sensibleDilate, blindBuild } from '../src/defender';
+export { guarding, pulseAtCluster, danger, sensibleDilate, blindBuild };
 
 export function tick(s: State, seconds: number, each?: (s: State) => void) { for (let t = 0; t < seconds; t += 1 / 30) { step(s, 1 / 30); each?.(s); } }
 export function finishWave(s: State, each?: (s: State) => void) { let n = 0; while ((s.phase === 'combat' || s.phase === 'recall') && n++ < 30 * 400) { step(s, 1 / 30); each?.(s); } }
@@ -21,8 +23,6 @@ export function go(s: State, v: VesselId) { startWave(s); toggleRoute(s, v); }
 /** Keep NO from running dry in tests that watch a long stretch of one open route. */
 export const endlessNo = (s: State) => { s.no = 1e9; };
 export function finishWaveUntil(s: State, phase: State['phase']) { let n = 0; while (s.phase !== phase && n++ < 30 * 400) step(s, 1 / 30); }
-/** The sites that guard route r: its own, and its fork's shared stem sites. */
-export const guarding = (r: VesselId) => M.SITES.filter((x) => x.vessel === r || (x.stem && M.entryOf(x.vessel) === M.entryOf(r)));
 /** Leave only the given pathogens in play (no further spawns). */
 export function quiet(s: State) { s.spawns = []; s.pathogens = []; }
 
@@ -30,13 +30,6 @@ export function quiet(s: State) { s.spawns = []; s.pathogens = []; }
 /** (Given the game, it sees that game's waves: an endless stage's, at its difficulty.) */
 export const spawnsFor = (n: number, v: VesselId, s?: State) => waveSpawns(n, M.LEVEL_INDEX, s?.stage ?? 0, s?.perks.mode ?? 'normal').filter((x) => M.entryOf(x.vessel) === M.entryOf(v));
 export const threat = (n: number, v: VesselId, s?: State) => spawnsFor(n, v, s).reduce((a, x) => a + CONFIG.pathogens[x.type].hp, 0);
-/** The scripted players' pulse: spend the white cells only on a boss, or on something tough (40+ health left)
- *  that is about to reach the organ. `min` 999 = never pulse. */
-export const pulseAtCluster = (min: number) => (s: State) => {
-  if (min >= 999 || s.phase !== 'combat' || s.pulsesLeft <= 0) return;
-  if (pulseTargets(s).some((p) => CONFIG.pathogens[p.type].boss || (p.hp >= 40 && p.s > 0.85 * M.VESSELS[p.vessel].length))) firePulse(s);
-};
-
 /** A sensible player: dilate the busiest vessel; spend energy on nodes for the other threatened vessels,
  *  IgG where bacteria come, IgA where viruses swarm, IgM otherwise; pulse into clusters. */
 export function sensibleBuild(s: State) {
@@ -69,40 +62,7 @@ export function bestAim(s: State, n: number, v: VesselId): BacteriumType[] | nul
   return best && score(best) > 1.4 ? best : null;
 }
 export const nodeOn = (s: State, v: VesselId, t: NodeType) => s.nodes.some((x) => guarding(v).some((g) => g.id === x.site) && x.type === t);
-/** Summed health of the pathogens on a route that are past 65% of the way in (where the cells meet them). */
-export const danger = (s: State, v: VesselId) => s.pathogens.filter((p) => p.hp > 0 && covers(v, p) && p.s > 0.65 * M.VESSELS[v].length).reduce((a, p) => a + p.hp, 0);
-/** A sensible player's dilation, every tick of a wave: open where the danger is, close when it is clear,
- *  switch only for a much bigger threat and with NO to spare. */
-export function sensibleDilate(s: State) {
-  if (s.phase !== 'combat') return;
-  const best = [...M.VESSEL_IDS].sort((a, b) => danger(s, b) - danger(s, a))[0];
-  const N = CONFIG.no;
-  const cur = s.open[0];
-  if (danger(s, best) === 0) { if (cur) toggleRoute(s, cur); return; }
-  if (!cur) { if (s.no >= N.openCost + 2 * N.drainPerSec) toggleRoute(s, best); return; }
-  // switch (this player keeps one vessel open at a time): close the open one, open the busier
-  if (best !== cur && danger(s, best) > 2 * danger(s, cur) && s.no >= N.openCost + 2 * N.drainPerSec) { toggleRoute(s, cur); toggleRoute(s, best); }
-}
 export const noBuild = () => {};
-/** A player who, like a real one, can't see what the next wave brings: builds round the vessels, least defended
- *  first, two rounds a build; IgG aimed in turn at the organ's bacteria (the panel names them), an IgA as every
- *  third node on a vessel, IgM otherwise. */
-export function blindBuild(s: State) {
-  const guards = (v: VesselId) => s.nodes.filter((x) => guarding(v).some((g) => g.id === x.site)).length;
-  const bugs = organBacteria(s.level);
-  for (let round = 0; round < 2; round++) {
-    let placed = false;
-    for (const v of [...M.VESSEL_IDS].sort((a, b) => guards(a) - guards(b))) {
-      const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
-      if (!site) continue;
-      const aims = bugs.filter((b) => hasTarget(s, b) && aimedAt(s, b) < CONFIG.iggPerTarget);
-      const want: NodeType = guards(v) % 3 === 2 ? 'iga' : aims.length ? 'igg' : 'igm';
-      // with the Broad upgrade, its IgG are broad (they hit every bacterium of the Gram stain harder)
-      if (placeNode(s, site.id, want, want === 'igg' ? [aims[0]] : undefined, want === 'igg' && s.perks.broad) || placeNode(s, site.id, 'igm')) placed = true;
-    }
-    if (!placed) break;
-  }
-}
 /** A player who opens every route with pathogens well in, as many as it has white cells, and closes each when clear. */
 export function multiDilate(s: State) {
   if (s.phase !== 'combat') return;

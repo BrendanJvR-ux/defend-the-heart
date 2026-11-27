@@ -25,6 +25,8 @@ import { setUpLandscape, fitToVisibleScreen } from './orientation';
 import { loadSettings, saveSettings, applySettings, watchSystemMotion, settingsHtml, type Settings } from './settings';
 import { howToPlayHtml } from './howto';
 import { createNotices } from './notices';
+import { launchAttack, defenderTick, attackOutcome } from './attack';
+import { freshDraft, maxCount, organPickerHtml, plannerHtml, attackPanelHtml, attackResultHtml, type AttackDraft } from './attackUi';
 
 // ── The career: organs cleared, the game in progress, saved in this browser ──
 const store: KV = {
@@ -43,6 +45,30 @@ const organTitle = (i: number) => LEVELS[i].title.replace(/^The /, '');
 
 let s: State = career.run ? resumeGame(career.run, perksOf(career)) : newGame(0, perksOf(career));
 const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, popMode: 'main', broadPick: false, coachAt: null, showPulseRadius: false, touch: matchMedia('(pointer: coarse)').matches };
+
+// ── Attack mode: the player sends the pathogens; the scripted defender holds the organ. Kept apart from the career:
+// nothing in it is saved, and it earns and spends no gold. `attack.state` is the game being watched (while `s` is it). ──
+let attack: { draft: AttackDraft; state: State } | null = null;
+/** The plan being drawn up (kept for a re-plan after the attack). */
+let draft: AttackDraft | null = null;
+const inAttack = () => !!attack && s === attack.state;
+function launch() {
+  if (!draft) return;
+  const g = launchAttack(draft.level, draft.groups);
+  if (!g) { toast('That attack is not allowed: check the budget.'); return; }
+  // a tutorial in progress just stops (not marked seen: attack mode leaves the career alone)
+  if (tut) { tut = null; coachSig = ''; coachEl.hidden = true; document.querySelectorAll('.coach-hl').forEach((el) => el.classList.remove('coach-hl')); }
+  const sp = s.speed; s = g; s.speed = sp; attack = { draft: { level: draft.level, groups: draft.groups.map((x) => ({ ...x })) }, state: g };
+  closeSite(); closeInspect(); gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false; lastSig = ''; overlaySig = ''; organTagFor = '';
+  toast(`The attack is under way: the defender built ${s.nodes.length} lymph nodes.`);
+}
+/** Back to the planner, with the plan just played. */
+function replan(level?: number) {
+  if (level != null && (!draft || draft.level !== level)) draft = freshDraft(level);
+  else if (attack) draft = { level: attack.draft.level, groups: attack.draft.groups.map((x) => ({ ...x })) };
+  if (inAttack()) s.paused = true;
+  openMenu(draft ? { page: 'attackPlan' } : { page: 'attack' });
+}
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('board');
@@ -241,6 +267,12 @@ document.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointerdown', (e) => {
   if (swallowTap) { swallowTap = false; return; }
   const p = toMap(e);
+  if (inAttack()) {
+    // watching: the defender plays the organ; a pathogen can still be looked at
+    const bug = s.phase === 'combat' ? pathogenAt(s, p, view.touch ? Math.max(8, px(14) - 16) : 0) : null;
+    if (bug) { view.inspectId = bug.id; inspectSig = ''; inspectEl.hidden = false; updateInspect(); } else closeInspect();
+    return;
+  }
   if (s.phase === 'prep') {
     const site = siteAt(p);
     if (site) { openSite(site); return; }
@@ -261,7 +293,8 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointermove', (e) => {
   const p = toMap(e);
   view.hoverSite = siteAt(p);
-  view.hoverVessel = s.phase === 'combat' ? vesselAt(p) : null;
+  view.hoverVessel = s.phase === 'combat' && !inAttack() ? vesselAt(p) : null;
+  if (inAttack()) view.hoverSite = null;
   canvas.style.cursor = (s.phase === 'prep' && view.hoverSite) || view.hoverVessel ? 'pointer' : 'default';
 });
 canvas.addEventListener('pointerleave', () => { view.hoverVessel = null; view.hoverSite = null; });
@@ -274,9 +307,9 @@ function pulse() {
   lastSig = '';
 }
 
-function restart() { const sp = s.speed, borrowed = s.borrowed, endless = s.endless; s = endless ? newGame(stageLevel(1), perksOf(career), undefined, 1) : newGame(s.level, perksOf(career)); if (!endless) s.borrowed = borrowed; lastPhase = ''; spentToasted = 0; if (tut) { wantTutorial = true; maybeTutorial(); } s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(endless ? 'A new endless run, from the heart.' : `A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
+function restart() { if (inAttack()) { replan(); return; } const sp = s.speed, borrowed = s.borrowed, endless = s.endless; s = endless ? newGame(stageLevel(1), perksOf(career), undefined, 1) : newGame(s.level, perksOf(career)); if (!endless) s.borrowed = borrowed; lastPhase = ''; spentToasted = 0; if (tut) { wantTutorial = true; maybeTutorial(); } s.speed = sp; closeSite(); lastSig = ''; overlaySig = ''; toast(endless ? 'A new endless run, from the heart.' : `A fresh start: the ${levelDef(s).organ.toLowerCase()} is at full health.`); }
 /** A run worth asking about before it is thrown away: past the first wave, or with nodes built. */
-const runInProgress = () => (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.stage > 1 || s.phase !== 'prep' || s.energy !== Math.round(levelDef(s).startEnergy * CONFIG.difficulty[s.perks.mode].energy));
+const runInProgress = () => !inAttack() && (s.phase === 'prep' || s.phase === 'combat' || s.phase === 'recall') && (s.wave > 1 || s.stage > 1 || s.phase !== 'prep' || s.energy !== Math.round(levelDef(s).startEnergy * CONFIG.difficulty[s.perks.mode].energy));
 // ── The guided first wave on the heart ─────────────────────────────────────
 let tut: Tutorial | null = null;
 /** Set by the menu's Tutorial button: the next heart started runs the tutorial. */
@@ -369,7 +402,7 @@ let lastPhase = '';
 let lastPaid = 0, lastFirstClear = false, lastSeals: string[] = [];
 function autosave() {
   const key = `${s.level}:${s.wave}:${s.phase}`;
-  if (!gameShown || key === lastPhase) return;
+  if (!gameShown || key === lastPhase || inAttack()) return;
   lastPhase = key;
   if (s.phase === 'prep') { career.run = snapshot(s); saveNow(); }
   else if (s.phase === 'victory' || s.phase === 'defeat') {
@@ -382,7 +415,7 @@ function autosave() {
 }
 
 // ── The menu ────────────────────────────────────────────────────────────────
-type MenuPage = { page: 'main' } | { page: 'guide' } | { page: 'guideEntry'; type: PathogenType } | { page: 'atlas' } | { page: 'atlasOrgan'; level: number } | { page: 'howto' } | { page: 'settings' } | { page: 'backup' } | { page: 'importConfirm' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'abandon' } | { page: 'switch'; level: number; endless?: boolean };
+type MenuPage = { page: 'main' } | { page: 'guide' } | { page: 'guideEntry'; type: PathogenType } | { page: 'atlas' } | { page: 'atlasOrgan'; level: number } | { page: 'howto' } | { page: 'settings' } | { page: 'backup' } | { page: 'importConfirm' } | { page: 'organs' } | { page: 'endless' } | { page: 'shop' } | { page: 'confirmNew' } | { page: 'difficulty' } | { page: 'abandon' } | { page: 'switch'; level: number; endless?: boolean } | { page: 'attack' } | { page: 'attackPlan' };
 let menuPage: MenuPage | null = null;
 let pendingImport: Career | null = null;
 let pendingProgress: Progress | null = null;
@@ -414,6 +447,7 @@ function renderMenu() {
         <button data-menu="new" ${lead === 'new' ? 'class="primary"' : ''}>New career<small>${careerStarted() ? `starts over: a difficulty is kept for a whole career` : 'choose a difficulty'}</small></button>
         <button data-menu="organs">Organs<small>${unlocked} unlocked</small></button>
         <button data-menu="endless" ${open ? '' : 'disabled'} ${lead === 'endless' ? 'class="primary"' : ''}>Endless<small>${open ? 'organ after organ, ever bigger · your leaderboard' : 'clear the eye, the last organ, first'}</small></button>
+        <button data-menu="attack">Attack mode<small>play the infection: send pathogens against an organ's defence</small></button>
         <button data-menu="tutorial">Tutorial<small>a guided first wave on the heart</small></button>
         <button data-menu="shop">Upgrades<small>${career.gold} gold</small></button>
         <button data-menu="atlas">Anatomy Atlas<small>organ mastery: seals, goals and replays</small></button>
@@ -422,6 +456,10 @@ function renderMenu() {
         <button data-menu="settings">Settings<small>text size, motion, back up your career</small></button>
         ${gameShown ? '<button data-menu="close">Back to the game</button>' : ''}
       </div>`;
+  } else if (menuPage.page === 'attack') {
+    h = organPickerHtml();
+  } else if (menuPage.page === 'attackPlan') {
+    h = draft ? plannerHtml(draft) : organPickerHtml();
   } else if (menuPage.page === 'guide') {
     h = guideHtml(progress);
   } else if (menuPage.page === 'guideEntry') {
@@ -518,6 +556,9 @@ function onAct(e: MouseEvent) {
   if (!el || el.disabled) return;
   const a = el.dataset.act;
   if (a === 'info') { setInfo(infoEl.hidden); return; }
+  if (a === 'attackReplan') { replan(); return; }
+  if (a === 'attackOrgans') { replan(); openMenu({ page: 'attack' }); return; }
+  if (inAttack()) return;
   if (infoEl.contains(el) && a !== 'borrow') setInfo(false);
   if (a === 'dilate') choose(el.dataset.v as VesselId);
   if (a === 'site') openSite(el.dataset.site!);
@@ -634,6 +675,8 @@ panel.addEventListener('focusin', (e) => { view.showPulseRadius = !!(e.target as
 panel.addEventListener('focusout', () => { view.showPulseRadius = false; });
 overlay.addEventListener('click', (e) => {
   const a = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
+  if (a?.dataset.act === 'attackReplan') { replan(); return; }
+  if (a?.dataset.act === 'attackOrgans') { replan(); openMenu({ page: 'attack' }); return; }
   if (a?.dataset.act === 'restart') restart();
   if (a?.dataset.act === 'level') playLevel(Number(a.dataset.level));
   if (a?.dataset.act === 'resume') { s.paused = false; lastSig = ''; }
@@ -651,6 +694,7 @@ menuEl.addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest('[data-menu]') as HTMLButtonElement | null;
   if (!el || el.disabled) return;
   const a = el.dataset.menu;
+  if (a?.startsWith('ag') || a?.startsWith('attack')) { attackMenu(a, el); return; }
   if (a === 'continue' && career.run) {
     const sp = s.speed; s = resumeGame(career.run, perksOf(career)); s.speed = sp; lastPhase = ''; maybeTutorial(); spentToasted = 0; gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false;
     toast(`Welcome back: the ${organTitle(s.level).toLowerCase()}, wave ${s.wave}.`);
@@ -707,6 +751,35 @@ menuEl.addEventListener('click', (e) => {
   else if (a === 'tutorial') { wantTutorial = true; gameShown = true; playLevel(0); if (menuPage?.page !== 'switch') { s.paused = false; pausedBeforeMenu = false; } }
   else if (a === 'switchYes') { gameShown = true; pausedBeforeMenu = false; playLevel(Number(el.dataset.level), true); s.paused = false; }
 });
+/** The attack planner's buttons: pick an organ, change groups, launch. */
+function attackMenu(a: string, el: HTMLElement) {
+  const i = Number(el.dataset.i), g = draft?.groups[i];
+  const keep = () => { const y = menuEl.querySelector('.plate')?.scrollTop ?? 0; renderMenu(); const p = menuEl.querySelector('.plate'); if (p) p.scrollTop = y; };
+  if (a === 'attack') openMenu({ page: 'attack' });
+  else if (a === 'attackPick') { replan(Number(el.dataset.level)); }
+  else if (a === 'attackLaunch') launch();
+  else if (!draft) return;
+  else if (a === 'agAdd') { const last = draft.groups[draft.groups.length - 1]; draft.groups.push({ type: 'virus', vessel: last?.vessel ?? draft.groups[0].vessel, count: 1, delay: Math.min(40, (last?.delay ?? 0) + 4) }); keep(); }
+  else if (a === 'agRemove' && g && draft.groups.length > 1) { draft.groups.splice(i, 1); keep(); }
+  else if (a === 'agMax' && g) { g.count = maxCount(draft, i); keep(); }
+  else if (a === 'agStep' && g) {
+    const d = Number(el.dataset.d);
+    if (el.dataset.f === 'count') g.count = Math.max(1, Math.min(maxCount(draft, i), g.count + d));
+    else g.delay = Math.max(0, Math.min(40, g.delay + d));
+    keep();
+  }
+}
+// the planner's pickers: a group's pathogen and its vessel
+menuEl.addEventListener('change', (e) => {
+  const el = e.target as HTMLSelectElement;
+  const i = Number(el.dataset.i), g = draft?.groups[i];
+  if (!g || !draft) return;
+  if (el.dataset.ag === 'type') { g.type = el.value as PathogenType; g.count = Math.min(g.count, maxCount(draft, i)); }
+  else if (el.dataset.ag === 'vessel') g.vessel = el.value;
+  const y = menuEl.querySelector('.plate')?.scrollTop ?? 0; renderMenu(); const p = menuEl.querySelector('.plate'); if (p) p.scrollTop = y;
+  (menuEl.querySelector(`[data-ag="${el.dataset.ag}"][data-i="${i}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
+});
+
 function startCareer(mode: Difficulty = 'normal') {
   // a new career starts over, but someone who has seen the tutorial needn't see it again
   const seen = career.tutorialSeen; career = freshCareer(); career.tutorialSeen = seen; career.difficulty = mode; unlocked = unlockedCount(career); saveNow();
@@ -744,6 +817,7 @@ window.addEventListener('keydown', (e) => {
   const keyed = e.key.length === 1 && ROUTE_KEYS.includes(e.key) ? map.VESSEL_IDS[ROUTE_KEYS.indexOf(e.key)] : undefined;
   if ((e.key === 'm' || e.key === 'M') && tag !== 'INPUT' && tag !== 'TEXTAREA') { toggleSound(); return; }
   if (menuPage) { if (e.key === 'Escape' && gameShown && menuPage.page !== 'switch') { if (menuPage.page === 'main') closeMenu(); else openMenu({ page: 'main' }); } return; }
+  if (inAttack() && (keyed || e.key === 'Enter' || e.key === ' ')) { if (e.key === ' ' && tag !== 'BUTTON') e.preventDefault(); return; }
   if (keyed) { if (view.target && s.phase === 'combat') commitTarget(keyed); else choose(keyed); }
   else if (e.key === 'Escape' && view.target) cancelTarget();
   // Esc closes a pathogen's details first, then steps back from the IgG target list, then closes the build menu
@@ -764,7 +838,7 @@ window.addEventListener('keydown', (e) => {
 // ── Panel, HUD and overlays ─────────────────────────────────────────────────
 let lastSig = '';
 function signature() {
-  return JSON.stringify([view.target, s.reserve, reserveCell(s)?.mode, cellStatus(s).out, cellStatus(s).returning, s.lab?.wave, s.abxUsed, s.abx ? Math.ceil(s.abx.t) : 0, progress.abxProfile, s.stats.reserveHits.length, career.gold, s.extraCells, lodgeCost(s), s.stage, s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.open.join(), s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
+  return JSON.stringify([inAttack() ? [s.spawns.length, s.pathogens.length, s.killed, s.heartHp, Math.floor(s.no / 5), s.open.join()] : 0, view.target, s.reserve, reserveCell(s)?.mode, cellStatus(s).out, cellStatus(s).returning, s.lab?.wave, s.abxUsed, s.abx ? Math.ceil(s.abx.t) : 0, progress.abxProfile, s.stats.reserveHits.length, career.gold, s.extraCells, lodgeCost(s), s.stage, s.level, unlocked, s.phase, s.paused, s.wave, s.phase === 'combat' && surging(s), s.open.join(), s.no >= openNeed(), s.cells.map((c) => c.mode).join(), s.pulsesLeft, s.energy, s.nodes.length, aliveCells(s).length, s.infections, s.phase === 'combat' ? pulseTargets(s).length : 0]);
 }
 
 
@@ -805,7 +879,7 @@ let organTagFor = '';
 function renderOrganTag() {
   const key = `${s.level}:${s.stage}`, L = levelDef(s);
   // shown through the first build and the first seconds of wave 1; a click puts it away
-  const want = gameShown && !menuPage && !tut && s.wave === 1 && (s.phase === 'prep' || (s.phase === 'combat' && s.waveTime < 8)) && organTagFor !== `${key}:shut`;
+  const want = gameShown && !menuPage && !tut && !inAttack() && s.wave === 1 && (s.phase === 'prep' || (s.phase === 'combat' && s.waveTime < 8)) && organTagFor !== `${key}:shut`;
   if (!want) { organTag.hidden = true; return; }
   if (organTagFor !== key) {
     organTagFor = key;
@@ -815,6 +889,7 @@ function renderOrganTag() {
 }
 
 function renderPanel() {
+  if (inAttack()) { panel.innerHTML = attackPanelHtml(s, attack!.draft); infoBody.innerHTML = ''; if (!infoEl.hidden) setInfo(false); return; }
   const def = wave(s);
   let h = '', info = '';
   if (s.phase === 'prep') {
@@ -893,9 +968,10 @@ function renderHud() {
   $('levelName').textContent = `Level ${s.level + 1} of ${LEVELS.length} · ${CONFIG.difficulty[career.difficulty].name}`;
   $('hpLabel').textContent = `${L.organ} health`;
   document.title = `Defend the ${organTitle(s.level)}`;
+  if (inAttack()) { $('title').textContent = `Attack the ${organTitle(s.level)}`; $('levelName').textContent = 'Attack mode · the defender\'s figures'; document.title = `Attack the ${organTitle(s.level)}`; }
   $('hp').textContent = `${s.heartHp}/${levelDef(s).hp}`;
   $('hpbar').style.width = `${(s.heartHp / levelDef(s).hp) * 100}%`;
-  $('wave').textContent = s.endless ? `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)} · stage ${s.stage}` : `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)}`;
+  $('wave').textContent = inAttack() ? '1/1' : s.endless ? `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)} · stage ${s.stage}` : `${Math.min(s.wave, totalWaves(s))}/${totalWaves(s)}`;
   $('energy').textContent = String(s.energy);
   $('gold').textContent = String(career.gold);
   $('cells').textContent = s.phase === 'combat' || s.phase === 'recall' ? `${aliveCells(s).length}/${cellCount(s)}` : `${cellCount(s)} ready`;
@@ -904,7 +980,7 @@ function renderHud() {
   for (const el of panel.querySelectorAll<HTMLElement>('[data-no]')) if (el.textContent !== noText) el.textContent = noText;
   const bar = panel.querySelector<HTMLElement>('[data-nobar]'); if (bar) bar.style.width = `${Math.min(100, (s.no / s.perks.noMax) * 100)}%`;
   // IgE nodes that burnt out: say so once, and close a popover left open on their site
-  if (s.phase === 'prep' && s.spent.length && spentToasted !== s.wave) {
+  if (!inAttack() && s.phase === 'prep' && s.spent.length && spentToasted !== s.wave) {
     spentToasted = s.wave;
     if (view.selectedSite && s.spent.some((x) => x.site === view.selectedSite)) closeSite();
     toast(s.spent.length === 1 ? `IgE spent: the site beside the ${vesselName(siteById(s.spent[0].site).vessel).toLowerCase()} is free again.` : `${s.spent.length} IgE nodes spent: their sites are free again.`);
@@ -929,9 +1005,16 @@ function defeatAdvice(): string {
   return `<p>${where}, and ${who} did the most harm.</p><p class="tip"><b>Next time:</b> ${esc(sum.advice)}</p>${/Upgrades/.test(sum.advice) ? `<p><button data-act="shop">Upgrades (${career.gold} gold)</button></p>` : ''}`;
 }
 function renderOverlay() {
-  const sig = `${s.phase}|${s.paused}`;
+  const sig = `${s.phase}|${s.paused}|${inAttack() ? attackOutcome(s) : ''}`;
   if (sig === overlaySig) return;
   overlaySig = sig;
+  if (inAttack()) {
+    const out = attackOutcome(s);
+    if (out !== 'running') { overlay.hidden = false; overlay.className = out === 'won' ? 'victory' : 'defeat'; overlay.innerHTML = attackResultHtml(s, attack!.draft, out === 'won'); lastSig = ''; }
+    else if (s.paused) { overlay.hidden = false; overlay.className = 'paused'; overlay.innerHTML = '<div class="plate"><h2>Paused</h2><button data-act="resume" class="primary">Resume</button> <button data-act="attackReplan">Re-plan the attack</button></div>'; }
+    else { overlay.hidden = true; overlay.innerHTML = ''; }
+    return;
+  }
   const L = levelDef(s), org = organTitle(s.level).toLowerCase(), plural = s.level === 1 ? 'are' : 'is';
   if (s.phase === 'victory' && !s.endless) {
     lastSig = '';
@@ -1020,7 +1103,7 @@ const TIPS: { id: string; when: () => boolean; title: string; body: string }[] =
     body: 'The last wave sends HIV up every vessel. White cells can\'t touch it, and every lymph node it passes is switched off for the rest of the wave: kill it far out, with IgM and IgE.' },
 ];
 function tips() {
-  if (tut || menuPage || !gameShown) { tipEl.hidden = true; return; }
+  if (tut || menuPage || !gameShown || inAttack()) { tipEl.hidden = true; return; }
   if (tipShown) return;
   const t = TIPS.find((x) => !career.tips.includes(x.id) && x.when());
   if (!t) return;
@@ -1035,6 +1118,7 @@ tipEl.addEventListener('click', (e) => {
 
 /** What the game reports seeing and defeating goes into the permanent Field Guide. */
 function recordDiscoveries() {
+  if (inAttack()) { s.seen = []; s.kills = []; return; } // attack mode keeps clear of the permanent Field Guide
   if (!s.seen.length && !s.kills.length) return;
   let changed = false;
   for (const t of s.seen) if (recordSeen(progress, t)) { changed = true; toast(`Field Guide: a new entry, ${CONFIG.pathogens[t].name}.`); }
@@ -1052,10 +1136,13 @@ function frame(now: number) {
   last = now;
   if (tut) { tutorialTick(tut, s); if (!tut.step) endTutorial(); }
   // the tutorial stops time at the moments that can't wait, until the player acts
-  if (!s.paused && !(tut && tutorialHolds(tut, s))) advance(s, dt);
+  if (attack && s !== attack.state) attack = null; // the player has left attack mode for another game
+  // in attack mode the defender acts every frame of the wave; the attack is over once the organ falls or the wave ends
+  if (inAttack()) { if (!s.paused && attackOutcome(s) === 'running') { defenderTick(s); advance(s, dt); } }
+  else if (!s.paused && !(tut && tutorialHolds(tut, s))) advance(s, dt);
   autosave();
   recordDiscoveries();
-  notices.tick(s, dt, !!tut);
+  notices.tick(s, dt, !!tut || inAttack()); // (no campaign wave hint over an attack)
   refresh(now);
   updateInspect();
   describeMap();
