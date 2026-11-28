@@ -8,6 +8,7 @@ import {
   recordAttack, simulateAttack, type AttackGroup, type AttackMatch,
 } from '../../src/attack';
 import { rng } from './population';
+import { loadLevel, VESSELS, routesOf } from '../../src/level';
 
 type Style = 'swarm' | 'bacteria' | 'mixed' | 'boss';
 export interface Attacker { u: number; style: Style; spread: number; adapts: boolean }
@@ -49,7 +50,9 @@ export function makePlan(level: number, a: Attacker, seed: number, avoid: Record
     if (!v) { if (used >= vs.length) break; used++; v = order[used - 1]; }
     const space = Math.floor((ATTACK.maxPerVessel - perVessel(plan, v)) / room(t));
     if (space < 1) break;
-    const count = Math.max(1, Math.min(space, ATTACK.maxCount, Math.floor(left() / pathogenCost(t)), 2 + Math.floor(r() * 10)));
+    // a virus group: a swarm-minded or skilled attacker fills the vessel's room, for the swarm boost
+    const big = !CONFIG.pathogens[t].taxon && (a.style === 'swarm' || r() < a.u);
+    const count = Math.max(1, Math.min(space, ATTACK.maxCount, Math.floor(left() / pathogenCost(t)), big ? 99 : 2 + Math.floor(r() * 10)));
     if (pathogenCost(t) * count > left()) break;
     plan.push({ type: t, vessel: v, count, delay: Math.min(ATTACK.maxDelay, t === 'hijacker' ? 0 : Math.round(r() * 8) * 2) });
   }
@@ -58,6 +61,14 @@ export function makePlan(level: number, a: Attacker, seed: number, avoid: Record
     if (plan.length >= ATTACK.maxGroups) break;
     const n = Math.min(Math.floor((ATTACK.maxPerVessel - perVessel(plan, v)) / room('virus')), ATTACK.maxCount, Math.floor(left() / pathogenCost('virus')));
     if (n > 0 && a.u > 0.3) plan.push({ type: 'virus', vessel: v, count: n, delay: 6 });
+  }
+  // timing: a skilled attacker sends each vessel's leaders to arrive at once (the defender dilates one at a time);
+  // the others send groups whenever
+  if (r() < a.u) {
+    loadLevel(level);
+    const travel = (g: AttackGroup) => VESSELS[routesOf(g.vessel)[0]].length / CONFIG.pathogens[g.type].speed;
+    const T = Math.max(...plan.map(travel));
+    for (const g of plan) if (g.type !== 'hijacker') g.delay = Math.max(0, Math.min(ATTACK.maxDelay, Math.round(T - travel(g))));
   }
   return checkPlan(level, plan).ok ? plan : plan.slice(0, 1);
 }
@@ -70,7 +81,7 @@ export function playMatch(level: number, seed: number): MatchRecord {
   const a = makeAttacker(seed), m: AttackMatch = freshMatch(level);
   for (let k = 0; k < ATTACK.rounds && !matchWinner(m); k++) {
     const plan = makePlan(level, a, seed * 101 + k * 17, a.adapts ? m.seen : {});
-    const r = simulateAttack(level, plan, m.seen)!;
+    const r = simulateAttack(level, plan, m)!;
     recordAttack(m, plan, r.outcome === 'won' ? 'won' : 'held');
   }
   return { level, seed, u: a.u, style: a.style, results: m.results, winner: matchWinner(m)! };
@@ -89,5 +100,6 @@ export function attackSummary(rs: MatchRecord[]) {
   };
 }
 void CONFIG;
+if (process.env.ATTACK_SET) Object.assign(ATTACK, JSON.parse(process.env.ATTACK_SET));
 if (process.env.ATTACK_TOUGH) ATTACK.toughness = Number(process.env.ATTACK_TOUGH);
 if (process.env.ATTACK_SCALE) Object.assign(ATTACK.scale, JSON.parse(process.env.ATTACK_SCALE));

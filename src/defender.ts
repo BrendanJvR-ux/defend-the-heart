@@ -1,6 +1,6 @@
 // The scripted defender: how a sensible player builds lymph nodes, dilates vessels and fires the pulse. The balance
 // tests drive games with it, and in Attack mode it runs the organ the player is attacking.
-import { CONFIG, type NodeType, type VesselId } from './config';
+import { CONFIG, type BacteriumType, type NodeType, type VesselId } from './config';
 import * as M from './level';
 import { organBacteria } from './career';
 import { toggleRoute, covers, pulseTargets, firePulse, placeNode, hasTarget, aimedAt, nodeAt, type State } from './sim';
@@ -47,10 +47,10 @@ export const guardsOn = (s: State, v: VesselId) => s.nodes.filter((x) => guardin
 
 /** One node on route v, as the scripted player chooses it: its outermost free site; an IgA as every third node, else
  *  IgG aimed at the next of the organ's bacteria that has room (broad with the upgrade), else IgM. */
-export function buildOn(s: State, v: VesselId): boolean {
+export function buildOn(s: State, v: VesselId, bugs: BacteriumType[] = organBacteria(s.level)): boolean {
   const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
   if (!site) return false;
-  const aims = organBacteria(s.level).filter((b) => hasTarget(s, b) && aimedAt(s, b) < CONFIG.iggPerTarget);
+  const aims = bugs.filter((b) => hasTarget(s, b) && aimedAt(s, b) < CONFIG.iggPerTarget);
   const want: NodeType = guardsOn(s, v) % 3 === 2 ? 'iga' : aims.length ? 'igg' : 'igm';
   return placeNode(s, site.id, want, want === 'igg' ? [aims[0]] : undefined, want === 'igg' && s.perks.broad) || placeNode(s, site.id, 'igm');
 }

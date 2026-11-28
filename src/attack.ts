@@ -2,11 +2,11 @@
 // how many and when; the organ is defended by the scripted defender (it builds lymph nodes without seeing the attack,
 // then dilates and pulses as the wave comes). The attack wins if the organ's health reaches 0. Pure logic, no DOM.
 // Nothing here reads or writes the career or its saves.
-import { CONFIG, LEVELS, BACTERIA, type PathogenType, type VesselId } from './config';
+import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type PathogenType, type VesselId } from './config';
 import { NO_PERKS, organBacteria, type Perks } from './career';
 import { routesOf, entryOf, VESSEL_IDS } from './level';
-import { newGame, startWave, step, buyNo, type Spawn, type State } from './sim';
-import { blindBuild, buildOn, guardsOn, sensibleDilate, pulseAtCluster } from './defender';
+import { newGame, startWave, step, buyNo, toggleRoute, type Spawn, type State } from './sim';
+import { blindBuild, buildOn, guardsOn, danger, pulseAtCluster } from './defender';
 
 export interface AttackGroup {
   type: PathogenType;
@@ -31,7 +31,7 @@ export const ATTACK = {
   /** Health is priced a little more than in proportion (a tough pathogen outlasts several hits): (health / 10) to this power. */
   toughness: 1.25,
   /** Each organ's budget, scaled to give an attack an even chance against it (tuned on simulated matches). */
-  scale: { heart: 1.5, lungs: 0.92, kidney: 2.1, spleen: 0.85, marrow: 1.05, stomach: 1.1, skin: 1.7 } as Record<string, number>,
+  scale: { heart: 1.12, lungs: 0.76, liver: 0.83, kidney: 1.22, spleen: 0.71, marrow: 0.91, stomach: 1, lymphnode: 0.81, skin: 0.88, eye: 0.79 } as Record<string, number>,
   /** The budget: this much per point of the organ's health and per point of its defender's starting energy. */
   budget: { perHp: 8, perEnergy: 0.5 },
   /** A match is the best of three attacks on one organ. */
@@ -39,6 +39,15 @@ export const ATTACK = {
   /** How strongly the defender reinforces the vessels earlier attacks came up: a vessel that took all of them gets
    *  its nodes counted at 1 / (1 + learn × the number of vessels), so far more of them. */
   learn: 0.5,
+  /** The defender learns kinds too: after an attack it aims IgG at the bacteria it has met (most of the budget first),
+   *  up to this many kinds besides its organ's own. */
+  learnKinds: 2,
+  /** A big group of viruses is a swarm: from `from` in a group, each one more adds speed and a share of every hit it
+   *  shrugs off, up to the caps. */
+  swarm: { from: 8, speedPer: 0.02, speedMax: 0.15, guardPer: 0.02, guardMax: 0.2 },
+  /** The defender is slow to change its mind: it switches the vessel it is dilating only once another has been in
+   *  more danger for this many seconds (opening the first is immediate). */
+  switchDelay: 3,
 };
 
 /** What the attacker may send: the bacteria, the small viruses, and the bosses (one at most). */
@@ -98,17 +107,32 @@ export function checkPlan(level: number, plan: AttackGroup[]): { ok: boolean; re
 }
 
 /** The plan as the wave's spawns (the organ's map must be loaded: a forked vessel sends them up its first branch). */
+/** A group's swarm boost (null below the swarm size, or for anything but the small viruses). */
+export function swarmOf(g: AttackGroup): { speed: number; guard: number } | null {
+  const S = ATTACK.swarm, k = g.count - S.from + 1;
+  if (CONFIG.pathogens[g.type].taxon || isBoss(g.type) || k <= 0) return null;
+  return { speed: 1 + Math.min(S.speedMax, S.speedPer * k), guard: Math.min(S.guardMax, S.guardPer * k) };
+}
+
 export function attackSpawns(plan: AttackGroup[]): Spawn[] {
   const out: Spawn[] = [];
   for (const g of plan) {
-    const gap = CONFIG.pathogens[g.type].taxon ? ATTACK.spacing.bacterium : ATTACK.spacing.virus;
-    for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.delay + i * gap });
+    const gap = CONFIG.pathogens[g.type].taxon ? ATTACK.spacing.bacterium : ATTACK.spacing.virus, swarm = swarmOf(g);
+    for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.delay + i * gap, ...(swarm ? { swarm } : {}) });
   }
   return out.sort((a, b) => a.at - b.at);
 }
 
-/** The defender's upgrades: IgG targets for S. aureus and for the bacteria this organ usually meets, nothing else. */
-export const defenderPerks = (level: number): Perks => ({ ...NO_PERKS, targets: [...new Set(['saureus' as const, ...organBacteria(level)])] });
+/** The bacteria the defender has learnt to aim at, most of the budget first, beyond its organ's own. */
+export function learntKinds(level: number, kinds: Partial<Record<PathogenType, number>> = {}): BacteriumType[] {
+  const own = new Set<PathogenType>(['saureus', ...organBacteria(level)]);
+  return (Object.entries(kinds) as [PathogenType, number][]).filter(([t]) => (BACTERIA as PathogenType[]).includes(t) && !own.has(t))
+    .sort((a, b) => b[1] - a[1]).slice(0, ATTACK.learnKinds).map(([t]) => t as BacteriumType);
+}
+/** The defender's upgrades: IgG targets for S. aureus, for the bacteria this organ usually meets, and (in a match) for
+ *  the ones it has learnt; nothing else. */
+export const defenderPerks = (level: number, kinds: Partial<Record<PathogenType, number>> = {}): Perks =>
+  ({ ...NO_PERKS, targets: [...new Set(['saureus' as const, ...organBacteria(level), ...learntKinds(level, kinds)])] });
 
 /** How much of a vessel's room a pathogen takes: a small virus half, anything else one. */
 export const room = (t: PathogenType) => (CONFIG.pathogens[t].taxon || isBoss(t) ? 1 : 0.5);
@@ -117,8 +141,9 @@ export const perVessel = (plan: AttackGroup[], v: VesselId) => plan.filter((g) =
 
 /** A match: the best of three attacks on one organ. `seen` is what the defender has learnt: for each vessel, how much
  *  of the earlier attacks' budget came up it. */
-export interface AttackMatch { level: number; results: ('won' | 'held')[]; seen: Record<VesselId, number> }
-export const freshMatch = (level: number): AttackMatch => ({ level, results: [], seen: {} });
+export interface Learnt { seen: Record<VesselId, number>; kinds?: Partial<Record<PathogenType, number>> }
+export interface AttackMatch extends Learnt { level: number; results: ('won' | 'held')[]; kinds: Partial<Record<PathogenType, number>> }
+export const freshMatch = (level: number): AttackMatch => ({ level, results: [], seen: {}, kinds: {} });
 export const matchScore = (m: AttackMatch) => ({ attacker: m.results.filter((r) => r === 'won').length, defender: m.results.filter((r) => r === 'held').length });
 /** Who has taken the match (two of three), or null while it is still open. */
 export function matchWinner(m: AttackMatch): 'attacker' | 'defender' | null {
@@ -131,7 +156,7 @@ export const matchRound = (m: AttackMatch) => m.results.length + 1;
 export function recordAttack(m: AttackMatch, plan: AttackGroup[], outcome: 'won' | 'held') {
   if (matchWinner(m)) return;
   m.results.push(outcome);
-  for (const g of plan) m.seen[g.vessel] = (m.seen[g.vessel] ?? 0) + groupCost(g);
+  for (const g of plan) { m.seen[g.vessel] = (m.seen[g.vessel] ?? 0) + groupCost(g); m.kinds[g.type] = (m.kinds[g.type] ?? 0) + groupCost(g); }
 }
 /** The defender's weight for a route, from what it has seen: 1 everywhere before the first attack. */
 export function learntWeight(level: number, seen: Record<VesselId, number>) {
@@ -141,33 +166,48 @@ export function learntWeight(level: number, seen: Record<VesselId, number>) {
 
 /** Set up an attack: the organ, its defender's build (made without seeing the plan, all its energy spent; in a match,
  *  heavier on the vessels earlier attacks came up), and the wave started with the plan. Null if the plan is not allowed. */
-export function launchAttack(level: number, plan: AttackGroup[], seen: Record<VesselId, number> = {}): State | null {
+export function launchAttack(level: number, plan: AttackGroup[], learnt: Learnt = { seen: {} }): State | null {
   if (!checkPlan(level, plan).ok) return null;
-  const s = newGame(level, defenderPerks(level));
-  defenderBuild(s, seen);
+  const s = newGame(level, defenderPerks(level, learnt.kinds));
+  defenderBuild(s, learnt.seen, learntKinds(level, learnt.kinds));
   s.plan = attackSpawns(plan);
   startWave(s);
   return s;
 }
 
 /** The defender spends its energy on lymph nodes, round after round, until nothing more can be placed. */
-export function defenderBuild(s: State, seen: Record<VesselId, number> = {}) {
+export function defenderBuild(s: State, seen: Record<VesselId, number> = {}, learnt: BacteriumType[] = []) {
+  // IgG for the kinds it has learnt first, then its organ's own
+  const bugs = [...learnt, ...organBacteria(s.level)];
   if (!Object.keys(seen).length) { for (let i = 0; i < 20; i++) { const before = s.energy; blindBuild(s); if (s.energy === before) break; } return; }
   // having seen earlier attacks: one node at a time, on the route with the fewest nodes for its weight
   const w = learntWeight(s.level, seen), full = new Set<VesselId>();
   for (let i = 0; i < 200 && full.size < VESSEL_IDS.length; i++) {
     const v = VESSEL_IDS.filter((r) => !full.has(r)).sort((a, b) => guardsOn(s, a) / w(a) - guardsOn(s, b) / w(b))[0];
-    if (!buildOn(s, v)) full.add(v);
+    if (!buildOn(s, v, bugs)) full.add(v);
   }
 }
 
 const defenderPulse = pulseAtCluster(3);
-/** The defender's moves during the wave: dilate where the danger is, pulse at a boss or a tough one near the organ,
- *  buy NO with its energy when it runs low. */
+/** The defender's dilation, as `sensibleDilate` but slow to change its mind: it keeps one vessel open at a time, opens
+ *  the first at once, and switches only once another has been in clearly more danger for `ATTACK.switchDelay` s. */
+const waiting = new WeakMap<State, { v: VesselId; since: number }>();
+function slowDilate(s: State) {
+  const N = CONFIG.no, best = [...VESSEL_IDS].sort((a, b) => danger(s, b) - danger(s, a))[0], cur = s.open[0];
+  const spare = s.no >= N.openCost + 2 * N.drainPerSec;
+  if (danger(s, best) === 0) { if (cur) toggleRoute(s, cur); waiting.delete(s); return; }
+  if (!cur) { if (spare) toggleRoute(s, best); waiting.delete(s); return; }
+  if (best === cur || danger(s, best) <= 2 * danger(s, cur)) { waiting.delete(s); return; }
+  const w = waiting.get(s);
+  if (!w || w.v !== best) { waiting.set(s, { v: best, since: s.waveTime }); return; }
+  if (s.waveTime - w.since >= ATTACK.switchDelay && spare) { toggleRoute(s, cur); toggleRoute(s, best); waiting.delete(s); }
+}
+/** The defender's moves during the wave: dilate where the danger is (slow to switch), pulse at a boss or a tough one
+ *  near the organ, buy NO with its energy when it runs low. */
 export function defenderTick(s: State) {
   if (s.phase !== 'combat') return;
   if (s.no < 25) buyNo(s);
-  sensibleDilate(s);
+  slowDilate(s);
   defenderPulse(s);
 }
 
@@ -179,8 +219,8 @@ export function attackOutcome(s: State): 'running' | 'won' | 'held' {
 }
 
 /** Play an attack through to its end (for tests and balance checks). */
-export function simulateAttack(level: number, plan: AttackGroup[], seen: Record<VesselId, number> = {}) {
-  const s = launchAttack(level, plan, seen);
+export function simulateAttack(level: number, plan: AttackGroup[], learnt: Learnt = { seen: {} }) {
+  const s = launchAttack(level, plan, learnt);
   if (!s) return null;
   let n = 0;
   while (attackOutcome(s) === 'running' && n++ < 30 * 600) { defenderTick(s); step(s, 1 / 30); }

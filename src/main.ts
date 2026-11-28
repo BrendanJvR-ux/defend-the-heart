@@ -57,7 +57,7 @@ const inAttack = () => !!attack && s === attack.state;
 function launch() {
   if (!draft) return;
   if (!match || match.level !== draft.level || matchWinner(match)) match = freshMatch(draft.level);
-  const g = launchAttack(draft.level, draft.groups, match.seen);
+  const g = launchAttack(draft.level, draft.groups, match);
   if (!g) { toast('That attack is not allowed: check the budget.'); return; }
   // a tutorial in progress just stops (not marked seen: attack mode leaves the career alone)
   if (tut) { tut = null; coachSig = ''; coachEl.hidden = true; document.querySelectorAll('.coach-hl').forEach((el) => el.classList.remove('coach-hl')); }

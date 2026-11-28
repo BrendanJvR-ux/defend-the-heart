@@ -15,6 +15,8 @@ export interface Pathogen {
   wallHits?: number;
   /** A frenzied boss: its speed multiplier, raised by every strike. */
   frenzy?: number;
+  /** Attack mode's virus swarm: a speed multiplier, and the share of each hit it shrugs off. */
+  swarm?: { speed: number; guard: number };
   /** A boss that goes dormant: seconds of dormancy left, and how many times it has gone dormant. */
   dormantT?: number; dormantUsed?: number;
   /** Bosses that shed: seconds until the next one. */
@@ -72,7 +74,11 @@ export interface Ring { x: number; y: number; r: number; t: number; dur: number;
   /** Bile: where the spray came from. */ from?: Vec }
 export interface Floater { x: number; y: number; text: string; t: number; color: string; size?: number; /** Seconds shown (1.4 if not given). */ life?: number }
 /** A pathogen due to enter: when, up which route, and (skin wounds) how far along it, as a share of its length. */
-export interface Spawn { type: PathogenType; vessel: VesselId; at: number; pos?: number }
+export interface Spawn {
+  type: PathogenType; vessel: VesselId; at: number; pos?: number;
+  /** Attack mode: a big swarm of viruses moves faster and shrugs off part of each hit. */
+  swarm?: { speed: number; guard: number };
+}
 
 export interface State {
   /** Index into LEVELS: which organ is being defended. */
@@ -849,6 +855,7 @@ export function hurt(s: State, p: Pathogen, dmg: number, struck = false, by: Kil
     dmg *= wall.factor;
     if (struck) { p.wallHits = (p.wallHits ?? 0) + 1; if (p.wallHits >= wall.hits) wallBroken(s, p); }
   }
+  if (p.swarm) dmg *= 1 - p.swarm.guard;
   p.hp -= dmg;
   p.hit = 0.15;
   const fz = CONFIG.pathogens[p.type].frenzy;
@@ -1039,7 +1046,8 @@ export function step(s: State, dtRaw: number) {
   breathe(s, wasSurging);
   while (s.spawns.length && s.spawns[0].at <= s.waveTime) {
     const sp = s.spawns.shift()!, at = sp.pos ? sp.pos * VESSELS[sp.vessel].length : 0;
-    newPathogen(s, sp.type, sp.vessel, at);
+    const np = newPathogen(s, sp.type, sp.vessel, at);
+    if (sp.swarm) np.swarm = sp.swarm;
     // a wound opening for the first time stays marked for the rest of the organ
     if (sp.pos && !s.wounds.some((w) => w.vessel === sp.vessel && Math.abs(w.at - at) < 20)) s.wounds.push({ vessel: sp.vessel, at });
   }
@@ -1050,7 +1058,7 @@ export function step(s: State, dtRaw: number) {
     p.hit = Math.max(0, p.hit - dt);
     p.wob += dt * 4;
     if (p.slowT > 0) { p.slowT -= dt; if (p.slowT <= 0) p.slow = 1; }
-    const v = CONFIG.pathogens[p.type].speed * p.slow * (p.frenzy ?? 1) * organFlow(s, p) * (hc(s).speed ?? 1) * dt;
+    const v = CONFIG.pathogens[p.type].speed * p.slow * (p.frenzy ?? 1) * (p.swarm?.speed ?? 1) * organFlow(s, p) * (hc(s).speed ?? 1) * dt;
     if (p.goalSite) {
       // a hijacked cell heads for its lymph node, either way along the vessel; arriving, it bursts against it and
       // knocks it out for the rest of the wave

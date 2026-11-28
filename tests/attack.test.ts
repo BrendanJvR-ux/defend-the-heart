@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG, LEVELS } from '../src/config';
 import {
   ATTACK, ATTACK_TYPES, pathogenCost, attackBudget, attackVessels, checkPlan, planCost, launchAttack, simulateAttack, attackSpawns, isBoss,
-  perVessel, freshMatch, recordAttack, matchWinner, matchRound, matchScore, type AttackGroup,
+  perVessel, freshMatch, recordAttack, matchWinner, matchRound, matchScore, learntKinds, defenderPerks, swarmOf, defenderTick, type AttackGroup,
 } from '../src/attack';
 import { loadLevel } from '../src/level';
 import * as M from '../src/level';
 import { playMatch } from './balance/attackers';
+import { step, hurt } from '../src/sim';
+import { mk } from './players';
 
 const vessels = (i: number) => attackVessels(i).map((v) => v.id);
 
@@ -93,10 +95,10 @@ describe('attack mode: the AI defender', () => {
     }
   });
 
-  it('holds off the whole budget scattered thinly over every vessel on most organs', () => {
+  it('holds off viruses scattered thinly over every vessel, in groups too small to swarm, on most organs', () => {
     let held = 0;
     for (let i = 0; i < LEVELS.length; i++) {
-      const v = vessels(i), per = Math.min(ATTACK.maxCount, Math.floor(attackBudget(i) / pathogenCost('virus') / v.length));
+      const v = vessels(i), per = Math.min(ATTACK.swarm.from - 1, Math.floor(attackBudget(i) / pathogenCost('virus') / v.length));
       const plan = v.map((x) => ({ type: 'virus' as const, vessel: x, count: per, delay: 0 }));
       expect(checkPlan(i, plan).ok).toBe(true);
       if (simulateAttack(i, plan)!.outcome === 'held') held++;
@@ -106,14 +108,15 @@ describe('attack mode: the AI defender', () => {
 });
 
 describe('attack mode: a strong attack can win', () => {
-  it('a mixed attack (hijackers to take the white cells, then bacteria the organ does not expect) wins on the heart', () => {
+  it('a mixed attack (a hijacker swarm to take the white cells, Salmonella up two other vessels at the same moment) wins on the heart', () => {
     const v = vessels(0);
-    const plan: AttackGroup[] = [{ type: 'hijacker', vessel: v[0], count: 6, delay: 0 }, { type: 'salmonella', vessel: v[0], count: 9, delay: 4 }];
-    let left = attackBudget(0) - planCost(plan);
-    for (const x of v.slice(1)) { const n = Math.min(ATTACK.maxPerVessel, Math.floor(left / pathogenCost('salmonella'))); if (n > 0) { plan.push({ type: 'salmonella', vessel: x, count: n, delay: 2 }); left -= n * pathogenCost('salmonella'); } }
+    const plan: AttackGroup[] = [{ type: 'hijacker', vessel: v[0], count: 12, delay: 0 }, { type: 'salmonella', vessel: v[1], count: 6, delay: 0 }, { type: 'salmonella', vessel: v[2], count: 4, delay: 0 }];
     expect(checkPlan(0, plan).ok).toBe(true);
     expect(simulateAttack(0, plan)!.outcome).toBe('won');
+    // the same budget in small groups, too few to swarm, is held
+    expect(simulateAttack(0, v.map((x) => ({ type: 'virus' as const, vessel: x, count: ATTACK.swarm.from - 1, delay: 0 })))!.outcome).toBe('held');
   });
+
 });
 
 describe('attack mode: the limit per vessel', () => {
@@ -143,9 +146,9 @@ describe('attack mode: a match is the best of three', () => {
   it('the defender learns: after attacks up one vessel it builds more on it, with the same energy', () => {
     for (const i of [0, 3, 6]) {
       const v = vessels(i)[0], plan: AttackGroup[] = [{ type: 'saureus', vessel: v, count: 10, delay: 0 }];
-      const m = freshMatch(i), first = launchAttack(i, plan, m.seen)!;
+      const m = freshMatch(i), first = launchAttack(i, plan, m)!;
       recordAttack(m, plan, 'won');
-      const second = launchAttack(i, plan, m.seen)!;
+      const second = launchAttack(i, plan, m)!;
       const on = (s: typeof first) => s.nodes.filter((n) => M.entryOf(M.SITES.find((x) => x.id === n.site)!.vessel) === v).length;
       expect(on(second), LEVELS[i].id).toBeGreaterThan(on(first));
       expect(second.energy).toBeLessThan(first.energy + 40);
@@ -160,4 +163,48 @@ describe('attack mode: a match is the best of three', () => {
     expect(share).toBeGreaterThanOrEqual(0.3);
     expect(share).toBeLessThanOrEqual(0.7);
   }, 60_000);
+});
+
+describe('attack mode: swarms, learning kinds, a slow switch', () => {
+  it('eight or more viruses in a group are a swarm: faster, and they shrug off part of each hit (capped); bacteria never', () => {
+    const S = ATTACK.swarm, v = vessels(0)[0];
+    expect(swarmOf({ type: 'virus', vessel: v, count: S.from - 1, delay: 0 })).toBeNull();
+    const a = swarmOf({ type: 'virus', vessel: v, count: S.from, delay: 0 })!, b = swarmOf({ type: 'hijacker', vessel: v, count: 20, delay: 0 })!;
+    expect(a.speed).toBeCloseTo(1 + S.speedPer); expect(a.guard).toBeCloseTo(S.guardPer);
+    expect(b.speed).toBeLessThanOrEqual(1 + S.speedMax); expect(b.guard).toBeLessThanOrEqual(S.guardMax); expect(b.guard).toBeGreaterThan(a.guard);
+    expect(swarmOf({ type: 'saureus', vessel: v, count: 12, delay: 0 })).toBeNull();
+    // in play: the swarm's viruses carry it, move faster, and take less from a hit
+    const s = launchAttack(0, [{ type: 'virus', vessel: v, count: 20, delay: 0 }])!;
+    while (!s.pathogens.length) step(s, 1 / 30);
+    const p = s.pathogens[0]; expect(p.swarm).toEqual(swarmOf({ type: 'virus', vessel: v, count: 20, delay: 0 }));
+    const hp = p.hp; hurt(s, p, 5); expect(hp - p.hp).toBeCloseTo(5 * (1 - p.swarm!.guard));
+  });
+
+  it('the defender learns kinds: after an attack of bacteria it does not expect, it aims IgG at them', () => {
+    const i = 0, v = vessels(i)[0], plan: AttackGroup[] = [{ type: 'salmonella', vessel: v, count: 10, delay: 0 }];
+    expect(defenderPerks(i).targets).not.toContain('salmonella');
+    const m = freshMatch(i); recordAttack(m, plan, 'won');
+    expect(learntKinds(i, m.kinds)).toEqual(['salmonella']);
+    expect(defenderPerks(i, m.kinds).targets).toContain('salmonella');
+    const s = launchAttack(i, plan, m)!;
+    expect(s.nodes.some((n) => n.type === 'igg' && n.targets.includes('salmonella'))).toBe(true);
+    // viruses are never learnt as IgG targets, and at most ATTACK.learnKinds kinds
+    const many = freshMatch(i);
+    recordAttack(many, [{ type: 'virus', vessel: v, count: 10, delay: 0 }, { type: 'ecoli', vessel: v, count: 3, delay: 0 }, { type: 'listeria', vessel: v, count: 2, delay: 0 }, { type: 'mtb', vessel: v, count: 4, delay: 0 }], 'held');
+    expect(learntKinds(i, many.kinds)).toHaveLength(ATTACK.learnKinds);
+    expect(learntKinds(i, many.kinds)[0]).toBe('mtb');
+  });
+
+  it('the defender is slow to switch the vessel it dilates: only after the other has been worse for switchDelay s', () => {
+    const v = vessels(0);
+    const s = launchAttack(0, [{ type: 'virus', vessel: v[0], count: 1, delay: 0 }])!;
+    s.spawns = []; s.pathogens = [];
+    s.no = 100;
+    const put = (r: string, hp: number) => { const p = mk(s, 'saureus', r, M.VESSELS[r].length * 0.8); p.hp = hp; return p; };
+    put(v[0], 30); defenderTick(s); expect(s.open).toEqual([v[0]]);
+    put(v[1], 300);
+    defenderTick(s); expect(s.open).toEqual([v[0]]);
+    s.waveTime += ATTACK.switchDelay - 0.5; defenderTick(s); expect(s.open).toEqual([v[0]]);
+    s.waveTime += 1; s.no = 100; defenderTick(s); expect(s.open).toEqual([v[1]]);
+  });
 });
