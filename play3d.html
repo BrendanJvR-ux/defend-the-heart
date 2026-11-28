@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f2e9d4" />
+    <title>Defend the Heart 3D</title>
+    <link rel="icon" href="./icon.svg" />
+    <script type="module" crossorigin src="./assets/play3d-DVBGS33p.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/text-Cs37ivV4.js">
+    <link rel="stylesheet" crossorigin href="./assets/text-BaO2Kd1c.css">
+    <link rel="stylesheet" crossorigin href="./assets/play3d-vjOL7ZB8.css">
+  </head>
+  <body class="p3d">
+    <div id="stage">
+      <header class="plate hud3d" aria-label="Status">
+        <h1 id="title">Defend the Liver</h1>
+        <dl>
+          <div><dt>Health</dt><dd id="hp"></dd></div>
+          <div><dt>Wave</dt><dd id="wave"></dd></div>
+          <div><dt>Energy</dt><dd id="energy"></dd></div>
+          <div><dt>Cells</dt><dd id="cells"></dd></div>
+        </dl>
+        <div class="no3d"><span class="nogauge"><i id="nobar"></i></span><small id="notext"></small></div>
+      </header>
+      <div class="plate tools3d">
+        <button id="start" class="primary" type="button">Start wave 1</button>
+        <button id="pulse" class="pulse" type="button" hidden>Immune pulse</button>
+        <button id="speed" type="button" title="Game speed">×1</button>
+        <label class="organ3d">Organ <select id="organ" aria-label="Organ"></select></label>
+        <a href="./" class="back3d">2D game</a>
+      </div>
+      <p id="hint" class="plate hint3d"></p>
+      <div id="toast" class="plate toast3d" hidden role="status" aria-live="polite"></div>
+      <div id="build" class="plate build3d" hidden role="dialog" aria-label="Build"></div>
+      <div id="end" class="end3d" hidden><div class="plate"><p class="kicker">3D prototype</p><h2 id="endTitle"></h2><button id="again" class="primary" type="button">Play again</button></div></div>
+      <p class="badge3d">3D prototype · sandbox: every IgG target unlocked, nothing saved</p>
+    </div>
+  </body>
+</html>

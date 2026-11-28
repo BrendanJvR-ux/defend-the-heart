@@ -1,0 +1,16 @@
+{
+  "name": "Defend the Heart",
+  "short_name": "Defend the Heart",
+  "description": "An anatomy tower defence: guard the organs with lymph nodes, white cells and NO.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#f2e9d4",
+  "theme_color": "#f2e9d4",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
