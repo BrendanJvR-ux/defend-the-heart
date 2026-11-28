@@ -17,6 +17,8 @@ export interface Pathogen {
   frenzy?: number;
   /** Attack mode's virus swarm: a speed multiplier, and the share of each hit it shrugs off. */
   swarm?: { speed: number; guard: number };
+  /** Attack mode's lone boss: a multiplier on the harm it does on arrival. */
+  harm?: number;
   /** A boss that goes dormant: seconds of dormancy left, and how many times it has gone dormant. */
   dormantT?: number; dormantUsed?: number;
   /** Bosses that shed: seconds until the next one. */
@@ -78,6 +80,8 @@ export interface Spawn {
   type: PathogenType; vessel: VesselId; at: number; pos?: number;
   /** Attack mode: a big swarm of viruses moves faster and shrugs off part of each hit. */
   swarm?: { speed: number; guard: number };
+  /** Attack mode: a boss sent alone does this times the harm a boss-wave share would on arrival. */
+  harm?: number;
 }
 
 export interface State {
@@ -1048,6 +1052,7 @@ export function step(s: State, dtRaw: number) {
     const sp = s.spawns.shift()!, at = sp.pos ? sp.pos * VESSELS[sp.vessel].length : 0;
     const np = newPathogen(s, sp.type, sp.vessel, at);
     if (sp.swarm) np.swarm = sp.swarm;
+    if (sp.harm) np.harm = sp.harm;
     // a wound opening for the first time stays marked for the rest of the organ
     if (sp.pos && !s.wounds.some((w) => w.vessel === sp.vessel && Math.abs(w.at - at) < 20)) s.wounds.push({ vessel: sp.vessel, at });
   }
@@ -1208,7 +1213,7 @@ export function step(s: State, dtRaw: number) {
       // a boss that comes up every vessel carries a share of the boss, and does that share of its harm: one leak too
       // many costs a few health, not a third of the organ
       const st = CONFIG.pathogens[p.type], L = LEVELS[s.level], share = st.boss ? CONFIG.bossEveryVessel.hpShare : 1;
-      const dmg = Math.round(st.heartDamage * share * (L.damageMul?.[p.type] ?? 1));
+      const dmg = Math.round(st.heartDamage * share * (p.harm ?? 1) * (L.damageMul?.[p.type] ?? 1));
       // some lodge in the organ, and go on costing health at every wave's end
       if (st.lodges && (!st.lodges.only || st.lodges.only === L.id)) {
         s.lodged[p.type] = (s.lodged[p.type] ?? 0) + 1;

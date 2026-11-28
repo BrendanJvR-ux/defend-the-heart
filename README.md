@@ -85,12 +85,13 @@ The scripted player who can't see the waves, with every upgrade the career buys 
 
 ## Attack mode
 
-**Attack mode** in the menu turns the game round: you are the infection. Choose an organ and play a **match: the best of three attacks** (two wins take the organ). Each attack is planned within the organ's **budget**: 8 points per point of its health and one per two of its starting energy, times a factor for that organ (below). An attack is up to eight groups, each one kind of pathogen up one vessel, 1 to 20 of them, sent after a delay you choose (0 to 40 s; bacteria enter 1.3 s apart, viruses 0.7 s). **At most 12 pathogens may come up any one vessel in an attack**, counted over all its groups; a small virus counts as half and a boss as one. Every kind has a price worked out from its stats: its health (priced a little more than in proportion, as (health / 10)^1.25, since a tough pathogen outlasts several hits) weighted by its speed, the harm it does on arrival, and its tricks (infecting white cells, jumping, lodging). A virus costs 3, a hijacker 7, *Salmonella* 14, *S. aureus* 16 and *M. tuberculosis* 29. One boss may come, alone, at its boss-wave health, priced on its stats like everything else (from 38 for the colony to 68 for the burrowing swarm; it used to carry a 1.5× premium).
+**Attack mode** in the menu turns the game round: you are the infection. Choose an organ and play a **match: the best of three attacks** (two wins take the organ). Each attack is planned within the organ's **budget**: 8 points per point of its health and one per two of its starting energy, times a factor for that organ (below). An attack is up to eight groups, each one kind of pathogen up one vessel, 1 to 20 of them, sent after a delay you choose (0 to 40 s; bacteria enter 1.3 s apart, viruses 0.7 s). **At most 12 pathogens may come up any one vessel in an attack**, counted over all its groups; a small virus counts as half and a boss as one. Every kind has a price worked out from its stats: its health (priced a little more than in proportion, as (health / 10)^1.25, since a tough pathogen outlasts several hits) weighted by its speed, the harm it does on arrival, and its tricks (infecting white cells, jumping, lodging). A virus costs 3, a hijacker 7, *Salmonella* 14, *S. aureus* 16 and *M. tuberculosis* 29. One boss may come, alone, at its boss-wave health (55% of the boss). Since it comes alone, not one up every vessel, it does its **full harm** when it arrives, not a boss-wave share: 6 for the colony, 8 for the burrowing swarm. It is priced on its stats like everything else, harm included: from 43 for the colony to 74 for the burrowing swarm. It used to carry a 1.5× premium and do only 55% of its harm.
 
 **Virus swarms.** A group of 8 or more viruses (plain, jumping or hijacker) is a swarm. From the 8th, each virus in the group makes the whole group 2% faster and shrug off 2% more of every hit, up to 15% faster and 20% shrugged off (a 20-strong group reaches both). The planner shows each virus group's boost, or how many more would make it a swarm. Only Attack mode has swarms; the campaign's viruses are unchanged.
 
 The organ is defended by the same scripted player the balance tests use. It spends all its energy on lymph nodes round its vessels **without seeing your plan** (IgG aimed at the bacteria that organ usually meets). Then, as your pathogens come, it dilates the vessel in the most danger with NO (buying more with its energy when it runs low) and fires the pulse at a boss or a tough one near the organ.
 
+- **It holds its pulse for a boss** until the boss is 70% of the way in; anything else it pulses as before, with 40+ health left and past 85%.
 - **It is slow to change its mind:** it dilates one vessel at a time, opens the first at once, but switches only after another vessel has been in clearly more danger (twice) for **3 seconds**. Groups timed to arrive together up different vessels stretch it.
 - **It learns during a match.** After each attack:
   - It builds more on the vessels your attacks came up. A vessel's nodes count for less in its plan the more of your budget came that way (a vessel that took everything counts its nodes at 1 / (1 + ½ × the number of vessels)).
@@ -105,28 +106,28 @@ You watch each attack play out on the usual map, at any speed; tap a pathogen to
 - a mix, with hijackers first;
 - a boss with support.
 
-Each plans within the budget and the per-vessel limit. A skilled one times its groups so that each vessel's leaders arrive together. Between attacks those who adapt (more of the skilled) move their weight off the vessels the defender has learnt to watch. The swarm boost was tuned until swarms did about as well as bacteria and mixed attacks: at twice the strength above they won 99% of matches, with none 32%. Then each organ's budget factor was tuned on 400 matches (40 per organ) until the attacker took 49% overall and 48% to 53% on every organ but the spleen, which sits at 40%. The spleen's budget rounds to steps of 5, and 195 gives 40% while 200 gives 60%.
+Each plans within the budget and the per-vessel limit. A skilled one times its groups so that each vessel's leaders arrive together. Between attacks those who adapt (more of the skilled) move their weight off the vessels the defender has learnt to watch. The swarm boost was tuned until swarms did about as well as bacteria and mixed attacks: at twice the strength above they won 99% of matches, with none 32%. Then each organ's budget factor was tuned on 400 matches (40 per organ) until the attacker took 51% overall and 50% to 55% on every organ but the lungs, which sit at 43%. Budgets round to steps of 5, and the lungs' 160 gives 43% while 165 gives 60%.
 
 | Organ | Heart | Lungs | Liver | Kidney | Spleen | Bone marrow | Stomach | Lymph node | Skin | Eye |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Budget factor | 1.07 | 0.75 | 0.82 | 1.21 | 0.7 | 0.89 | 0.96 | 0.8 | 0.83 | 0.76 |
-| Budget | 225 | 165 | 260 | 450 | 195 | 240 | 420 | 300 | 385 | 225 |
+| Budget factor | 1.07 | 0.73 | 0.82 | 1.21 | 0.7 | 0.89 | 0.98 | 0.8 | 0.83 | 0.76 |
+| Budget | 225 | 160 | 260 | 450 | 195 | 240 | 430 | 300 | 385 | 225 |
 
 On those 400 matches:
 
 | | Attacker takes |
 |---|---|
-| Weak attackers | 36% |
+| Weak attackers | 41% |
 | Middle | 53% |
-| Strong | 56% |
-| Swarms | 46% |
-| Bacteria | 48% |
-| Mixed | 64% |
-| Boss | 35% |
+| Strong | 58% |
+| Swarms | 43% |
+| Bacteria | 47% |
+| Mixed | 63% |
+| Boss | 50% |
 
-Before swarms, learning kinds and the slow switch, bacteria took 82% and viruses alone 18%, and skill barely mattered (53% weak, 57% strong). Boss attacks are still the weakest. Dropping the boss premium lifted them from 27% to 35%. Pricing them below their stats barely helped (49% at 0.85× with the budgets before re-tuning, against 47% at 1×), so what holds them back is that the defender saves its pulse for a boss, not the price.
+Before swarms, learning kinds and the slow switch, bacteria took 82% and viruses alone 18%, and skill barely mattered (53% weak, 57% strong). Boss attacks were the weakest. Dropping the boss premium lifted them from 27% to 35%. Holding the defender's pulse made no difference: 35% pulsing at once, 34% at 70% of the way, 31% at 85%. The pulse killed only 5 bosses in 100 boss attacks. The real cause was harm: bosses reached the organ in about half of those attacks, but did only 55% of their harm when they got there, so most of those attacks still failed. With full harm, boss attacks take 50%.
 
-A fresh run of **100 matches** (ten per organ, other attackers) has the attacker taking **49%** (single attacks 49%). Re-run it with `npx vite-node tests/balance/attackReport.ts [matches per organ]`. A test plays 40 matches and requires the attacker to take between 30% and 70% of them.
+A fresh run of **100 matches** (ten per organ, other attackers) has the attacker taking **52%** (single attacks 50%). Re-run it with `npx vite-node tests/balance/attackReport.ts [matches per organ]`. A test plays 40 matches and requires the attacker to take between 30% and 70% of them.
 
 Attack mode is kept apart from the career: nothing is saved, it earns and spends no gold, and it leaves the Field Guide, seals and tips alone. A weak attack is held off on every organ, and so are viruses scattered thinly in groups too small to swarm, on nearly every organ (tests check both).
 
@@ -378,5 +379,5 @@ Tap a + site to build (between waves), Start wave, tap a vessel to open or close
 | `tests/career.test.ts` | The save (fresh, round-trip, migration, unreadable and newer saves, no storage, Continue, winning and losing), gold, the shop and upgrade effects. |
 | `tests/players.ts` | The scripted players the balance tests use (the career player who can't see the waves, the one who can, the clumsy one, the one who holds a route open, the one who opens several) and the helpers that drive a game in a test. |
 | `tests/balance/` | The balance lab: a population of simulated players of different skill playing whole careers with retries and replays (`population.ts`), the simulated attackers for Attack mode (`attackers.ts`, `attackReport.ts`), split over eight test files that run only with `BALANCE_LAB=1`, a report (`report.ts`) and a sweep of one organ's energy and health (`sweep.ts`). |
-| `tests/attack.test.ts` | Attack mode: prices from stats, the budget and plan rules, the limit per vessel, virus swarms, the best-of-three match and the defender learning vessels and kinds, its slow switch, the 50/50 balance check, the defender building blind with all its energy, a weak attack held off on every organ, a timed mixed one winning on the heart. |
+| `tests/attack.test.ts` | Attack mode: prices from stats, the budget and plan rules, the limit per vessel, virus swarms, the lone boss's full harm and the defender's held pulse, the best-of-three match and the defender learning vessels and kinds, its slow switch, the 50/50 balance check, the defender building blind with all its energy, a weak attack held off on every organ, a timed mixed one winning on the heart. |
 | `tests/game.test.ts` | Tests for every rule (NO and dilation, forks, cells, pulse, placement, the four lymph nodes and the IgG match, IgE burn-out, infection), each organ's map and twist, each boss's trick, map labels that never cover a site or each other, plus balance on every organ (including the hold-open check). |

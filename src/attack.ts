@@ -4,9 +4,9 @@
 // Nothing here reads or writes the career or its saves.
 import { CONFIG, LEVELS, BACTERIA, type BacteriumType, type PathogenType, type VesselId } from './config';
 import { NO_PERKS, organBacteria, type Perks } from './career';
-import { routesOf, entryOf, VESSEL_IDS } from './level';
-import { newGame, startWave, step, buyNo, toggleRoute, type Spawn, type State } from './sim';
-import { blindBuild, buildOn, guardsOn, danger, pulseAtCluster } from './defender';
+import { routesOf, entryOf, VESSEL_IDS, VESSELS } from './level';
+import { newGame, startWave, step, buyNo, toggleRoute, pulseTargets, firePulse, type Spawn, type State } from './sim';
+import { blindBuild, buildOn, guardsOn, danger } from './defender';
 
 export interface AttackGroup {
   type: PathogenType;
@@ -33,7 +33,7 @@ export const ATTACK = {
   /** A boss's traits make it dearer than its stats alone, by this factor. */
   bossPremium: 1,
   /** Each organ's budget, scaled to give an attack an even chance against it (tuned on simulated matches). */
-  scale: { heart: 1.07, lungs: 0.75, liver: 0.82, kidney: 1.21, spleen: 0.7, marrow: 0.89, stomach: 0.96, lymphnode: 0.8, skin: 0.83, eye: 0.76 } as Record<string, number>,
+  scale: { heart: 1.07, lungs: 0.73, liver: 0.82, kidney: 1.21, spleen: 0.7, marrow: 0.89, stomach: 0.98, lymphnode: 0.8, skin: 0.83, eye: 0.76 } as Record<string, number>,
   /** The budget: this much per point of the organ's health and per point of its defender's starting energy. */
   budget: { perHp: 8, perEnergy: 0.5 },
   /** A match is the best of three attacks on one organ. */
@@ -50,6 +50,12 @@ export const ATTACK = {
   /** The defender is slow to change its mind: it switches the vessel it is dilating only once another has been in
    *  more danger for this many seconds (opening the first is immediate). */
   switchDelay: 3,
+  /** The defender holds its pulse for a boss until the boss is this share of the way in (anything else: past 85%
+   *  with 40+ health left, as in the campaign's scripted player). */
+  bossPulseAt: 0.7,
+  /** A boss sent in an attack comes alone (not one up every vessel), so it does this times a boss-wave share's harm
+   *  when it arrives (1 / 0.55: the boss's full harm). */
+  bossHarm: 1 / CONFIG.bossEveryVessel.hpShare,
 };
 
 /** What the attacker may send: the bacteria, the small viruses, and the bosses (one at most). */
@@ -64,7 +70,7 @@ export const isBoss = (t: PathogenType) => !!CONFIG.pathogens[t].boss;
  *  a boss's traits make it dearer by `ATTACK.bossPremium`. */
 export function pathogenCost(t: PathogenType): number {
   const st = CONFIG.pathogens[t], share = st.boss ? CONFIG.bossEveryVessel.hpShare : 1;
-  let c = ((st.hp * share) / 10) ** ATTACK.toughness * (0.5 + st.speed / 60) + st.heartDamage * share * 1.5;
+  let c = ((st.hp * share) / 10) ** ATTACK.toughness * (0.5 + st.speed / 60) + st.heartDamage * share * (st.boss ? ATTACK.bossHarm : 1) * 1.5;
   if (st.infects) c += 3;
   if (st.jumps) c += 1;
   if (st.lodges) c += 2 * st.lodges.perWave;
@@ -120,7 +126,7 @@ export function attackSpawns(plan: AttackGroup[]): Spawn[] {
   const out: Spawn[] = [];
   for (const g of plan) {
     const gap = CONFIG.pathogens[g.type].taxon ? ATTACK.spacing.bacterium : ATTACK.spacing.virus, swarm = swarmOf(g);
-    for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.delay + i * gap, ...(swarm ? { swarm } : {}) });
+    for (let i = 0; i < g.count; i++) out.push({ type: g.type, vessel: routesOf(g.vessel)[0], at: g.delay + i * gap, ...(swarm ? { swarm } : {}), ...(isBoss(g.type) ? { harm: ATTACK.bossHarm } : {}) });
   }
   return out.sort((a, b) => a.at - b.at);
 }
@@ -190,7 +196,13 @@ export function defenderBuild(s: State, seen: Record<VesselId, number> = {}, lea
   }
 }
 
-const defenderPulse = pulseAtCluster(3);
+/** The defender's pulse: at a boss once it is `ATTACK.bossPulseAt` of the way in, or at a tough one (40+ health left)
+ *  about to arrive. */
+function defenderPulse(s: State) {
+  if (s.pulsesLeft <= 0) return;
+  const near = (p: { s: number; vessel: VesselId }, at: number) => p.s > at * VESSELS[p.vessel].length;
+  if (pulseTargets(s).some((p) => (isBoss(p.type) ? near(p, ATTACK.bossPulseAt) : p.hp >= 40 && near(p, 0.85)))) firePulse(s);
+}
 /** The defender's dilation, as `sensibleDilate` but slow to change its mind: it keeps one vessel open at a time, opens
  *  the first at once, and switches only once another has been in clearly more danger for `ATTACK.switchDelay` s. */
 const waiting = new WeakMap<State, { v: VesselId; since: number }>();

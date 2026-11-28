@@ -208,3 +208,24 @@ describe('attack mode: swarms, learning kinds, a slow switch', () => {
     s.waveTime += 1; s.no = 100; defenderTick(s); expect(s.open).toEqual([v[1]]);
   });
 });
+
+describe('attack mode: a lone boss', () => {
+  it('a boss sent alone does its full harm on arrival, not a boss-wave share', () => {
+    const v = vessels(0)[0], s = launchAttack(0, [{ type: 'colony', vessel: v, count: 1, delay: 0 }])!;
+    while (!s.pathogens.length) step(s, 1 / 30);
+    const b = s.pathogens[0]; expect(b.harm).toBeCloseTo(ATTACK.bossHarm);
+    s.spawns = []; b.s = M.VESSELS[b.vessel].length - 0.1; b.hp = 9999;
+    const hp = s.heartHp; step(s, 1 / 30);
+    expect(hp - s.heartHp).toBe(CONFIG.pathogens.colony.heartDamage);
+  });
+
+  it('the defender holds its pulse for a boss until the boss is bossPulseAt of the way in', () => {
+    const v = vessels(0)[0], s = launchAttack(0, [{ type: 'colony', vessel: v, count: 1, delay: 0 }])!;
+    while (!s.pathogens.length) step(s, 1 / 30);
+    s.spawns = []; const b = s.pathogens[0]; b.hp = 9999;
+    const L = M.VESSELS[b.vessel].length;
+    // bring a white cell's reach to it wherever it is: only the boss's progress decides
+    b.s = L * (ATTACK.bossPulseAt - 0.1);
+    const was = s.pulsesLeft; defenderTick(s); expect(s.pulsesLeft).toBe(was);
+  });
+});
