@@ -35,18 +35,22 @@ export function sensibleDilate(s: State) {
  *  first, two rounds a build; IgG aimed in turn at the organ's bacteria (the panel names them), an IgA as every
  *  third node on a vessel, IgM otherwise. */
 export function blindBuild(s: State) {
-  const guards = (v: VesselId) => s.nodes.filter((x) => guarding(v).some((g) => g.id === x.site)).length;
-  const bugs = organBacteria(s.level);
   for (let round = 0; round < 2; round++) {
     let placed = false;
-    for (const v of [...M.VESSEL_IDS].sort((a, b) => guards(a) - guards(b))) {
-      const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
-      if (!site) continue;
-      const aims = bugs.filter((b) => hasTarget(s, b) && aimedAt(s, b) < CONFIG.iggPerTarget);
-      const want: NodeType = guards(v) % 3 === 2 ? 'iga' : aims.length ? 'igg' : 'igm';
-      // with the Broad upgrade, its IgG are broad (they hit every bacterium of the Gram stain harder)
-      if (placeNode(s, site.id, want, want === 'igg' ? [aims[0]] : undefined, want === 'igg' && s.perks.broad) || placeNode(s, site.id, 'igm')) placed = true;
-    }
+    for (const v of [...M.VESSEL_IDS].sort((a, b) => guardsOn(s, a) - guardsOn(s, b))) if (buildOn(s, v)) placed = true;
     if (!placed) break;
   }
+}
+
+/** How many nodes guard route v. */
+export const guardsOn = (s: State, v: VesselId) => s.nodes.filter((x) => guarding(v).some((g) => g.id === x.site)).length;
+
+/** One node on route v, as the scripted player chooses it: its outermost free site; an IgA as every third node, else
+ *  IgG aimed at the next of the organ's bacteria that has room (broad with the upgrade), else IgM. */
+export function buildOn(s: State, v: VesselId): boolean {
+  const site = guarding(v).filter((x) => !nodeAt(s, x.id)).sort((a, b) => b.index - a.index)[0];
+  if (!site) return false;
+  const aims = organBacteria(s.level).filter((b) => hasTarget(s, b) && aimedAt(s, b) < CONFIG.iggPerTarget);
+  const want: NodeType = guardsOn(s, v) % 3 === 2 ? 'iga' : aims.length ? 'igg' : 'igm';
+  return placeNode(s, site.id, want, want === 'igg' ? [aims[0]] : undefined, want === 'igg' && s.perks.broad) || placeNode(s, site.id, 'igm');
 }

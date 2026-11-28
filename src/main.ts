@@ -25,7 +25,7 @@ import { setUpLandscape, fitToVisibleScreen } from './orientation';
 import { loadSettings, saveSettings, applySettings, watchSystemMotion, settingsHtml, type Settings } from './settings';
 import { howToPlayHtml } from './howto';
 import { createNotices } from './notices';
-import { launchAttack, defenderTick, attackOutcome } from './attack';
+import { launchAttack, defenderTick, attackOutcome, freshMatch, matchWinner, recordAttack, type AttackMatch } from './attack';
 import { freshDraft, maxCount, organPickerHtml, plannerHtml, attackPanelHtml, attackResultHtml, type AttackDraft } from './attackUi';
 
 // ── The career: organs cleared, the game in progress, saved in this browser ──
@@ -48,23 +48,35 @@ const view: View = { hoverVessel: null, hoverSite: null, selectedSite: null, pop
 
 // ── Attack mode: the player sends the pathogens; the scripted defender holds the organ. Kept apart from the career:
 // nothing in it is saved, and it earns and spends no gold. `attack.state` is the game being watched (while `s` is it). ──
-let attack: { draft: AttackDraft; state: State } | null = null;
+let attack: { draft: AttackDraft; state: State; recorded: boolean } | null = null;
+/** The best-of-three match on the organ being attacked. */
+let match: AttackMatch | null = null;
 /** The plan being drawn up (kept for a re-plan after the attack). */
 let draft: AttackDraft | null = null;
 const inAttack = () => !!attack && s === attack.state;
 function launch() {
   if (!draft) return;
-  const g = launchAttack(draft.level, draft.groups);
+  if (!match || match.level !== draft.level || matchWinner(match)) match = freshMatch(draft.level);
+  const g = launchAttack(draft.level, draft.groups, match.seen);
   if (!g) { toast('That attack is not allowed: check the budget.'); return; }
   // a tutorial in progress just stops (not marked seen: attack mode leaves the career alone)
   if (tut) { tut = null; coachSig = ''; coachEl.hidden = true; document.querySelectorAll('.coach-hl').forEach((el) => el.classList.remove('coach-hl')); }
-  const sp = s.speed; s = g; s.speed = sp; attack = { draft: { level: draft.level, groups: draft.groups.map((x) => ({ ...x })) }, state: g };
+  const sp = s.speed; s = g; s.speed = sp; attack = { draft: { level: draft.level, groups: draft.groups.map((x) => ({ ...x })) }, state: g, recorded: false };
   closeSite(); closeInspect(); gameShown = true; closeMenu(); pausedBeforeMenu = false; s.paused = false; lastSig = ''; overlaySig = ''; organTagFor = '';
   toast(`The attack is under way: the defender built ${s.nodes.length} lymph nodes.`);
 }
 /** Back to the planner, with the plan just played. */
+/** Count a finished attack in the match, once; one given up part-way counts as held. */
+function settleAttack() {
+  if (!attack || attack.recorded || !match) return;
+  const out = attackOutcome(attack.state);
+  attack.recorded = true;
+  recordAttack(match, attack.draft.groups, out === 'won' ? 'won' : 'held');
+}
 function replan(level?: number) {
-  if (level != null && (!draft || draft.level !== level)) draft = freshDraft(level);
+  if (inAttack()) settleAttack();
+  if (level != null && (!draft || draft.level !== level)) { draft = freshDraft(level); match = freshMatch(level); }
+  if (!match || (draft && match.level !== draft.level)) match = freshMatch(draft?.level ?? level ?? 0);
   else if (attack) draft = { level: attack.draft.level, groups: attack.draft.groups.map((x) => ({ ...x })) };
   if (inAttack()) s.paused = true;
   openMenu(draft ? { page: 'attackPlan' } : { page: 'attack' });
@@ -459,7 +471,7 @@ function renderMenu() {
   } else if (menuPage.page === 'attack') {
     h = organPickerHtml();
   } else if (menuPage.page === 'attackPlan') {
-    h = draft ? plannerHtml(draft) : organPickerHtml();
+    h = draft ? plannerHtml(draft, match && match.level === draft.level ? match : freshMatch(draft.level)) : organPickerHtml();
   } else if (menuPage.page === 'guide') {
     h = guideHtml(progress);
   } else if (menuPage.page === 'guideEntry') {
@@ -676,6 +688,7 @@ panel.addEventListener('focusout', () => { view.showPulseRadius = false; });
 overlay.addEventListener('click', (e) => {
   const a = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
   if (a?.dataset.act === 'attackReplan') { replan(); return; }
+  if (a?.dataset.act === 'attackNewMatch') { replan(); if (draft) match = freshMatch(draft.level); renderMenu(); return; }
   if (a?.dataset.act === 'attackOrgans') { replan(); openMenu({ page: 'attack' }); return; }
   if (a?.dataset.act === 'restart') restart();
   if (a?.dataset.act === 'level') playLevel(Number(a.dataset.level));
@@ -889,7 +902,7 @@ function renderOrganTag() {
 }
 
 function renderPanel() {
-  if (inAttack()) { panel.innerHTML = attackPanelHtml(s, attack!.draft); infoBody.innerHTML = ''; if (!infoEl.hidden) setInfo(false); return; }
+  if (inAttack()) { panel.innerHTML = attackPanelHtml(s, attack!.draft, match!); infoBody.innerHTML = ''; if (!infoEl.hidden) setInfo(false); return; }
   const def = wave(s);
   let h = '', info = '';
   if (s.phase === 'prep') {
@@ -1010,8 +1023,8 @@ function renderOverlay() {
   overlaySig = sig;
   if (inAttack()) {
     const out = attackOutcome(s);
-    if (out !== 'running') { overlay.hidden = false; overlay.className = out === 'won' ? 'victory' : 'defeat'; overlay.innerHTML = attackResultHtml(s, attack!.draft, out === 'won'); lastSig = ''; }
-    else if (s.paused) { overlay.hidden = false; overlay.className = 'paused'; overlay.innerHTML = '<div class="plate"><h2>Paused</h2><button data-act="resume" class="primary">Resume</button> <button data-act="attackReplan">Re-plan the attack</button></div>'; }
+    if (out !== 'running') { settleAttack(); overlay.hidden = false; overlay.className = out === 'won' ? 'victory' : 'defeat'; overlay.innerHTML = attackResultHtml(s, attack!.draft, out === 'won', match!); lastSig = ''; }
+    else if (s.paused) { overlay.hidden = false; overlay.className = 'paused'; overlay.innerHTML = '<div class="plate"><h2>Paused</h2><button data-act="resume" class="primary">Resume</button> <button data-act="attackReplan">Give up this attack (it counts as held)</button></div>'; }
     else { overlay.hidden = true; overlay.innerHTML = ''; }
     return;
   }

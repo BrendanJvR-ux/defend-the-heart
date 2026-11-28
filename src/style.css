@@ -425,6 +425,8 @@ textarea.code { width: 100%; font: 12px/1.3 ui-monospace, Menlo, monospace; colo
 .budget .bar i { display: block; height: 100%; background: var(--wash-gold, #e8c66a); }
 .budget.over b { color: var(--red-dark); }
 .budget.over .bar i { background: var(--red-dark); }
+.matchLine { margin: 4px 0 8px; }
+.matchLine small { display: block; opacity: 0.8; }
 .attackGroups { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; counter-reset: ag; }
 .agroup { border: 1.2px solid rgba(35, 26, 20, 0.7); border-radius: var(--sketch-sm); padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; counter-increment: ag; }
 .agTop, .agBottom { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
