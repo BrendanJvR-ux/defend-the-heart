@@ -85,7 +85,7 @@ The scripted player who can't see the waves, with every upgrade the career buys 
 
 ## Attack mode
 
-**Attack mode** in the menu turns the game round: you are the infection. Choose an organ and play a **match: the best of three attacks** (two wins take the organ). Each attack is planned within the organ's **budget**: 8 points per point of its health and one per two of its starting energy, times a factor for that organ (below). An attack is up to eight groups, each one kind of pathogen up one vessel, 1 to 20 of them, sent after a delay you choose (0 to 40 s; bacteria enter 1.3 s apart, viruses 0.7 s). **At most 12 pathogens may come up any one vessel in an attack**, counted over all its groups; a small virus counts as half and a boss as one. Every kind has a price worked out from its stats: its health (priced a little more than in proportion, as (health / 10)^1.25, since a tough pathogen outlasts several hits) weighted by its speed, the harm it does on arrival, and its tricks (infecting white cells, jumping, lodging). A virus costs 3, a hijacker 7, *Salmonella* 14, *S. aureus* 16 and *M. tuberculosis* 29. One boss may come, alone, at its boss-wave health.
+**Attack mode** in the menu turns the game round: you are the infection. Choose an organ and play a **match: the best of three attacks** (two wins take the organ). Each attack is planned within the organ's **budget**: 8 points per point of its health and one per two of its starting energy, times a factor for that organ (below). An attack is up to eight groups, each one kind of pathogen up one vessel, 1 to 20 of them, sent after a delay you choose (0 to 40 s; bacteria enter 1.3 s apart, viruses 0.7 s). **At most 12 pathogens may come up any one vessel in an attack**, counted over all its groups; a small virus counts as half and a boss as one. Every kind has a price worked out from its stats: its health (priced a little more than in proportion, as (health / 10)^1.25, since a tough pathogen outlasts several hits) weighted by its speed, the harm it does on arrival, and its tricks (infecting white cells, jumping, lodging). A virus costs 3, a hijacker 7, *Salmonella* 14, *S. aureus* 16 and *M. tuberculosis* 29. One boss may come, alone, at its boss-wave health, priced on its stats like everything else (from 38 for the colony to 68 for the burrowing swarm; it used to carry a 1.5× premium).
 
 **Virus swarms.** A group of 8 or more viruses (plain, jumping or hijacker) is a swarm. From the 8th, each virus in the group makes the whole group 2% faster and shrug off 2% more of every hit, up to 15% faster and 20% shrugged off (a 20-strong group reaches both). The planner shows each virus group's boost, or how many more would make it a swarm. Only Attack mode has swarms; the campaign's viruses are unchanged.
 
@@ -105,28 +105,28 @@ You watch each attack play out on the usual map, at any speed; tap a pathogen to
 - a mix, with hijackers first;
 - a boss with support.
 
-Each plans within the budget and the per-vessel limit. A skilled one times its groups so that each vessel's leaders arrive together. Between attacks those who adapt (more of the skilled) move their weight off the vessels the defender has learnt to watch. The swarm boost was tuned until swarms did about as well as bacteria and mixed attacks: at twice the strength above they won 99% of matches, with none 32%. Then each organ's budget factor was tuned on 400 matches (40 per organ) until the attacker took 51% overall and 48% to 53% on every organ:
+Each plans within the budget and the per-vessel limit. A skilled one times its groups so that each vessel's leaders arrive together. Between attacks those who adapt (more of the skilled) move their weight off the vessels the defender has learnt to watch. The swarm boost was tuned until swarms did about as well as bacteria and mixed attacks: at twice the strength above they won 99% of matches, with none 32%. Then each organ's budget factor was tuned on 400 matches (40 per organ) until the attacker took 49% overall and 48% to 53% on every organ but the spleen, which sits at 40%. The spleen's budget rounds to steps of 5, and 195 gives 40% while 200 gives 60%.
 
 | Organ | Heart | Lungs | Liver | Kidney | Spleen | Bone marrow | Stomach | Lymph node | Skin | Eye |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Budget factor | 1.12 | 0.76 | 0.83 | 1.22 | 0.71 | 0.91 | 1 | 0.81 | 0.88 | 0.79 |
-| Budget | 235 | 165 | 265 | 450 | 200 | 245 | 440 | 305 | 410 | 235 |
+| Budget factor | 1.07 | 0.75 | 0.82 | 1.21 | 0.7 | 0.89 | 0.96 | 0.8 | 0.83 | 0.76 |
+| Budget | 225 | 165 | 260 | 450 | 195 | 240 | 420 | 300 | 385 | 225 |
 
 On those 400 matches:
 
 | | Attacker takes |
 |---|---|
-| Weak attackers | 38% |
-| Middle | 50% |
-| Strong | 63% |
-| Swarms | 55% |
-| Bacteria | 57% |
-| Mixed | 63% |
-| Boss | 27% |
+| Weak attackers | 36% |
+| Middle | 53% |
+| Strong | 56% |
+| Swarms | 46% |
+| Bacteria | 48% |
+| Mixed | 64% |
+| Boss | 35% |
 
-Before swarms, learning kinds and the slow switch, bacteria took 82% and viruses alone 18%, and skill barely mattered (53% weak, 57% strong). Boss attacks are still the weakest: a boss is priced at 1.5 times its stats.
+Before swarms, learning kinds and the slow switch, bacteria took 82% and viruses alone 18%, and skill barely mattered (53% weak, 57% strong). Boss attacks are still the weakest. Dropping the boss premium lifted them from 27% to 35%. Pricing them below their stats barely helped (49% at 0.85× with the budgets before re-tuning, against 47% at 1×), so what holds them back is that the defender saves its pulse for a boss, not the price.
 
-A fresh run of **100 matches** (ten per organ, other attackers) has the attacker taking **48%** (single attacks 49%). Re-run it with `npx vite-node tests/balance/attackReport.ts [matches per organ]`. A test plays 40 matches and requires the attacker to take between 30% and 70% of them.
+A fresh run of **100 matches** (ten per organ, other attackers) has the attacker taking **49%** (single attacks 49%). Re-run it with `npx vite-node tests/balance/attackReport.ts [matches per organ]`. A test plays 40 matches and requires the attacker to take between 30% and 70% of them.
 
 Attack mode is kept apart from the career: nothing is saved, it earns and spends no gold, and it leaves the Field Guide, seals and tips alone. A weak attack is held off on every organ, and so are viruses scattered thinly in groups too small to swarm, on nearly every organ (tests check both).
 

@@ -30,8 +30,10 @@ export const ATTACK = {
   maxPerVessel: 12,
   /** Health is priced a little more than in proportion (a tough pathogen outlasts several hits): (health / 10) to this power. */
   toughness: 1.25,
+  /** A boss's traits make it dearer than its stats alone, by this factor. */
+  bossPremium: 1,
   /** Each organ's budget, scaled to give an attack an even chance against it (tuned on simulated matches). */
-  scale: { heart: 1.12, lungs: 0.76, liver: 0.83, kidney: 1.22, spleen: 0.71, marrow: 0.91, stomach: 1, lymphnode: 0.81, skin: 0.88, eye: 0.79 } as Record<string, number>,
+  scale: { heart: 1.07, lungs: 0.75, liver: 0.82, kidney: 1.21, spleen: 0.7, marrow: 0.89, stomach: 0.96, lymphnode: 0.8, skin: 0.83, eye: 0.76 } as Record<string, number>,
   /** The budget: this much per point of the organ's health and per point of its defender's starting energy. */
   budget: { perHp: 8, perEnergy: 0.5 },
   /** A match is the best of three attacks on one organ. */
@@ -59,14 +61,14 @@ export const isBoss = (t: PathogenType) => !!CONFIG.pathogens[t].boss;
 
 /** A pathogen's price, from its stats: its health (a boss sends a share of its full health, as in a boss wave),
  *  (a little more than in proportion) weighted by its speed, plus the harm it does on arrival, plus its tricks (infecting cells, jumping, lodging);
- *  a boss's traits make it half as dear again. */
+ *  a boss's traits make it dearer by `ATTACK.bossPremium`. */
 export function pathogenCost(t: PathogenType): number {
   const st = CONFIG.pathogens[t], share = st.boss ? CONFIG.bossEveryVessel.hpShare : 1;
   let c = ((st.hp * share) / 10) ** ATTACK.toughness * (0.5 + st.speed / 60) + st.heartDamage * share * 1.5;
   if (st.infects) c += 3;
   if (st.jumps) c += 1;
   if (st.lodges) c += 2 * st.lodges.perWave;
-  if (st.boss) c *= 1.5;
+  if (st.boss) c *= ATTACK.bossPremium;
   return Math.max(1, Math.round(c));
 }
 
